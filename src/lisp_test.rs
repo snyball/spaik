@@ -1,6 +1,6 @@
-use risp::r8vm::R8VM;
-use risp::nkgc::SPV;
-use risp::compile::Builtin;
+use spaik::r8vm::R8VM;
+use spaik::nkgc::SPV;
+use spaik::compile::Builtin;
 use colored::*;
 use std::fs;
 use std::fs::File;

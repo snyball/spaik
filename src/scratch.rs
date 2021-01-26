@@ -1,15 +1,15 @@
 #[allow(unused_imports)]
-use risp::parse::*;
+use spaik::parse::*;
 #[allow(unused_imports)]
-use risp::data::*;
+use spaik::data::*;
 #[allow(unused_imports)]
-use risp::r8vm::*;
+use spaik::r8vm::*;
 #[allow(unused_imports)]
-use risp::nkgc::*;
+use spaik::nkgc::*;
 #[allow(unused_imports)]
-use risp::nuke::*;
+use spaik::nuke::*;
 #[allow(unused_imports)]
-use risp::nk::*;
+use spaik::nk::*;
 #[allow(unused_imports)]
 use regex::*;
 

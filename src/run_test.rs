@@ -1,4 +1,4 @@
-use risp::r8vm::*;
+use spaik::r8vm::*;
 
 fn main() {
     let mut vm = R8VM::new();

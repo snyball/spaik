@@ -1,4 +1,4 @@
-use risp::sexpr_parse::{tokenize, standard_lisp_tok_tree};
+use spaik::sexpr_parse::{tokenize, standard_lisp_tok_tree};
 use std::env;
 use std::ffi::OsStr;
 use std::fs::File;

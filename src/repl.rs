@@ -1,10 +1,10 @@
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use risp::r8vm::R8VM;
-use risp::nkgc::PV;
-use risp::compile::Builtin;
-use risp::error::{Error, ErrorKind};
-use risp::fmt::LispFmt;
+use spaik::r8vm::R8VM;
+use spaik::nkgc::PV;
+use spaik::compile::Builtin;
+use spaik::error::{Error, ErrorKind};
+use spaik::fmt::LispFmt;
 use std::process;
 use colored::*;
 
@@ -17,7 +17,7 @@ read ➟ eval ➟ print ➟ loop
     println!("{}", intro);
     let mut vm = R8VM::new();
     let mut hist_path = dirs::data_local_dir().unwrap();
-    hist_path.push("rips");
+    hist_path.push("spaik");
     hist_path.push("history");
     let hist_path = hist_path.to_str().unwrap();
     let mut rl = Editor::<()>::new();

@@ -1,4 +1,4 @@
-use risp::nkgc::Arena;
+use spaik::nkgc::Arena;
 
 fn main() {
     let mut ar = Arena::new(1024);

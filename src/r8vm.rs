@@ -327,7 +327,7 @@ macro_rules! sysfn {
 }
 
 #[macro_export]
-macro_rules! rips {
+macro_rules! spaik {
     ($vm:expr => ( $fn:expr, ($call:expr),+ )) =>
         { $vm.call($fn, &[($call.into()),+]) };
     ($vm:expr => ( $fn:literal, ($call:expr),+ )) =>

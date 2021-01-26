@@ -1,5 +1,5 @@
-use risp::nkgc::*;
-use risp::parse::parse;
+use spaik::nkgc::*;
+use spaik::parse::parse;
 use std::time::SystemTime;
 
 pub fn fuck(ar: &mut Arena) {

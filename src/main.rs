@@ -1,10 +1,10 @@
 #![allow(unused_imports)]
 #[macro_use]
 extern crate risp;
-use risp::perr::*;
-use risp::r8vm::*;
-use risp::nkgc::{SymID, PV};
-use risp::error::Error;
+use spaik::perr::*;
+use spaik::r8vm::*;
+use spaik::nkgc::{SymID, PV};
+use spaik::error::Error;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::File;
