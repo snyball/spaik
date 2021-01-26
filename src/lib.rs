@@ -35,7 +35,7 @@ pub mod sym_db;
 pub mod subrs;
 pub mod compile;
 pub mod sexpr_parse;
-pub mod tests;
+//pub mod tests;
 pub mod tok;
 pub mod nuke;
 //pub mod asm_parse;
