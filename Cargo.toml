@@ -1,0 +1,61 @@
+[package]
+name = "spaik"
+version = "0.1.0"
+authors = ["Jonas Møller <jonas@nimda.no>"]
+description = "A Lisp"
+readme = "README.org"
+edition = "2018"
+repository = "https://github.com/snyball/spaik"
+homepage = "https://github.com/snyball/spaik"
+license = "BSD-2"
+
+[profile.release]
+#lto = "fat"
+#codegen-units = 1
+#panic = "abort"
+
+[dependencies]
+lazy_static = "1.4"
+fnv = "1.0"
+
+## Not strictly tied to repl, but only used for
+## interactive purposes. Can be made optional.
+prettytable-rs = "^0.8"
+
+## Needed for repl, can be made optional
+dirs = "2.0"
+rustyline = "6.2"
+colored = "1.9"
+
+## Would be useful to have /inside/ lisp
+# regex = "1.3"
+
+## Will be used to dump code
+# serde = "1.0.114"
+[build-dependencies]
+bindgen = "0.53"
+cc = "1.0"
+
+[lib]
+name = "spaik"
+path = "src/lib.rs"
+
+# [[bin]]
+# name = "scratchpad"
+# path = "src/scratch.rs"
+
+[[bin]]
+name = "repl"
+path = "src/repl.rs"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[[bin]]
+name = "tokenize"
+path = "src/bin/tokenize.rs"
+
+[[bin]]
+name = "lisp-test"
+path = "src/lisp_test.rs"
