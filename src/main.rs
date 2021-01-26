@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 #[macro_use]
-extern crate risp;
+extern crate spaik;
 use spaik::perr::*;
 use spaik::r8vm::*;
 use spaik::nkgc::{SymID, PV};
