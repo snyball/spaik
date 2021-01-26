@@ -18,3 +18,6 @@ vgcore.*
 perf.data*
 perf.hist*
 massif.out.*
+TODO.org
+asm/*
+.dir-locals.el
