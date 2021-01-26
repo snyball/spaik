@@ -7,7 +7,7 @@ readme = "README.org"
 edition = "2018"
 repository = "https://github.com/snyball/spaik"
 homepage = "https://github.com/snyball/spaik"
-license = "BSD-2"
+license = "BSD-2-Clause"
 
 [profile.release]
 #lto = "fat"
