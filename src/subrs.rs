@@ -1,3 +1,5 @@
+//! Rust Subroutines for SPAIK LISP
+
 use crate::r8vm::{ArgSpec, R8VM};
 use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena};
 use crate::error::{Error, ErrorKind};

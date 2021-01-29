@@ -1,4 +1,4 @@
-// ChASM /ˈkæz(ə)m/, an assembler
+//! ChASM /ˈkæz(ə)m/, an assembler
 
 use crate::nkgc::SymID;
 use std::collections::HashMap;

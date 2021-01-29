@@ -1,3 +1,5 @@
+//! Interactive Read-Eval-Print-Loop
+
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use spaik::r8vm::R8VM;

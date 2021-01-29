@@ -1,3 +1,5 @@
+//! String Interner Data Structure
+
 use crate::sym_db::SymDB;
 use crate::nkgc::{SymID, SymIDInt};
 use std::convert::TryInto;

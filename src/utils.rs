@@ -1,3 +1,5 @@
+//! Miscellaneous Utilities
+
 #[macro_export]
 macro_rules! map {
     ( $($k:expr => $v:expr),* $(,)* ) => {{

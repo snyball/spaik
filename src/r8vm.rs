@@ -1,3 +1,5 @@
+//! SPAIK R8 Virtual Machine
+
 use crate::ast::{Value, ValueKind};
 use crate::compile::{R8Compiler, Linked, pv_to_value, Builtin};
 use crate::sexpr_parse::Parser;

@@ -1,6 +1,4 @@
-//! This is just prototype code for a very inefficient GC which should be
-//! replaced eventually. It's required so that I can start working on the VM and
-//! actually start to get code running.
+//! The Nuclear Garbage Collector
 
 use crate::compile::{Builtin, BUILTIN_SYMBOLS};
 use crate::ast::{Value, ValueKind};

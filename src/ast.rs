@@ -1,3 +1,5 @@
+//! Abstract Syntax Tree Tools
+
 use crate::nkgc::SymID;
 use crate::error::*;
 use crate::tok::*;

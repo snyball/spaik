@@ -1,6 +1,4 @@
-/*!
- * Compilation tools
- */
+//! SPAIK Compiler
 
 use crate::nuke::{NkSum, NkRef};
 use crate::nkgc::{PV, SymID, Cons};

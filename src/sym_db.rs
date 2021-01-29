@@ -1,3 +1,5 @@
+//! Symbol Database
+
 use crate::nkgc::SymID;
 use crate::compile::Builtin;
 use std::borrow::Cow;
