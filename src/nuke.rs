@@ -1,3 +1,5 @@
+//! Nuclear Data Types
+
 use crate::nk::*;
 use crate::nkgc::{PV, Traceable, Arena, SymID};
 use crate::compile::Builtin;

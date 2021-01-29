@@ -1,3 +1,5 @@
+//! S-Expression Parser
+
 use crate::perr::*;
 use crate::tok::*;
 use crate::ast::*;

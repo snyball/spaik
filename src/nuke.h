@@ -1,6 +1,6 @@
-/*
-** The Nuclear Allocator
-*/
+/**
+ * The Nuclear Allocator
+ */
 
 #ifndef __NUKE_H_
 #define __NUKE_H_

@@ -1,3 +1,5 @@
+//! Token Data Structure
+
 use std::fmt;
 
 #[derive(Clone, Copy)]

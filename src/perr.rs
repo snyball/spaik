@@ -1,3 +1,5 @@
+//! Parse Errors
+
 use std::fmt;
 
 #[derive(Debug, PartialEq)]

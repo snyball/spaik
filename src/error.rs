@@ -1,3 +1,5 @@
+//! Structured Errors
+
 use crate::perr::ParseErr;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use crate::r8vm::r8c::Op as R8C;

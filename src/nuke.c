@@ -1,3 +1,7 @@
+/**
+ * The Nuclear Allocator
+ */
+
 #include "nuke.h"
 
 #include <stdbool.h>
