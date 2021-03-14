@@ -19,7 +19,7 @@ fn main() {
     cc::Build::new()
         .file(lib_c)
         .define("DEBUG", Some("0"))
-        .opt_level_str("fast")
+        //.opt_level_str("fast")
         .flag("-Wall")
         .flag("-pedantic")
         .flag("-Werror")
