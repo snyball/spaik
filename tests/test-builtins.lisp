@@ -256,6 +256,33 @@
            x)
          -1))
 
+;;; ---[ self ]------------------------------------------
+(load 'self)
+
+(test self
+      (equal? (do-factorial)
+              '(1 2 6 24 120 720 5040 40320 362880 3628800))
+      (equal? (do-factorial-d)
+              '(1 2 6 24 120 720 5040 40320 362880 3628800))
+      (equal? (evil '((((lambda (f)
+                          (f f))
+                        (lambda (f)
+                          (lambda (g)
+                            (lambda (xs)
+                              (if xs
+                                  (cons (g (car xs))
+                                        (((f f) g) (cdr xs))))))))
+                       (lambda (x)
+                         (* x 2)))
+                      '(2 4 6 8 10 12)))
+              '(4 8 12 16 20 24))
+      (equal? (evil '((((lambda (x)
+                          (lambda (y)
+                            (lambda (z)
+                              (+ (* x (* 2 y)) z))))
+                        4) 5) 6))
+              46))
+
 ;;; ---[ gensym ]----------------------------------------
 (defun mapwise (f xs)
   (= (dolist (pair (zip xs (cdr xs)))
