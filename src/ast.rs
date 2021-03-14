@@ -131,6 +131,7 @@ impl Value {
         let nargs = self.nargs();
         let lambda_code = it.next();
         match (lambda_code, lambda_code.map(|x| x.bt_lambda())) {
+            (Some(code), _) if code.bt_op() != Some(Builtin::Lambda) => None,
             (_, Some(Ok(Lambda(ArgList(spec, _), _)))) if spec.is_special() => None,
             (_, Some(Ok(Lambda(ArgList(spec, args), body)))) => {
                 if let Err(err) = spec.check(Builtin::Lambda.sym(), nargs) {
