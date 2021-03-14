@@ -765,8 +765,8 @@ impl<'a, 'b> R8Compiler<'a, 'b> {
             .ok_or_else(|| "No environment".into())
     }
 
-    fn bt_let(&mut self, ret: bool, code: &Value) -> Result<(), Error> {
-        let ast::Let(pairs, rest) = code.bt_let()?;
+    fn cc_let(&mut self, ret: bool, code: ast::Let) -> Result<(), Error> {
+        let ast::Let(pairs, rest) = code;
         let len = pairs.len();
         for ast::LetBinding(name, val, ..) in pairs {
             self.compile(true, val)?;
@@ -779,6 +779,10 @@ impl<'a, 'b> R8Compiler<'a, 'b> {
             self.asm_op(chasm!(POP len));
         }
         self.env_pop(len)
+    }
+
+    fn bt_let(&mut self, ret: bool, code: &Value) -> Result<(), Error> {
+        self.cc_let(ret, code.bt_let()?)
     }
 
     fn bt_define(&mut self, ret: bool, code: &Value) -> Result<(), Error> {
@@ -1499,6 +1503,8 @@ impl<'a, 'b> R8Compiler<'a, 'b> {
             if ret {
                 return self.compile_atom(&code);
             }
+        } else if let Some(lambda_bind) = code.bt_lambda_bind() {
+            self.cc_let(ret, lambda_bind?)?;
         } else {
             let mut it = code.iter();
             let op = it.next().unwrap();

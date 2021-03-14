@@ -122,6 +122,31 @@ impl Value {
         }
     }
 
+    /**
+     * Applications like `((lambda (x) (+ x 2)) 2)` are compiled just like
+     * `(let ((x 2)) (+ x 2))`.
+     */
+    pub fn bt_lambda_bind(&self) -> Option<Result<Let, Error>> {
+        let mut it = self.iter();
+        let nargs = self.nargs();
+        let lambda_code = it.next();
+        match (lambda_code, lambda_code.map(|x| x.bt_lambda())) {
+            (_, Some(Ok(Lambda(ArgList(spec, _), _)))) if spec.is_special() => None,
+            (_, Some(Ok(Lambda(ArgList(spec, args), body)))) => {
+                if let Err(err) = spec.check(Builtin::Lambda.sym(), nargs) {
+                    return Some(Err(err))
+                }
+                Some(Ok(Let(args.iter()
+                                .zip(it)
+                                .map(|(name, value)| LetBinding(*name, value, &value.src))
+                                .collect(),
+                            body)))
+            }
+            (Some(code), Some(Err(err))) if code.bt_op() == Some(Builtin::Lambda) => Some(Err(err)),
+            _ => None
+        }
+    }
+
     pub fn bt_let(&self) -> Result<Let, Error> {
         let mut it = self.args();
         if let Some(vars) = it.next() {
