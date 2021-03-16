@@ -277,15 +277,23 @@ impl PV {
     }
 
     pub fn type_of(&self) -> SymID {
+        self.bt_type_of().sym()
+    }
+
+    pub fn bt_type_of(&self) -> Builtin {
         use PV::*;
         match *self {
-            Bool(_) => Builtin::Bool.sym(),
-            Int(_) => Builtin::Integer.sym(),
-            UInt(_) => Builtin::UnsignedInteger.sym(),
-            Real(_) => Builtin::Float.sym(),
-            Sym(_) => Builtin::Symbol.sym(),
-            Ref(p) => unsafe { (*p).type_of().into() },
-            Nil => Builtin::Nil.sym()
+            Bool(_) => Builtin::Bool,
+            Int(_) => Builtin::Integer,
+            UInt(_) => Builtin::UnsignedInteger,
+            Real(_) => Builtin::Float,
+            Sym(_) => Builtin::Symbol,
+            Ref(p) => unsafe {
+                Builtin::from_sym((*p).type_of().into()).expect("
+                    Builtin datatype does not have builtin symbol"
+                )
+            },
+            Nil => Builtin::Nil
         }
     }
 

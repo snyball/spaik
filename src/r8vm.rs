@@ -169,7 +169,7 @@ macro_rules! stack_op {
                 [$($arg),+] => { $action }
                 _ => {
                     let types = slice.iter()
-                                     .map(|v| Builtin::from_sym(v.type_of()).unwrap())
+                                     .map(|v| v.bt_type_of())
                                      .map(|v| v.get_str())
                                      .collect::<Vec<_>>()
                                      .join(" ");
@@ -187,7 +187,9 @@ macro_rules! stack_op {
 macro_rules! stack_ref_op {
     ( [ $m:pat ] $type:ty => $action:block ) => {
         |st: &mut Vec<$type>| -> Result<(), Error> {
-            let v = st.pop().unwrap();
+            let v = st.pop().expect(
+                "Empty stack when running op, likely code-gen failure"
+            );
             if let PV::Ref(r) = v {
                 unsafe {
                     if let $m = (*r).match_ref() {
@@ -634,7 +636,7 @@ impl Regs {
             let v = mem.pop()?;
             self.vals[i as usize] = v;
             // FIXME: Regs needs to be Traceable
-            debug_assert!(!v.is_ref(), "References may not be saved.");
+            assert!(!v.is_ref(), "References may not be saved.");
         }
         self.idx = num;
         Ok(())
@@ -664,7 +666,9 @@ macro_rules! vm_call_with {
         unsafe {
             $vm.run_from_unwind(pos)?;
         }
-        let res = $vm.mem.pop().unwrap();
+        let res = $vm.mem.pop().expect(
+            "Function did not return a value"
+        );
 
         res
     }};
@@ -858,7 +862,8 @@ impl<'a> R8VM<'a> {
         self.set_frame(0);
         self.run_from_unwind(c_start)?;
         if self.mem.stack.len() > prev_top {
-            let ret = self.mem.pop().unwrap();
+            let ret = self.mem.pop()
+                              .expect("Logic Error");
             self.mem.stack.truncate(prev_top);
             Ok(ret)
         } else {
@@ -963,7 +968,9 @@ impl<'a> R8VM<'a> {
     }
 
     pub fn sym_name(&self, sym: SymID) -> &str {
-        self.mem.symdb.name(sym).unwrap()
+        self.mem.symdb
+                .name(sym)
+                .expect("Assumed present symbol was not present")
     }
 
     pub fn sym_id(&mut self, name: &str) -> SymID {
@@ -1014,7 +1021,7 @@ impl<'a> R8VM<'a> {
             let mut name = get_name(ip);
             let func = self.funcs
                            .get(&name)
-                           .unwrap();
+                           .expect("Unable to find function by binary search");
 
             let (nenv, nargs) = if func.pos + func.sz < ip {
                 name = Builtin::Unknown.sym().id;
@@ -1429,7 +1436,10 @@ impl<'a> R8VM<'a> {
     }
 
     pub fn call_s(&mut self, name: &str, args: &[PV]) -> Result<SPV<'a>, Error> {
-        let sym = self.mem.symdb.get(name).unwrap();
+        let sym = self.mem.symdb
+                          .get(name)
+                          .ok_or_else(|| error!(UndefinedFunctionString,
+                                                name: name.to_string()))?;
         self.call(sym, args)
     }
 

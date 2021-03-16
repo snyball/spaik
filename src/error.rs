@@ -66,6 +66,8 @@ pub enum ErrorKind {
     SomeError { msg: String },
     UndefinedFunction { name: SymID },
     UndefinedVariable { var: SymID },
+    UndefinedFunctionString { name: String },
+    UndefinedVariableString { name: String },
     ModuleLoadError { lib: SymID },
     Unsupported { op: &'static str },
     IllegalVariableDeclaration { decl: Value },
