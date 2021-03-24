@@ -459,17 +459,21 @@ defsysfn! {
     use vm fn dump_macro_tbl() {
         featurefn!("repl", vm.dump_macro_tbl())
     }
+
     use vm fn dump_sym_tbl() {
         featurefn!("repl", vm.dump_symbol_tbl())
     }
+
     use vm fn dump_env_tbl() {
         featurefn!("repl", vm.dump_env_tbl())
     }
+
     use vm fn dump_fn_tbl() {
         featurefn!("repl", vm.dump_fn_tbl())
     }
+
     use vm fn disassemble(func: Sym) {
-        featurefn!("repl", vm.dump_fn_code(func))
+        featurefn!("repl", vm.dump_fn_code(func)?)
     }
 
     use vm fn exit(status: Sym) {

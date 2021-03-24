@@ -119,7 +119,7 @@ impl<T, E> IntoLisp for Result<T, E>
  * SAFETY: The call method may be passed an arg reference into the,
  *         vm stack (which it gets a mutable reference to.) The call
  *         method may not access `args` after mutating `vm`.
- *
+ *         -
  *         This invariant is ensured by the lispy proc-macro, which you
  *         should use instead of implementing Subr yourself.
  */

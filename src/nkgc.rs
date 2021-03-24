@@ -996,7 +996,7 @@ impl<'a> Arena<'a> {
     ///       a thread which will save GCStats every t seconds until
     ///       it reaches sz samples. stop_profile() -> Vec<GCStats>
     ///       retrieves the stats.
-    ///
+    ///       -
     ///       You'll have to figure out how to make atomic variables
     ///       work across the FFI.
     pub fn stats(&self) -> GCStats {
