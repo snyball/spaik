@@ -1,30 +1,33 @@
 //! SPAIK R8 Virtual Machine
 
-use crate::ast::{Value, ValueKind};
-use crate::compile::{R8Compiler, Linked, pv_to_value, Builtin};
-use crate::sexpr_parse::Parser;
-use crate::nkgc::{Cons, SymID, SymIDInt, PV, SPV, Arena, VLambda};
-use crate::nk::*;
-use crate::nuke::*;
-use crate::perr::PResult;
-use crate::chasm::{ASMPV, ChASMOpName, Lbl, ASMOp};
-use crate::error::{Error, Source, ErrorKind};
-use crate::subrs::IntoLisp;
-use crate::fmt::LispFmt;
-use crate::sym_db::SymDB;
-use fnv::FnvHashMap;
-use std::collections::HashMap;
-use std::cmp;
-use std::ptr;
-use std::mem;
-use std::fs::File;
-use std::io::prelude::*;
-use prettytable::Table;
-use prettytable::format;
-use std::fmt;
-use std::convert::TryInto;
-use std::slice;
-use std::borrow::Cow;
+#[cfg(feature = "repl")]
+use prettytable::{Table, format};
+
+use {
+    crate::{
+        ast::{Value, ValueKind},
+        compile::{R8Compiler, Linked, pv_to_value, Builtin},
+        sexpr_parse::Parser,
+        nkgc::{Cons, SymID, SymIDInt, PV, SPV, Arena, VLambda},
+        nk::*,
+        nuke::*,
+        perr::PResult,
+        chasm::{ASMPV, ChASMOpName, Lbl, ASMOp},
+        error::{Error, Source, ErrorKind},
+        subrs::IntoLisp,
+        fmt::LispFmt,
+        sym_db::SymDB,
+    },
+    fnv::FnvHashMap,
+    std::{
+        cmp, ptr, mem, fmt, slice,
+        collections::HashMap,
+        fs::File,
+        io::prelude::*,
+        convert::TryInto,
+        borrow::Cow,
+    }
+};
 
 chasm_def! {
     r8c:
@@ -356,6 +359,21 @@ fn tostring(vm: &R8VM, x: PV) -> String {
     }
 }
 
+macro_rules! featurefn {
+    ($ft:expr, $e:expr) => {{
+        #[cfg(feature = $ft)]
+        let funk = || -> Result<(), Error> {
+            $e;
+            Ok(())
+        };
+        #[cfg(not(feature = $ft))]
+        let funk = || -> Result<(), Error> {
+            err!(MissingFeature, flag: $ft)
+        };
+        funk()
+    }};
+}
+
 defsysfn! {
     use vm fn println(x: Any) -> Any {
         println!("{}", tostring(vm, x));
@@ -413,10 +431,6 @@ defsysfn! {
         Ok(vm.mem.symdb.put(tostring(vm, a)).into())
     }
 
-    use vm fn disassemble(func: Sym) {
-        vm.dump_fn_code(func)
-    }
-
     use vm fn eval(ast: Any) -> Any {
         vm.eval_ast(ast)
     }
@@ -442,10 +456,21 @@ defsysfn! {
         vm.mem.pop()
     }
 
-    use vm fn dump_macro_tbl() { vm.dump_macro_tbl(); Ok(()) }
-    use vm fn dump_sym_tbl() { vm.dump_symbol_tbl(); Ok(()) }
-    use vm fn dump_env_tbl() { vm.dump_env_tbl(); Ok(()) }
-    use vm fn dump_fn_tbl() { vm.dump_fn_tbl(); Ok(()) }
+    use vm fn dump_macro_tbl() {
+        featurefn!("repl", vm.dump_macro_tbl())
+    }
+    use vm fn dump_sym_tbl() {
+        featurefn!("repl", vm.dump_symbol_tbl())
+    }
+    use vm fn dump_env_tbl() {
+        featurefn!("repl", vm.dump_env_tbl())
+    }
+    use vm fn dump_fn_tbl() {
+        featurefn!("repl", vm.dump_fn_tbl())
+    }
+    use vm fn disassemble(func: Sym) {
+        featurefn!("repl", vm.dump_fn_code(func))
+    }
 
     use vm fn exit(status: Sym) {
         // Written in a strange way in order to assist the type-checker.
@@ -1451,6 +1476,7 @@ impl<'a> R8VM<'a> {
         self.pmem.clone()
     }
 
+    #[cfg(feature = "repl")]
     pub fn dump_fn_code(&self, mut name: SymID) -> Result<(), Error> {
         use colored::*;
 
@@ -1517,6 +1543,7 @@ impl<'a> R8VM<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "repl")]
     pub fn dump_macro_tbl(&self) {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
@@ -1530,6 +1557,7 @@ impl<'a> R8VM<'a> {
         table.printstd();
     }
 
+    #[cfg(feature = "repl")]
     pub fn dump_symbol_tbl(&self) {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
@@ -1542,6 +1570,7 @@ impl<'a> R8VM<'a> {
         table.printstd();
     }
 
+    #[cfg(feature = "repl")]
     pub fn dump_env_tbl(&self) {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
@@ -1572,6 +1601,7 @@ impl<'a> R8VM<'a> {
         self.pmem.len() * std::mem::size_of::<r8c::Op>()
     }
 
+    #[cfg(feature = "repl")]
     pub fn dump_fn_tbl(&self) {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);

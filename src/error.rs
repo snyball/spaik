@@ -74,6 +74,14 @@ pub enum ErrorKind {
     Traceback { tb: Box<Traceback> },
     IndexError { idx: usize },
     Exit { status: SymID },
+    IOError { kind: std::io::ErrorKind },
+    MissingFeature { flag: &'static str },
+}
+
+impl From<std::io::Error> for Error {
+    fn from(v: std::io::Error) -> Self {
+        Error { src: None, ty: ErrorKind::IOError { kind: v.kind() } }
+    }
 }
 
 impl From<ErrorKind> for Error {
@@ -221,6 +229,12 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             write!(f, "Index Error: No such index {}", idx)?,
         ErrorKind::Exit { status } =>
             write!(f, "Exit: {}", nameof(*status))?,
+        ErrorKind::IOError { kind } => {
+            let err: std::io::Error = (*kind).into();
+            write!(f, "IOError: {}", err)?;
+        }
+        ErrorKind::MissingFeature { flag } =>
+            write!(f, "Missing Feature: {}", flag)?,
         x => unimplemented!("{:?}", x),
     }
     if let Some(src) = &err.src {

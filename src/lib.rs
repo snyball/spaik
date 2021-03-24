@@ -9,12 +9,11 @@ pub mod nk {
     include!(concat!(env!("OUT_DIR"), "/nuke-sys.rs"));
 }
 
+#[cfg(feature = "repl")]
 #[macro_use]
 extern crate prettytable;
 #[macro_use]
 extern crate lazy_static;
-// #[macro_use]
-// pub mod clone_inner;
 #[macro_use]
 pub mod error;
 #[macro_use]
