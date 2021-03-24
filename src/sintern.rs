@@ -1,5 +1,8 @@
 //! String Interner Data Structure
 
+use fnv::FnvHashMap;
+use std::hash::Hash;
+
 use crate::sym_db::SymDB;
 use crate::nkgc::{SymID, SymIDInt};
 use std::convert::TryInto;
@@ -26,7 +29,7 @@ pub struct StringInterner<T>
 }
 
 impl<T> Default for StringInterner<T>
-    where T: Into<StringID> + From<StringID> + Default + Copy
+    where T: Into<StringID> + From<StringID> + Default + Copy + Eq + Hash
 {
     fn default() -> Self {
         StringInterner::new(T::default())
@@ -34,7 +37,7 @@ impl<T> Default for StringInterner<T>
 }
 
 impl<T> StringInterner<T>
-    where T: Into<StringID> + From<StringID> + Default + Copy
+    where T: Into<StringID> + From<StringID> + Default + Copy + Hash + Eq
 {
     pub fn new(start: T) -> StringInterner<T> {
         StringInterner {
@@ -92,6 +95,10 @@ impl<T> StringInterner<T>
     pub fn shrink_to_fit(&mut self) {
         self.strings.shrink_to_fit();
         self.lookup.shrink_to_fit();
+    }
+
+    pub fn merge(&mut self, other: StringInterner<T>) -> FnvHashMap<T, T> {
+        other.iter().map(|(k, v)| (k, self.put_ref(v))).collect()
     }
 }
 
