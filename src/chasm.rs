@@ -1,12 +1,14 @@
 //! ChASM /ˈkæz(ə)m/, an assembler
 
 use crate::nkgc::SymID;
-use std::collections::HashMap;
+use std::{collections::HashMap, io::{Read, Write}};
 use std::fmt;
 use crate::error::{Error, ErrorKind};
 use ErrorKind::*;
 use std::convert::{TryInto, TryFrom};
 use fnv::FnvHashMap;
+
+pub type OpCode = u8;
 
 macro_rules! chasm_primitives {
     ($($t:ident),+) => {
@@ -80,12 +82,12 @@ impl From<SymID> for Arg {
 
 #[derive(Debug, Clone)]
 pub struct ChOp {
-    id: u16,
+    id: OpCode,
     args: Vec<Arg>,
 }
 
 impl ChOp {
-    pub fn new(id: u16, args: Vec<Arg>) -> ChOp {
+    pub fn new(id: OpCode, args: Vec<Arg>) -> ChOp {
         ChOp { id, args }
     }
 }
@@ -102,18 +104,21 @@ impl fmt::Display for ChOp {
 }
 
 pub trait ASMOp {
-    // fn from_id(op: u16, args: &[i64]) -> Result<Self, String>
+    // fn from_id(op: OpCode, args: &[i64]) -> Result<Self, String>
     //     where Self: std::marker::Sized;
-    fn read(op: u16, args: &[ASMPV]) -> Result<Self, Error>
+    fn new(op: OpCode, args: &[ASMPV]) -> Result<Self, Error>
         where Self: std::marker::Sized;
     fn name(&self) -> &'static str;
     fn args(&self) -> Vec<ASMPV>;
+    fn write(&self, out: &mut dyn Write) -> Result<usize, std::io::Error>;
+    fn read(&self, inp: &mut dyn Read) -> Result<(Self, usize), Error>
+        where Self: std::marker::Sized;
 }
 
 pub trait ChASMOpName {
     fn dialect(&self) -> &'static str;
-    fn id(&self) -> u16;
-    fn from_num(num: u16) -> Result<Self, Error>
+    fn id(&self) -> OpCode;
+    fn from_num(num: OpCode) -> Result<Self, Error>
         where Self: std::marker::Sized;
     fn from_str(s: &str) -> Option<Self>
         where Self: std::marker::Sized;
@@ -128,12 +133,13 @@ macro_rules! chasm_def {
             #[allow(unused_imports)]
             use $crate::chasm::*;
 
+            #[repr(u8)]
             #[derive(Debug, Clone, Copy, PartialEq, Eq)]
             pub enum Op {
                 $($en($($targ),*)),+
             }
 
-            #[repr(u16)]
+            #[repr(u8)]
             #[derive(Debug, Clone, Copy, PartialEq, Eq)]
             pub enum OpName {
                 $($en),+
@@ -141,10 +147,10 @@ macro_rules! chasm_def {
 
             impl $crate::chasm::ChASMOpName for OpName {
                 fn dialect(&self) -> &'static str { stringify!($name) }
-                fn id(&self) -> u16 {
+                fn id(&self) -> $crate::chasm::OpCode {
                     unsafe { std::mem::transmute(*self) }
                 }
-                fn from_num(id: u16) -> Result<OpName, $crate::error::Error> {
+                fn from_num(id: $crate::chasm::OpCode) -> Result<OpName, $crate::error::Error> {
                     use $crate::error::ErrorKind::*;
                     if id < count_args!($($en),+) {
                         Ok(unsafe { std::mem::transmute(id) })
@@ -164,7 +170,7 @@ macro_rules! chasm_def {
         }
 
         impl $crate::chasm::ASMOp for $name::Op {
-            fn read(op: u16, args: &[ASMPV]) ->
+            fn new(op: $crate::chasm::OpCode, args: &[ASMPV]) ->
                 Result<$name::Op, $crate::error::Error>
             {
                 use std::convert::TryInto;
@@ -193,6 +199,39 @@ macro_rules! chasm_def {
                                              .collect::<Vec<ASMPV>>()
                     }),+
                 }
+            }
+
+            fn write(&self, out: &mut dyn std::io::Write) -> Result<usize, std::io::Error> {
+                let mut sz = std::mem::size_of::<$crate::chasm::OpCode>();
+                let op: $crate::chasm::OpCode = unsafe {
+                    std::mem::transmute(std::mem::discriminant(self))
+                };
+                out.write_all(&op.to_ne_bytes())?;
+                match self {
+                    $($name::Op::$en($($arg),*) => {
+                        $(let buf = $arg.to_ne_bytes();
+                          out.write_all(&buf)?;
+                          sz += buf.len();)*
+                    })+
+                }
+                Ok(sz)
+            }
+
+            fn read(&self, inp: &mut dyn std::io::Read) -> Result<(Self, usize), $crate::error::Error> {
+                let mut rd_sz = std::mem::size_of::<$crate::chasm::OpCode>();
+                let mut op_buf: [u8; 1] = [0];
+                inp.read_exact(&mut op_buf)?;
+                let op = match $name::OpName::from_num(op_buf[0])? {
+                    $($name::OpName::$en => {
+                        $(rd_sz += std::mem::size_of::<$targ>();)*
+                        $(let mut $arg: [u8; std::mem::size_of::<$targ>()] = unsafe {
+                             std::mem::MaybeUninit::uninit().assume_init()
+                         };
+                         inp.read_exact(&mut $arg)?;)*
+                        $name::Op::$en($(unsafe { std::mem::transmute($arg) }),*)
+                    }),+
+                };
+                Ok((op, rd_sz))
             }
         }
 
@@ -265,7 +304,7 @@ impl ChASM {
                                                      .map(|pos| ASMPV::isize(*pos - (i as isize + sz)))
                                                      .ok_or_else(|| link_err("sym", s.id as u32))
                              }).collect::<Result<Vec<ASMPV>, _>>()?;
-                T::read(op.id, &args[..])
+                T::new(op.id, &args[..])
             }).collect::<Result<_, _>>()?,
             hm))
     }
@@ -317,7 +356,7 @@ mod tests {
     fn read_read_op() {
         use crate::r8vm::r8c::Op as R8C;
         use crate::r8vm::r8c::OpName::*;
-        assert_eq!(R8C::read(JMP.id(), &[123i32.into()]), Ok(R8C::JMP(123)))
+        assert_eq!(R8C::new(JMP.id(), &[123i32.into()]), Ok(R8C::JMP(123)))
     }
 
     #[test]
