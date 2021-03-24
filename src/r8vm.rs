@@ -1615,4 +1615,8 @@ impl<'a> R8VM<'a> {
 
         table.printstd();
     }
+
+    pub fn pmem(&self) -> &Vec<r8c::Op> {
+        &self.pmem
+    }
 }

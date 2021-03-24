@@ -111,7 +111,7 @@ pub trait ASMOp {
     fn name(&self) -> &'static str;
     fn args(&self) -> Vec<ASMPV>;
     fn write(&self, out: &mut dyn Write) -> Result<usize, std::io::Error>;
-    fn read(&self, inp: &mut dyn Read) -> Result<(Self, usize), Error>
+    fn read(inp: &mut dyn Read) -> Result<(Self, usize), Error>
         where Self: std::marker::Sized;
 }
 
@@ -165,8 +165,6 @@ macro_rules! chasm_def {
                     }
                 }
             }
-
-            // const NAME: &'static str = stringify!($name);
         }
 
         impl $crate::chasm::ASMOp for $name::Op {
@@ -217,7 +215,7 @@ macro_rules! chasm_def {
                 Ok(sz)
             }
 
-            fn read(&self, inp: &mut dyn std::io::Read) -> Result<(Self, usize), $crate::error::Error> {
+            fn read(inp: &mut dyn std::io::Read) -> Result<(Self, usize), $crate::error::Error> {
                 let mut rd_sz = std::mem::size_of::<$crate::chasm::OpCode>();
                 let mut op_buf: [u8; 1] = [0];
                 inp.read_exact(&mut op_buf)?;
@@ -351,6 +349,8 @@ macro_rules! chasm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::r8vm::{R8VM, r8c};
+    use std::io::Cursor;
 
     #[test]
     fn read_read_op() {
@@ -394,5 +394,25 @@ mod tests {
                               R8C::ADD(),
                               R8C::ADD(),
                               R8C::JMP(-4,)]);
+    }
+
+    #[test]
+    fn read_write_asm() {
+        let mut vm = R8VM::new();
+        let stdlib = vm.sym_id("stdlib");
+        vm.load(stdlib).unwrap();
+        let pmem = vm.pmem();
+        let mut pmem_out = Vec::<u8>::new();
+        for op in pmem.iter() {
+            op.write(&mut pmem_out).unwrap();
+        }
+        let len: u64 = pmem_out.len().try_into().unwrap();
+        let mut pmem_in = Cursor::new(pmem_out);
+        let mut pmem_2 = Vec::new();
+        while pmem_in.position() < len {
+            let (op, _) = r8c::Op::read(&mut pmem_in).unwrap();
+            pmem_2.push(op);
+        }
+        assert_eq!(pmem, &pmem_2);
     }
 }
