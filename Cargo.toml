@@ -15,7 +15,7 @@ license = "BSD-2-Clause"
 #panic = "abort"
 
 [features]
-default = []
+default = ["repl", "lisp-test"]
 repl = ["dirs", "rustyline", "colored", "prettytable-rs"]
 lisp-test = ["colored"]
 
