@@ -8,7 +8,7 @@ use crate::nuke::*;
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::sym_db::SymDB;
-use crate::sintern::StringInterner;
+use crate::sintern::SIntern;
 use std::collections::HashMap;
 use fnv::FnvHashMap;
 use std::fmt;
@@ -845,7 +845,7 @@ pub struct Arena<'a> {
     mem: &'a mut Nuke,
     tags: FnvHashMap<*mut NkAtom, Source>,
     pub(crate) stack: Vec<PV>,
-    pub(crate) symdb: StringInterner<SymID>,
+    pub(crate) symdb: SIntern<SymID>,
     env: Vec<PV>,
     gray: Vec<*mut NkAtom>,
     extref: FnvHashMap<u32, PV>,

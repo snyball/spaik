@@ -20,7 +20,7 @@ type StringID = SymIDInt;
  * of the strings.
  */
 #[derive(Debug)]
-pub struct StringInterner<T>
+pub struct SIntern<T>
     where T: Into<StringID> + From<StringID> + Default + Copy
 {
     start: StringID,
@@ -28,19 +28,19 @@ pub struct StringInterner<T>
     lookup: HashMap<String, T>,
 }
 
-impl<T> Default for StringInterner<T>
+impl<T> Default for SIntern<T>
     where T: Into<StringID> + From<StringID> + Default + Copy + Eq + Hash
 {
     fn default() -> Self {
-        StringInterner::new(T::default())
+        SIntern::new(T::default())
     }
 }
 
-impl<T> StringInterner<T>
+impl<T> SIntern<T>
     where T: Into<StringID> + From<StringID> + Default + Copy + Hash + Eq
 {
-    pub fn new(start: T) -> StringInterner<T> {
-        StringInterner {
+    pub fn new(start: T) -> SIntern<T> {
+        SIntern {
             strings: Vec::default(),
             lookup: HashMap::default(),
             start: start.into(),
@@ -89,7 +89,7 @@ impl<T> StringInterner<T>
     pub fn iter(&self) -> impl Iterator<Item = (T, &str)> {
         let id_end = self.start + self.strings.len() as StringID;
         let id_it = (self.start..id_end).map(|id| id.into());
-        StringInternerIter { it: id_it.zip(self.strings.iter()) }
+        SInternIter { it: id_it.zip(self.strings.iter()) }
     }
 
     pub fn shrink_to_fit(&mut self) {
@@ -97,16 +97,16 @@ impl<T> StringInterner<T>
         self.lookup.shrink_to_fit();
     }
 
-    pub fn merge(&mut self, other: StringInterner<T>) -> FnvHashMap<T, T> {
+    pub fn merge(&mut self, other: SIntern<T>) -> FnvHashMap<T, T> {
         other.iter().map(|(k, v)| (k, self.put_ref(v))).collect()
     }
 }
 
-struct StringInternerIter<'a, R: Iterator<Item = T>, T> {
+struct SInternIter<'a, R: Iterator<Item = T>, T> {
     it: Zip<R, Iter<'a, (*const u8, usize)>>
 }
 
-impl<'a, R: Iterator<Item = T>, T> Iterator for StringInternerIter<'a, R, T> {
+impl<'a, R: Iterator<Item = T>, T> Iterator for SInternIter<'a, R, T> {
     type Item = (T, &'a str);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -117,7 +117,7 @@ impl<'a, R: Iterator<Item = T>, T> Iterator for StringInternerIter<'a, R, T> {
     }
 }
 
-impl SymDB for StringInterner<SymID> {
+impl SymDB for SIntern<SymID> {
     fn name(&self, sym: SymID) -> Cow<str> {
         Cow::Borrowed(self.name(sym).unwrap())
     }
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn string_intern_insertion() {
         for i in 1..100 {
-            let mut intern = StringInterner::new(i);
+            let mut intern = SIntern::new(i);
             let mut ids = vec![];
             for j in 1..100 {
                 ids.push(intern.put(format!("string#{}", j)));
