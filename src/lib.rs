@@ -15,6 +15,10 @@ extern crate prettytable;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
+extern crate binwrite;
+#[macro_use]
+extern crate binread;
+#[macro_use]
 pub mod error;
 #[macro_use]
 pub mod utils;
@@ -37,5 +41,6 @@ pub mod sexpr_parse;
 //pub mod tests;
 pub mod tok;
 pub mod nuke;
+pub mod module;
 //pub mod asm_parse;
 //pub mod arg_parse_tests;
