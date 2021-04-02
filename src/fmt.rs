@@ -2,7 +2,7 @@
 
 use crate::sym_db::{SymDB, SYM_DB};
 use crate::nkgc::{ConsElem, ConsIter};
-use crate::nk::NkAtom;
+use crate::nk::*;
 use std::fmt;
 use fnv::FnvHashSet;
 use std::slice::Iter;

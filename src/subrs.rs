@@ -3,7 +3,7 @@
 use crate::r8vm::{ArgSpec, R8VM};
 use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena};
 use crate::error::{Error, ErrorKind};
-use crate::nk::{NkAtom, NkRelocArray};
+use crate::nk::*;
 use crate::fmt::{LispFmt, VisitSet};
 use crate::sym_db::SymDB;
 use std::convert::{TryInto, TryFrom};
