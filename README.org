@@ -48,7 +48,9 @@ with_ref_mut!(vec, Vector(v) => {
 ** Accessing VM program memory
 Program memory needs to be randomly accessed -- fast. But by default, Rust will
 use bounds-checking on arrays. This bounds-checking is usually cheap enough, but
-not for this particular use-case.
+not for this particular use-case. The VM also only supports relative jumps,
+which would have required two additions when using indexing, but only one when
+using pointer arithmetic.
 
 This optimization relies on:
 
