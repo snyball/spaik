@@ -5,8 +5,9 @@ The *SPAIK* Lisp implementation:
 - *CHASM*: generates virtual ISAs from a simple description of op-codes
 - *R8VM*: Stack-based virtual machine
   + Supports tracebacks on errors
-- *NUKE*: Allocation tools for the garbage collector (written in C)
 - *NKGC*: Moving mark-compact garbage collector
+- *NUKE*: Allocation tools for the garbage collector
+  + These allocation utilities are written in C
 - *COMPILER*: Single-pass compiler and macro-expander.
 - *SINTERN*: String-interner
 - *ERROR*: Structural error type for gradually building errors upwards through
@@ -67,3 +68,7 @@ For this it uses ~unsafe { mem::transmute(num) }~.
 ** Interacting with C code
 Allocation of GC-arenas, as well as the ~sweep~ operation are implemented in C.
 A safe wrapper around this code (~nuke.rs~) is used by ~nkgc::Arena~.
+
+*** Why C though?
+I just found it easier to write this kind of memory-mangling code in C, I'd like
+to see what it would look like in Rust, but I don't want to actually write it.
