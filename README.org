@@ -5,7 +5,7 @@ The *SPAIK* Lisp implementation:
 - *CHASM*: generates virtual ISAs from a simple description of op-codes
 - *R8VM*: Stack-based virtual machine
   + Supports tracebacks on errors
-- *NKGC*: Moving mark-compact garbage collector
+- *NKGC*: Moving tri-color mark-compact garbage collector
 - *NUKE*: Allocation tools for the garbage collector
   + These allocation utilities are written in C
 - *COMPILER*: Single-pass compiler and macro-expander.
@@ -60,6 +60,8 @@ This optimization relies on:
 - On-the-fly changes to the bytecode may invalidate the pointer, so all
   operations that /may/ result in program memory reallocation must reset the
   pointer.
+  + Return-pointers pushed onto the *SPAIK* call stack are indices, not raw pointers, for this
+    reason.
 
 ** Converting between ~u8~ discriminants and ~enum Thing~
 *SPAIK* often needs to convert integer discriminants into enums, and vice-versa.
