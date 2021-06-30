@@ -874,7 +874,7 @@ const DEFAULT_MEMSZ: usize = 32768;
 const DEFAULT_GRAYSZ: usize = 256;
 const DEFAULT_STACKSZ: usize = 256;
 const DEFAULT_ENVSZ: usize = 0;
-const GC_SLEEP_CYCLES: u32 = 0;
+const GC_SLEEP_CYCLES: u32 = 10000;
 
 fn size_of_ast(v: &Value) -> usize {
     match &v.kind {

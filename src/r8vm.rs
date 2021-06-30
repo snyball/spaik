@@ -3,31 +3,23 @@
 #[cfg(feature = "repl")]
 use prettytable::{Table, format};
 
-use {
-    crate::{
-        ast::{Value, ValueKind},
-        compile::{R8Compiler, Linked, pv_to_value, Builtin},
-        sexpr_parse::Parser,
-        nkgc::{Cons, SymID, SymIDInt, PV, SPV, Arena, VLambda},
-        nk::*,
-        nuke::*,
-        perr::PResult,
-        chasm::{ASMPV, ChASMOpName, Lbl, ASMOp},
-        error::{Error, Source, ErrorKind},
-        subrs::IntoLisp,
-        fmt::LispFmt,
-        sym_db::SymDB,
-    },
-    fnv::FnvHashMap,
-    std::{
-        cmp, ptr, mem, fmt, slice,
-        collections::HashMap,
-        fs::File,
-        io::prelude::*,
-        convert::TryInto,
-        borrow::Cow,
-    }
+use crate::{
+    ast::{Value, ValueKind},
+    chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
+    compile::{pv_to_value, Builtin, Linked, R8Compiler},
+    error::{Error, ErrorKind, Source},
+    fmt::LispFmt,
+    module::{LispModule, Export, ExportKind},
+    nk::*,
+    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV},
+    nuke::*,
+    perr::PResult,
+    sexpr_parse::Parser,
+    subrs::IntoLisp,
+    sym_db::SymDB,
 };
+use fnv::FnvHashMap;
+use std::{alloc::dealloc, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt, fs::File, io::prelude::*, mem, ptr, slice};
 
 chasm_def! {
     r8c:
@@ -47,6 +39,7 @@ chasm_def! {
     VPUSH(),
     VPOP(),
     VGET(),
+    VSET(),
 
     // List/vector
     LEN(),
@@ -1212,6 +1205,20 @@ impl<'a> R8VM<'a> {
                         v.get(idx).ok_or_else(|| error!(IndexError, idx))
                     }).map_err(|e| e.op(op))?;
                     self.mem.push(*elem);
+                }
+                VSET() => {
+                    // (set (get <vec> <idx>) <val>)
+                    let idx = self.mem.pop()?.force_int() as usize;
+                    let vec = self.mem.pop()?;
+                    let val = self.mem.pop()?;
+                    with_ref_mut!(vec, Vector(v) => {
+                        if idx >= v.len() {
+                            err!(IndexError, idx)
+                        } else {
+                            v[idx] = val;
+                            Ok(())
+                        }
+                    }).map_err(|e| e.op(Builtin::Get.sym()))?;
                 }
                 LEN() => {
                     let li = self.mem.pop()?;

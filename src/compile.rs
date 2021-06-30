@@ -1110,19 +1110,27 @@ impl<'a, 'b> R8Compiler<'a, 'b> {
                     }
                 }
                 self.compile(true, init)?;
-                if ret {
-                    self.asm_op(chasm!(DUP));
-                }
+                if ret { self.asm_op(chasm!(DUP)) }
                 // NOTE!: Currently the variable index has no reason to change
                 //        between the call to get_var_idx and asm_set_var_idx.
                 //        Should that change this will become invalid:
                 self.asm_set_var_idx(&bound)
             }
-            [obj, _] => err_src!(obj.src.clone(), TypeError,
-                                 op: Builtin::Set.sym(),
-                                 expect: Builtin::Symbol.sym(),
-                                 argn: 1,
-                                 got: obj.type_of()),
+            [obj, init] => if let Some(get) = obj.bt_get() {
+                let ast::Get(vec, idx) = get?;
+                self.compile(true, init)?;
+                if ret { self.asm_op(chasm!(DUP)) }
+                self.compile(true, vec)?;
+                self.compile(true, idx)?;
+                self.asm_op(chasm!(VSET));
+                Ok(())
+            } else {
+                err_src!(obj.src.clone(), TypeError,
+                         op: Builtin::Set.sym(),
+                         expect: Builtin::Symbol.sym(),
+                         argn: 1,
+                         got: obj.type_of())
+            },
             _ => err_src!(code.src.clone(), ArgError,
                           expect: ArgSpec::normal(2),
                           op: Builtin::Set.sym(),

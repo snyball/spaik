@@ -99,6 +99,9 @@ pub enum Cmp2<'a> {
     Lte(&'a Value, &'a Value),
 }
 
+pub struct Get<'a>(pub &'a Value,
+                   pub &'a Value);
+
 pub struct DefineVar<'a>(pub SymID,
                          pub &'a Value);
 pub struct DefineFunc<'a>(pub SymID,
@@ -208,6 +211,18 @@ impl Value {
                                 got: x.type_of(),
                                 argn: 1),
         }
+    }
+
+    pub fn bt_get(&self) -> Option<Result<Get, Error>> {
+        matches!(self.bt_op(), Some(Builtin::Get)).then(|| {
+            ArgSpec::normal(2).check(Builtin::Get.sym(), self.nargs())
+                              .map(|_| {
+                                  let mut it = self.args();
+                                  let vec = it.next().unwrap();
+                                  let idx = it.next().unwrap();
+                                  Get(vec, idx)
+                              })
+        })
     }
 
     pub fn bt_arith2(&self) -> Option<Arith2> {

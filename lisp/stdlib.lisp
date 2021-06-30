@@ -206,6 +206,9 @@
   `(eval-when :compile
      (sys::load ,lib)))
 
+;;; FIXME: (next)/(break) don't work inside dolist/range,
+;;;        a compiler built-in is needed to fix it.
+
 (defmacro dolist (cnd &body body)
   (let ((name (car cnd))
         (init (car (cdr cnd)))
