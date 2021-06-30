@@ -8,22 +8,42 @@ use spaik::compile::Builtin;
 use spaik::error::{Error, ErrorKind};
 use spaik::fmt::LispFmt;
 use std::process;
+use std::fs;
 use colored::*;
 
-fn main() {
+fn make_intro() -> String {
+    format!("
+{read} {arrow} {eval} {arrow} {print} {arrow} {loop}
+ ┗━━━━━━━━━━━━━━━━━━━━━━┛\n",
+            read="read".blue().bold().underline(),
+            eval="eval".blue().bold().underline(),
+            print="print".blue().bold().underline(),
+            loop="loop".blue().bold().underline(),
+            arrow="➟"
+    )
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let intro =
 "
 read ➟ eval ➟ print ➟ loop
  ┗━━━━━━━━━━━━━━━━━━━━━━┛
 ";
-    println!("{}", intro);
+    // println!("{}", intro.white().bold());
+    println!("{}", make_intro());
     let mut vm = R8VM::new();
+    let mut spaik_dir = dirs::data_local_dir().unwrap();
+    spaik_dir.push("spaik");
+    fs::create_dir_all(spaik_dir)?;
     let mut hist_path = dirs::data_local_dir().unwrap();
     hist_path.push("spaik");
     hist_path.push("history");
-    let hist_path = hist_path.to_str().unwrap();
     let mut rl = Editor::<()>::new();
-    rl.load_history(hist_path).ok();
+    if rl.load_history(&hist_path).is_err() {
+        println!("{} {}",
+                 "Warning: No history log, will be created in".yellow().bold(),
+                 hist_path.to_string_lossy().white().bold());
+    }
     let stdlib = vm.sym_id("stdlib");
     if let Err(e) = vm.load(stdlib) {
         println!("{}", e.to_string(&vm));
@@ -44,6 +64,7 @@ read ➟ eval ➟ print ➟ loop
                         match e.cause() {
                             Error { ty: ErrorKind::Exit { status }, ..} => {
                                 use Builtin::*;
+                                rl.save_history(&hist_path)?;
                                 if *status == Fail.sym() {
                                     process::exit(1);
                                 }
@@ -65,5 +86,6 @@ read ➟ eval ➟ print ➟ loop
             }
         }
     }
-    rl.save_history(hist_path).unwrap();
+    rl.save_history(&hist_path)?;
+    Ok(())
 }
