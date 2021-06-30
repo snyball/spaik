@@ -47,7 +47,7 @@ trait ModuleExtract {
 
 #[derive(BinWrite, BinRead, Debug, PartialEq, Eq)]
 pub struct SymEntry {
-    name_len: u32,
+    name_len: u16,
     #[br(count = name_len)]
     name: Vec<u8>,
 
@@ -75,11 +75,11 @@ impl BinRead for SymID {
 
 #[derive(BinWrite, BinRead, PartialEq, Eq, Debug)]
 pub struct Import {
-    path_len: u32,
+    path_len: u16,
     #[br(count = path_len)]
     path: Vec<SymID>,
 
-    syms_len: u32,
+    syms_len: u16,
     #[br(count = syms_len)]
     syms: Vec<SymID>,
 }

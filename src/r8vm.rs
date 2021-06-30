@@ -1630,4 +1630,12 @@ impl<'a> R8VM<'a> {
     pub fn pmem(&self) -> &Vec<r8c::Op> {
         &self.pmem
     }
+
+    pub fn freeze(&self) -> LispModule {
+        let mut exports = Vec::new();
+        exports.extend(self.funcs.iter().map(|(&name, f)| Export::new(ExportKind::Func,
+                                                                      name.into(),
+                                                                      f.pos.try_into().unwrap())));
+        LispModule::new(&self.pmem, &self.mem.symdb, &self.consts, vec![], exports)
+    }
 }
