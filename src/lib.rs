@@ -44,5 +44,7 @@ pub mod sexpr_parse;
 pub mod tok;
 pub mod nuke;
 pub mod module;
+#[cfg(feature = "repl")]
+pub mod repl;
 //pub mod asm_parse;
 //pub mod arg_parse_tests;

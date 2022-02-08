@@ -2,12 +2,13 @@
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use spaik::r8vm::R8VM;
-use spaik::nkgc::PV;
-use spaik::compile::Builtin;
-use spaik::error::{Error, ErrorKind};
-use spaik::fmt::LispFmt;
+use crate::r8vm::{R8VM, OutStream};
+use crate::nkgc::PV;
+use crate::compile::Builtin;
+use crate::error::{Error, ErrorKind};
+use crate::fmt::LispFmt;
 use std::process;
+use std::path::Path;
 use std::fs;
 use colored::*;
 
@@ -23,69 +24,126 @@ fn make_intro() -> String {
     )
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let intro =
-"
-read ➟ eval ➟ print ➟ loop
- ┗━━━━━━━━━━━━━━━━━━━━━━┛
-";
-    // println!("{}", intro.white().bold());
-    println!("{}", make_intro());
-    let mut vm = R8VM::new();
-    let mut spaik_dir = dirs::data_local_dir().unwrap();
-    spaik_dir.push("spaik");
-    fs::create_dir_all(spaik_dir)?;
-    let mut hist_path = dirs::data_local_dir().unwrap();
-    hist_path.push("spaik");
-    hist_path.push("history");
-    let mut rl = Editor::<()>::new();
-    if rl.load_history(&hist_path).is_err() {
-        println!("{} {}",
-                 "Warning: No history log, will be created in".yellow().bold(),
-                 hist_path.to_string_lossy().white().bold());
+macro_rules! vmprint {
+    ($vm:expr, $($fmt:expr),+) => {
+        $vm.print_fmt(format_args!($($fmt),+)).unwrap()
+    };
+}
+
+macro_rules! vmprintln {
+    ($vm:expr, $($fmt:expr),+) => {
+        $vm.print_fmt(format_args!($($fmt),+)).unwrap();
+        $vm.println(&"").unwrap();
+    };
+}
+
+type EBResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+pub trait LineInput {
+    fn readline();
+    fn save_history<P: AsRef<Path> + ?Sized>(&self, path: &P) -> EBResult<()>;
+    fn load_history<P: AsRef<Path> + ?Sized>(&mut self, path: &P) -> EBResult<()>;
+    fn add_history_entry<S: AsRef<str> + Into<String>>(&mut self, line: S) -> bool;
+}
+
+pub struct REPL<'a> {
+    vm: R8VM<'a>,
+    exit_status: Option<i32>,
+}
+
+impl REPL<'_> {
+    pub fn new<'a>(out_override: Option<Box<dyn OutStream>>) -> Result<REPL<'a>, Error> {
+        let mut vm = R8VM::new();
+        if let Some(out) = out_override {
+            vm.set_stdout(out);
+        }
+        let stdlib = vm.sym_id("stdlib");
+        vm.load(stdlib)
+          .map(|_| ())
+          .or_else(|e| -> Result<(), Error> {
+              vmprintln!(vm, "{}", e.to_string(&vm));
+              vmprintln!(vm, "{}", "Warning: Using bundled stdlib".yellow().bold());
+              vm.eval(include_str!("../lisp/stdlib.lisp"))?;
+              Ok(())
+          }).or_else(|e| -> Result<(), Error> {
+              vmprintln!(vm, "{}: {}", "Error: ".red().bold(), e.to_string(&vm).white().bold());
+              Ok(())
+          });
+        Ok(REPL {
+            vm,
+            exit_status: None,
+        })
     }
-    let stdlib = vm.sym_id("stdlib");
-    if let Err(e) = vm.load(stdlib) {
-        println!("{}", e.to_string(&vm));
-        process::exit(1);
-    }
-    loop {
-        let readline = rl.readline(&"λ> ".white().bold().to_string());
-        match readline {
-            Ok(line) => {
-                rl.add_history_entry(line.as_str());
-                match vm.eval(line.as_str()) {
-                    Ok(PV::Nil) => {}
-                    Ok(res) => {
-                        print!("{}", "=> ".blue().bold());
-                        println!("{}", res.lisp_to_string(&vm))
-                    },
-                    Err(e) => {
-                        match e.cause() {
-                            Error { ty: ErrorKind::Exit { status }, ..} => {
-                                use Builtin::*;
-                                rl.save_history(&hist_path)?;
-                                if *status == Fail.sym() {
-                                    process::exit(1);
-                                }
-                                process::exit(0);
-                            }
-                            _ => {
-                                println!("{}", e.to_string(&vm))
-                            }
-                        }
-                    },
+
+    pub fn eval(&mut self, code: &str) {
+        match self.vm.eval(code) {
+            Ok(PV::Nil) => {}
+            Ok(res) => {
+                vmprint!(self.vm, "{}", "=> ".blue().bold());
+                vmprintln!(self.vm, "{}", res.lisp_to_string(&self.vm));
+            },
+            Err(e) => {
+                match e.cause() {
+                    Error { ty: ErrorKind::Exit { status }, ..} => {
+                        use Builtin::*;
+                        self.exit_status = Some(if *status == Fail.sym() {
+                            1
+                        } else {
+                            0
+                        });
+                    }
+                    _ => {
+                        vmprintln!(self.vm, "{}", e.to_string(&self.vm));
+                    }
                 }
             },
-            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
-                break
-            },
-            Err(err) => {
-                println!("Read Error: {:?}", err);
-                break
-            }
         }
     }
-    rl.save_history(&hist_path)?;
-    Ok(())
+
+    pub fn exit_status(&self) -> Option<i32> {
+        self.exit_status
+    }
+
+    pub fn print_intro(&mut self) {
+        vmprintln!(self.vm, "{}", make_intro());
+    }
+
+    pub fn readline_repl(&mut self) -> ! {
+        let mut spaik_dir = dirs::data_local_dir().unwrap();
+        spaik_dir.push("spaik");
+        if let Err(e) = fs::create_dir_all(spaik_dir) {
+            vmprintln!(self.vm, "Error: {}", e);
+            process::exit(1);
+        }
+        let mut hist_path = dirs::data_local_dir().unwrap();
+        hist_path.push("spaik");
+        hist_path.push("history");
+        let mut rl = Editor::<()>::new();
+        if rl.load_history(&hist_path).is_err() {
+            vmprintln!(self.vm, "{} {}",
+                       "Warning: No history log, will be created in".yellow().bold(),
+                       hist_path.to_string_lossy().white().bold());
+        }
+        self.print_intro();
+        while self.exit_status.is_none() {
+            let readline = rl.readline(&"λ> ".white().bold().to_string());
+            match readline {
+                Ok(line) => {
+                    rl.add_history_entry(line.as_str());
+                    self.eval(line.as_str());
+                },
+                Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                    self.exit_status = Some(0)
+                },
+                Err(err) => {
+                    vmprintln!(self.vm, "Read Error: {:?}", err);
+                    self.exit_status = Some(1)
+                }
+            }
+        }
+        if let Err(e) = rl.save_history(&hist_path) {
+            vmprintln!(self.vm, "Error: {}", e);
+        }
+        process::exit(self.exit_status.unwrap_or_default())
+    }
 }
