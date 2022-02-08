@@ -56,7 +56,7 @@ pub fn string_parse(tok: &Token) -> PResult<String> {
  * # Time complexity
  *
  * O(n⋅m), where n is the number of tokens and m is the number of pairs.
- */
+*/
 pub fn find_pairs(pairs: &[(&str, &str)], toks: &[Token]) -> PResult<FnvHashMap<u32, u32>>
 {
     let mut st = vec![];
@@ -207,7 +207,7 @@ pub struct Fragment {
  *            the operator.
  * - `Invalid`: The input does not match any token in the tree, this means that
  *              you should backtrack.
- */
+*/
 enum AdvanceResult<'a> {
     Advance(&'a Fragment),
     Valid,
@@ -224,7 +224,7 @@ enum AdvanceResult<'a> {
  *
  * Then open that svg file in your favorite browser (or Emacs) to see the
  * structure.
- */
+*/
 impl Fragment {
     pub fn root() -> Fragment {
         Fragment { c: 'ɛ',

@@ -122,8 +122,8 @@ impl<T, E> IntoLisp for Result<T, E>
  *         -
  *         This invariant is ensured by the lispy proc-macro, which you
  *         should use instead of implementing Subr yourself.
- */
-pub unsafe trait Subr: CloneSubr {
+*/
+pub unsafe trait Subr: CloneSubr + Send {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
 
     fn name(&self) -> &'static str;
@@ -197,7 +197,7 @@ impl my_function_obj {
 
 unsafe impl Subr for my_function_obj {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-        static SPEC: ArgSpec = ArgSpec::normal(2);
+        const SPEC: ArgSpec = ArgSpec::normal(2);
         SPEC.check(Default::default(), args.len() as u16)?;
         let x = args[0].try_into().map_err(|e: Error| e.argn(0))?;
         let y = args[1].try_into().map_err(|e: Error| e.argn(1))?;
@@ -224,3 +224,5 @@ unsafe impl Subr for VLambda {
         "lambda"
     }
 }
+
+// unsafe impl Send for T where T: Subr {}

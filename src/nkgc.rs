@@ -809,6 +809,8 @@ pub struct VLambda {
     pub args: ArgSpec
 }
 
+unsafe impl Send for VLambda {}
+
 impl VLambda {
     #[inline]
     pub fn nenv(&self) -> ArgInt {
@@ -867,14 +869,15 @@ struct ColdArena {
 enum GCState {
     Mark(u32),
     Sweep,
-    Sleep(u32),
+    Sleep(i32),
 }
 
 const DEFAULT_MEMSZ: usize = 32768;
 const DEFAULT_GRAYSZ: usize = 256;
 const DEFAULT_STACKSZ: usize = 256;
 const DEFAULT_ENVSZ: usize = 0;
-const GC_SLEEP_CYCLES: u32 = 10000;
+const GC_SLEEP_CYCLES: i32 = 10000;
+const GC_SLEEP_MEM_BYTES: i32 = 1024 * 10;
 
 fn size_of_ast(v: &Value) -> usize {
     match &v.kind {
@@ -920,7 +923,7 @@ impl<'a> Arena<'a> {
             stack: Vec::with_capacity(DEFAULT_STACKSZ),
             env: Vec::with_capacity(DEFAULT_ENVSZ),
             symdb: Default::default(),
-            state: GCState::Sleep(GC_SLEEP_CYCLES),
+            state: GCState::Sleep(GC_SLEEP_MEM_BYTES),
             extref: FnvHashMap::default(),
             tags: FnvHashMap::default(),
             no_reorder: false,
@@ -1274,6 +1277,10 @@ impl<'a> Arena<'a> {
     }
 
     pub(crate) fn alloc<T: Fissile>(&mut self) -> *mut T {
+        self.state = match self.state {
+            GCState::Sleep(bytes) => GCState::Sleep(bytes - Nuke::size_of::<T>() as i32),
+            x => x
+        };
         unsafe {
             let (ptr, grow) = self.mem.alloc::<T>();
             if let Some((new_nuke, reloc)) = grow {
@@ -1294,7 +1301,7 @@ impl<'a> Arena<'a> {
     fn sweep_compact(&mut self) {
         let reloc = self.mem.sweep_compact();
         self.update_ptrs(reloc);
-        self.state = GCState::Sleep(GC_SLEEP_CYCLES);
+        self.state = GCState::Sleep(GC_SLEEP_MEM_BYTES);
     }
 
     #[inline]
@@ -1331,10 +1338,9 @@ impl<'a> Arena<'a> {
     #[inline]
     pub fn collect(&mut self) {
         match self.state {
-            GCState::Sleep(0) =>
+            GCState::Sleep(x) if x <= 0 =>
                 self.mark_begin(),
-            GCState::Sleep(ref mut x) =>
-                *x -= 1,
+            GCState::Sleep(_) => (),
             GCState::Mark(num_steps) =>
                 self.mark_step(num_steps),
             GCState::Sweep =>
