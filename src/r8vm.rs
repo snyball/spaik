@@ -19,7 +19,7 @@ use crate::{
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
-use std::{alloc::dealloc, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt, fs::File, io::prelude::*, mem, ptr, slice};
+use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
 
 chasm_def! {
     r8c:
@@ -281,7 +281,6 @@ macro_rules! sysfn_ret {
     };
 }
 
-#[allow(unused_macros)]
 macro_rules! defsysfn {
     ( $( use $vm:ident fn $name:ident ( $( $arg:ident : $type:ident ),* ) $(-> $otype:ident)* $body:block )* ) => {
         pub const SYSTEM_FUNCTIONS: [SysFn; count_args!($($name),*)] = sysfn!(
@@ -322,7 +321,7 @@ macro_rules! sysfn {
                     }
                 }
             }),*
-        ];
+        ]
     }
 }
 
@@ -369,12 +368,14 @@ macro_rules! featurefn {
 
 defsysfn! {
     use vm fn println(x: Any) -> Any {
-        println!("{}", tostring(vm, x));
+        let s = tostring(vm, x);
+        vm.println(&s)?;
         Ok(x)
     }
 
     use vm fn print(x: Any) -> Any {
-        print!("{}", tostring(vm, x));
+        let s = tostring(vm, x);
+        vm.print(&s)?;
         Ok(x)
     }
 
@@ -450,19 +451,19 @@ defsysfn! {
     }
 
     use vm fn dump_macro_tbl() {
-        featurefn!("repl", vm.dump_macro_tbl())
+        featurefn!("repl", vm.dump_macro_tbl()?)
     }
 
     use vm fn dump_sym_tbl() {
-        featurefn!("repl", vm.dump_symbol_tbl())
+        featurefn!("repl", vm.dump_symbol_tbl()?)
     }
 
     use vm fn dump_env_tbl() {
-        featurefn!("repl", vm.dump_env_tbl())
+        featurefn!("repl", vm.dump_env_tbl()?)
     }
 
     use vm fn dump_fn_tbl() {
-        featurefn!("repl", vm.dump_fn_tbl())
+        featurefn!("repl", vm.dump_fn_tbl()?)
     }
 
     use vm fn disassemble(func: Sym) {
@@ -481,12 +482,13 @@ defsysfn! {
     }
 
     use vm fn dump_gc_stats() {
-        println!("{:?}", vm.mem.stats());
+        vm.print_fmt(format_args!("{:?}", vm.mem.stats()))?;
+        vm.println(&"")?;
         Ok(())
     }
 
     use vm fn dump_stack() {
-        vm.dump_stack();
+        vm.dump_stack()?;
         Ok(())
     }
 }
@@ -603,7 +605,13 @@ struct Module {
     env: Vec<Value>,
 }
 
-#[derive(Default, Debug)]
+pub trait OutStream: io::Write + Debug + Send {}
+impl<T> OutStream for T where T: io::Write + Debug + Send {}
+
+pub trait InStream: io::Read + Debug + Send {}
+impl<T> InStream for T where T: io::Read + Debug + Send {}
+
+#[derive(Debug)]
 pub struct R8VM<'a> {
     /// Memory
     pmem: Vec<r8c::Op>,
@@ -618,9 +626,32 @@ pub struct R8VM<'a> {
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
     sysfns: FnvHashMap<SymIDInt, usize>,
 
+    stdout: Mutex<Box<dyn OutStream>>,
+    stdin: Mutex<Box<dyn InStream>>,
+
     debug_mode: bool,
 
     frame: usize,
+}
+
+impl<'a> Default for R8VM<'a> {
+    fn default() -> Self {
+        R8VM {
+            pmem: Default::default(),
+            consts: Default::default(),
+            mem: Default::default(),
+            globals: Default::default(),
+            breaks: Default::default(),
+            macros: Default::default(),
+            funcs: Default::default(),
+            func_labels: Default::default(),
+            sysfns: Default::default(),
+            stdout: Mutex::new(Box::new(io::stdout())),
+            stdin: Mutex::new(Box::new(io::stdin())),
+            debug_mode: false,
+            frame: Default::default(),
+        }
+    }
 }
 
 macro_rules! def_stack_op {
@@ -705,6 +736,8 @@ impl SymDB for R8VM<'_> {
         self.mem.symdb.put_ref(name)
     }
 }
+
+unsafe impl<'a> Send for R8VM<'a> {}
 
 impl<'a> R8VM<'a> {
     pub fn new<'b>() -> R8VM<'b> {
@@ -1208,14 +1241,24 @@ impl<'a> R8VM<'a> {
                 }
                 VSET() => {
                     // (set (get <vec> <idx>) <val>)
-                    let idx = self.mem.pop()?.force_int() as usize;
+                    let op = Builtin::Set.sym();
+                    let idx = match self.mem.pop()? {
+                        PV::Int(x) => x as usize,
+                        x => return err!(TypeError,
+                                         expect: Builtin::Integer.sym(),
+                                         got: x.type_of(),
+                                         argn: 2,
+                                         op)
+                    };
                     let vec = self.mem.pop()?;
                     let val = self.mem.pop()?;
                     with_ref_mut!(vec, Vector(v) => {
                         if idx >= v.len() {
                             err!(IndexError, idx)
                         } else {
-                            v[idx] = val;
+                            let p = &mut v[idx] as *mut PV;
+                            *p = val;
+                            // v[idx] = val;
                             Ok(())
                         }
                     }).map_err(|e| e.op(Builtin::Get.sym()))?;
@@ -1399,7 +1442,7 @@ impl<'a> R8VM<'a> {
             self.mem.collect();
 
             if self.debug_mode {
-                self.dump_stack();
+                self.dump_stack()?;
                 println!();
             }
         };
@@ -1412,16 +1455,18 @@ impl<'a> R8VM<'a> {
         }
     }
 
-    pub fn dump_stack(&mut self) {
-        println!("stack:");
+    pub fn dump_stack(&mut self) -> Result<(), Error> {
+        let mut stdout = self.stdout.lock().unwrap();
+        writeln!(stdout, "stack:")?;
         for (idx, val) in self.mem.stack.iter().enumerate().rev() {
             let (idx, frame) = (idx as i64, self.frame as i64);
             if idx == frame {
-                println!(" -> {}: {}", idx - frame, val);
+                writeln!(stdout, " -> {}: {}", idx - frame, val)?;
             } else {
-                println!("    {}: {}", idx - frame, val);
+                writeln!(stdout, "    {}: {}", idx - frame, val)?;
             }
         }
+        Ok(())
     }
 
     #[inline]
@@ -1487,6 +1532,29 @@ impl<'a> R8VM<'a> {
         self.pmem.clone()
     }
 
+    pub fn print_fmt(&mut self, args: fmt::Arguments) -> Result<(), Error> {
+        self.stdout.lock().unwrap().write_fmt(args)?;
+        Ok(())
+    }
+
+    pub fn print(&mut self, obj: &dyn Display) -> Result<(), Error> {
+        self.print_fmt(format_args!("{}", obj))
+    }
+
+    pub fn println(&mut self, obj: &dyn Display) -> Result<(), Error> {
+        self.print(obj)?;
+        writeln!(self.stdout.lock().unwrap())?;
+        Ok(())
+    }
+
+    pub fn set_stdout(&mut self, out: Box<dyn OutStream>) {
+        *self.stdout.lock().unwrap() = out;
+    }
+
+    pub fn set_stdin(&mut self, inp: Box<dyn InStream>) {
+        *self.stdin.lock().unwrap() = inp;
+    }
+
     #[cfg(feature = "repl")]
     pub fn dump_fn_code(&self, mut name: SymID) -> Result<(), Error> {
         use colored::*;
@@ -1534,28 +1602,29 @@ impl<'a> R8VM<'a> {
             }))
         };
 
-        println!("{}({}):",
+        let mut stdout = self.stdout.lock().unwrap();
+        writeln!(stdout, "{}({}):",
                  self.sym_name(name).cyan().bold(),
-                 func.args);
+                 func.args)?;
         for i in start..start+(func.sz as isize) {
             let op = self.pmem[i as usize];
             if let Some(s) = labels.get(&(((i as isize) - start) as u32)) {
-                println!("{}:", s.to_string().yellow().bold());
+                writeln!(stdout, "{}:", s.to_string().yellow().bold())?;
             }
             let (name, args) = fmt_special(i as isize, op).unwrap_or(
                 (op.name().to_lowercase(),
                  op.args().iter().map(|v| v.to_string()).collect())
             );
-            println!("    {} {}",
+            writeln!(stdout, "    {} {}",
                      name.blue().bold(),
-                     args.join(", "))
+                     args.join(", "))?;
         }
 
         Ok(())
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_macro_tbl(&self) {
+    pub fn dump_macro_tbl(&self) -> Result<(), Error> {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
@@ -1565,11 +1634,13 @@ impl<'a> R8VM<'a> {
                                self.sym_name(fn_sym)]);
         }
 
-        table.printstd();
+        let mut stdout = self.stdout.lock().unwrap();
+        table.print(&mut*stdout)?;
+        Ok(())
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_symbol_tbl(&self) {
+    pub fn dump_symbol_tbl(&self) -> Result<(), Error> {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
@@ -1578,11 +1649,13 @@ impl<'a> R8VM<'a> {
             table.add_row(row![name, id.id]);
         }
 
-        table.printstd();
+        let mut stdout = self.stdout.lock().unwrap();
+        table.print(&mut*stdout)?;
+        Ok(())
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_env_tbl(&self) {
+    pub fn dump_env_tbl(&self) -> Result<(), Error> {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
@@ -1595,7 +1668,9 @@ impl<'a> R8VM<'a> {
                                idx]);
         }
 
-        table.printstd();
+        let mut stdout = self.stdout.lock().unwrap();
+        table.print(&mut*stdout)?;
+        Ok(())
     }
 
     pub fn get_funcs_with_prefix(&self, prefix: &str) -> Vec<SymID> {
@@ -1613,7 +1688,7 @@ impl<'a> R8VM<'a> {
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_fn_tbl(&self) {
+    pub fn dump_fn_tbl(&self) -> Result<(), Error> {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
@@ -1624,7 +1699,9 @@ impl<'a> R8VM<'a> {
                                func.pos]);
         }
 
-        table.printstd();
+        let mut stdout = self.stdout.lock().unwrap();
+        table.print(&mut*stdout)?;
+        Ok(())
     }
 
     pub fn pmem(&self) -> &Vec<r8c::Op> {
