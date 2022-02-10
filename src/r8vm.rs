@@ -1625,6 +1625,7 @@ impl<'a> R8VM<'a> {
 
     #[cfg(feature = "repl")]
     pub fn dump_macro_tbl(&self) -> Result<(), Error> {
+        use prettytable::{row, cell};
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
@@ -1641,6 +1642,7 @@ impl<'a> R8VM<'a> {
 
     #[cfg(feature = "repl")]
     pub fn dump_symbol_tbl(&self) -> Result<(), Error> {
+        use prettytable::{row, cell};
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
@@ -1656,6 +1658,7 @@ impl<'a> R8VM<'a> {
 
     #[cfg(feature = "repl")]
     pub fn dump_env_tbl(&self) -> Result<(), Error> {
+        use prettytable::{row, cell};
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
@@ -1689,6 +1692,7 @@ impl<'a> R8VM<'a> {
 
     #[cfg(feature = "repl")]
     pub fn dump_fn_tbl(&self) -> Result<(), Error> {
+        use prettytable::{row, cell};
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 

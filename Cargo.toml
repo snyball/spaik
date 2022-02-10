@@ -15,25 +15,30 @@ panic = "abort"
 
 [features]
 default = ["repl", "lisp-test"]
-repl = ["dirs", "rustyline", "colored", "prettytable-rs"]
+repl = ["colored", "prettytable-rs", "dirs"]
+#tables = ["prettytable-rs"]
+readline = ["rustyline"]
 lisp-test = ["colored"]
-wasm = ["wasm-bindgen"]
+#wasm = ["wasm-bindgen"]
+
+[build]
+target = "wasm32-unknown-unknown"
 
 [dependencies]
 lazy_static = "1.4"
 fnv = "1.0"
 
 log = "0.4"
-pretty_env_logger = "0.3"
+#pretty_env_logger = "0.3"
 
 binwrite = "0.2.1"
 binread = "2.1.1"
 
 prettytable-rs = { version = "^0.8", optional = true }
-dirs = { version = "2.0", optional = true }
+dirs = { version = "4.0.0", optional = true }
 rustyline = { version = "6.2", optional = true }
 colored = { version = "1.9", optional = true }
-wasm-bindgen = { version = "0.2.79", optional = true }
+#wasm-bindgen = { version = "0.2.79", optional = true }
 
 [build-dependencies]
 bindgen = "0.53"
@@ -46,7 +51,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "repl"
 path = "src/bin/readline-repl.rs"
-required-features = ["repl"]
+required-features = ["repl", "rustyline"]
 
 [[bin]]
 name = "main"
@@ -72,4 +77,4 @@ path = "src/spaikc.rs"
 [[bin]]
 name = "wasm-repl"
 path = "src/bin/wasm-repl.rs"
-required-features = ["wasm", "repl"]
+required-features = ["repl"]

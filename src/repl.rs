@@ -1,15 +1,15 @@
 //! Interactive Read-Eval-Print-Loop
 
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
+#[cfg(feature = "readline")]
+use rustyline::{Editor, error::ReadlineError};
+#[cfg(feature = "readline")]
+use std::{process, fs};
 use crate::r8vm::{R8VM, OutStream};
 use crate::nkgc::PV;
 use crate::compile::Builtin;
 use crate::error::{Error, ErrorKind};
 use crate::fmt::LispFmt;
-use std::process;
 use std::path::Path;
-use std::fs;
 use colored::*;
 
 fn make_intro() -> String {
@@ -65,7 +65,8 @@ impl REPL<'_> {
               vmprintln!(vm, "{}", "Warning: Using bundled stdlib".yellow().bold());
               vm.eval(include_str!("../lisp/stdlib.lisp"))?;
               Ok(())
-          }).or_else(|e| -> Result<(), Error> {
+          })
+          .or_else(|e| -> Result<(), Error> {
               vmprintln!(vm, "{}: {}", "Error: ".red().bold(), e.to_string(&vm).white().bold());
               Ok(())
           });
@@ -108,6 +109,12 @@ impl REPL<'_> {
         vmprintln!(self.vm, "{}", make_intro());
     }
 
+    #[cfg(not(feature = "readline"))]
+    pub fn readline_repl(&mut self) -> ! {
+        unimplemented!("readline not available")
+    }
+
+    #[cfg(feature = "readline")]
     pub fn readline_repl(&mut self) -> ! {
         let mut spaik_dir = dirs::data_local_dir().unwrap();
         spaik_dir.push("spaik");
