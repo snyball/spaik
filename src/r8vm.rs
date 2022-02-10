@@ -1,7 +1,7 @@
 //! SPAIK R8 Virtual Machine
 
 #[cfg(feature = "repl")]
-use prettytable::{Table, format};
+use comfy_table::Table;
 
 use crate::{
     ast::{Value, ValueKind},
@@ -117,6 +117,9 @@ impl From<&str> for RuntimeError {
         Self { line: 0, msg: String::from(source) }
     }
 }
+
+#[cfg(feature = "repl")]
+const TABLE_STYLE: &str = comfy_table::presets::UTF8_BORDERS_ONLY;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraceFrame {
@@ -1624,54 +1627,54 @@ impl R8VM {
 
     #[cfg(feature = "repl")]
     pub fn dump_macro_tbl(&self) -> Result<(), Error> {
-        use prettytable::{row, cell};
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-        table.set_titles(row!["Macro", "Function"]);
+        table.load_preset(TABLE_STYLE);
+        table.set_header(vec!["Macro", "Function"]);
         for (&macro_sym, &fn_sym) in self.macros.iter() {
-            table.add_row(row![self.sym_name(macro_sym.into()),
+            table.add_row(vec![self.sym_name(macro_sym.into()),
                                self.sym_name(fn_sym)]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        table.print(&mut*stdout)?;
+        write!(stdout, "{}", table)?;
+
         Ok(())
     }
 
     #[cfg(feature = "repl")]
     pub fn dump_symbol_tbl(&self) -> Result<(), Error> {
-        use prettytable::{row, cell};
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-        table.set_titles(row!["Symbol", "ID"]);
+        table.load_preset(TABLE_STYLE);
+        table.set_header(vec!["Symbol", "ID"]);
         for (id, name) in self.mem.symdb.iter() {
-            table.add_row(row![name, id.id]);
+            table.add_row(vec![name, &id.id.to_string()]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        table.print(&mut*stdout)?;
+        write!(stdout, "{}", table)?;
+
         Ok(())
     }
 
     #[cfg(feature = "repl")]
     pub fn dump_env_tbl(&self) -> Result<(), Error> {
-        use prettytable::{row, cell};
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-        table.set_titles(row!["Symbol", "Value", "Index"]);
+        table.load_preset(TABLE_STYLE);
+        table.set_header(vec!["Symbol", "Value", "Index"]);
         for (&sym, &idx) in self.globals.iter() {
-            table.add_row(row![self.sym_name(sym),
-                               self.mem
-                                   .get_env(idx)
-                                   .lisp_to_string(&self.mem),
-                               idx]);
+            table.add_row(vec![self.sym_name(sym),
+                               &self.mem
+                                    .get_env(idx)
+                                    .lisp_to_string(&self.mem),
+                               &idx.to_string()]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        table.print(&mut*stdout)?;
+        write!(stdout, "{}", table)?;
+
         Ok(())
     }
 
@@ -1691,19 +1694,19 @@ impl R8VM {
 
     #[cfg(feature = "repl")]
     pub fn dump_fn_tbl(&self) -> Result<(), Error> {
-        use prettytable::{row, cell};
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-        table.set_titles(row!["Name", "Nargs", "Position"]);
+        table.load_preset(TABLE_STYLE);
+        table.set_header(vec!["Name", "Nargs", "Position"]);
         for (&sym, func) in self.funcs.iter() {
-            table.add_row(row![self.sym_name(sym.into()),
-                               func.args,
-                               func.pos]);
+            table.add_row(vec![self.sym_name(sym.into()),
+                               &func.args.to_string(),
+                               &func.pos.to_string()]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        table.print(&mut*stdout)?;
+        write!(stdout, "{}", table)?;
+
         Ok(())
     }
 
