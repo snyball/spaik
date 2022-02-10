@@ -10,9 +10,8 @@ use crate::{
     error::{Error, ErrorKind, Source},
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
-    nk::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV},
     nuke::*,
+    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV},
     perr::PResult,
     sexpr_parse::Parser,
     subrs::IntoLisp,
@@ -612,11 +611,11 @@ pub trait InStream: io::Read + Debug + Send {}
 impl<T> InStream for T where T: io::Read + Debug + Send {}
 
 #[derive(Debug)]
-pub struct R8VM<'a> {
+pub struct R8VM {
     /// Memory
     pmem: Vec<r8c::Op>,
     consts: Vec<NkSum>,
-    pub(crate) mem: Arena<'a>,
+    pub(crate) mem: Arena,
     globals: FnvHashMap<SymID, usize>,
 
     // Named locations/objects
@@ -634,7 +633,7 @@ pub struct R8VM<'a> {
     frame: usize,
 }
 
-impl<'a> Default for R8VM<'a> {
+impl<'a> Default for R8VM {
     fn default() -> Self {
         R8VM {
             pmem: Default::default(),
@@ -684,7 +683,7 @@ struct Regs {
 }
 
 impl Regs {
-    fn save(&mut self, mem: &mut Arena<'_>, num: u8) -> Result<(), RuntimeError> {
+    fn save(&mut self, mem: &mut Arena, num: u8) -> Result<(), RuntimeError> {
         for i in 0..num {
             let v = mem.pop()?;
             self.vals[i as usize] = v;
@@ -695,7 +694,7 @@ impl Regs {
         Ok(())
     }
 
-    fn restore(&mut self, mem: &mut Arena<'_>) {
+    fn restore(&mut self, mem: &mut Arena) {
         for i in (0..self.idx).rev() {
             mem.push(self.vals[i as usize]);
         }
@@ -727,7 +726,7 @@ macro_rules! vm_call_with {
     }};
 }
 
-impl SymDB for R8VM<'_> {
+impl SymDB for R8VM {
     fn name(&self, sym: SymID) -> Cow<str> {
         (&self.mem.symdb as &dyn SymDB).name(sym)
     }
@@ -737,10 +736,10 @@ impl SymDB for R8VM<'_> {
     }
 }
 
-unsafe impl<'a> Send for R8VM<'a> {}
+unsafe impl<'a> Send for R8VM {}
 
-impl<'a> R8VM<'a> {
-    pub fn new<'b>() -> R8VM<'b> {
+impl R8VM {
+    pub fn new<'b>() -> R8VM {
         let mut vm = R8VM {
             pmem: vec![r8c::Op::HCF()],
             ..Default::default()
@@ -1503,7 +1502,7 @@ impl<'a> R8VM<'a> {
      * - `sym` : Symbol mapped to the function, see Arena::sym.
      * - `args` : Arguments that should be passed.
      */
-    pub fn call(&mut self, sym: SymID, args: &[PV]) -> Result<SPV<'a>, Error> {
+    pub fn call(&mut self, sym: SymID, args: &[PV]) -> Result<SPV, Error> {
         let pv = self.raw_call(sym, args)?;
         Ok(self.mem.make_extref(pv))
     }
@@ -1516,7 +1515,7 @@ impl<'a> R8VM<'a> {
         }))
     }
 
-    pub fn call_s(&mut self, name: &str, args: &[PV]) -> Result<SPV<'a>, Error> {
+    pub fn call_s(&mut self, name: &str, args: &[PV]) -> Result<SPV, Error> {
         let sym = self.mem.symdb
                           .get(name)
                           .ok_or_else(|| error!(UndefinedFunctionString,

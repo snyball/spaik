@@ -3,7 +3,7 @@
 use crate::r8vm::{ArgSpec, R8VM};
 use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena};
 use crate::error::{Error, ErrorKind};
-use crate::nk::*;
+use crate::nuke::*;
 use crate::fmt::{LispFmt, VisitSet};
 use crate::sym_db::SymDB;
 use std::convert::{TryInto, TryFrom};
@@ -13,7 +13,7 @@ use std::ptr;
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to do memory allocation.
 pub trait IntoLisp: Sized {
-    fn into_spv<'a>(self, mem: &mut Arena<'a>) -> Result<SPV<'a>, Error> {
+    fn into_spv<'a>(self, mem: &mut Arena) -> Result<SPV, Error> {
         let pv = self.into_pv(mem)?;
         Ok(mem.make_extref(pv))
     }

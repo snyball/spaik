@@ -46,13 +46,13 @@ pub trait LineInput {
     fn add_history_entry<S: AsRef<str> + Into<String>>(&mut self, line: S) -> bool;
 }
 
-pub struct REPL<'a> {
-    vm: R8VM<'a>,
+pub struct REPL {
+    vm: R8VM,
     exit_status: Option<i32>,
 }
 
-impl REPL<'_> {
-    pub fn new<'a>(out_override: Option<Box<dyn OutStream>>) -> Result<REPL<'a>, Error> {
+impl REPL {
+    pub fn new(out_override: Option<Box<dyn OutStream>>) -> Result<REPL, Error> {
         let mut vm = R8VM::new();
         if let Some(out) = out_override {
             vm.set_stdout(out);
@@ -69,7 +69,7 @@ impl REPL<'_> {
           .or_else(|e| -> Result<(), Error> {
               vmprintln!(vm, "{}: {}", "Error: ".red().bold(), e.to_string(&vm).white().bold());
               Ok(())
-          });
+          })?;
         Ok(REPL {
             vm,
             exit_status: None,

@@ -102,13 +102,13 @@ fn sexpr_modifier(tok: &str) -> Option<&'static str> {
     })
 }
 
-pub struct Parser<'a, 'b, 'c> {
+pub struct Parser<'b, 'c> {
     pairs: FnvHashMap<u32, u32>,
     toks: Vec<Token<'b>>,
-    vm: &'c mut R8VM<'a>,
+    vm: &'c mut R8VM,
 }
 
-impl Parser<'_, '_, '_> {
+impl Parser<'_, '_> {
     pub fn parse(vm: &mut R8VM, text: &str) -> PResult<Value> {
         lazy_static! {
             static ref TREE: Fragment = standard_lisp_tok_tree();

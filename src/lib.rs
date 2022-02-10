@@ -10,15 +10,13 @@ pub mod nk {
 }
 
 #[cfg(feature = "repl")]
-#[macro_use]
 extern crate prettytable;
 #[macro_use]
 extern crate lazy_static;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-#[macro_use]
 extern crate binwrite;
-#[macro_use]
 extern crate binread;
 #[macro_use]
 pub mod error;

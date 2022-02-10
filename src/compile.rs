@@ -494,15 +494,15 @@ pub unsafe fn pv_to_value(v: PV, src: &Source) -> Value {
 
 /**
  * Compile Value into R8C code.
- */
-pub struct R8Compiler<'a, 'b> {
+*/
+pub struct R8Compiler<'a> {
     asm: ChASM,
     pub(crate) estack: Vec<Env>,
     loops: Vec<LoopCtx>,
     consts: Vec<NkSum>,
     // FIXME: This can probably be removed
     symtbl: HashMap<SymID, isize>,
-    vm: &'a mut R8VM<'b>,
+    vm: &'a mut R8VM,
 }
 
 #[derive(Clone, Copy)]
@@ -518,8 +518,8 @@ lazy_static! {
         mk_default_sysfn_idx_lookup();
 }
 
-impl<'a, 'b> R8Compiler<'a, 'b> {
-    pub fn new(vm: &'a mut R8VM<'b>) -> R8Compiler<'a, 'b> {
+impl<'a> R8Compiler<'a> {
+    pub fn new(vm: &'a mut R8VM) -> R8Compiler<'a> {
         R8Compiler {
             asm: Default::default(),
             estack: Default::default(),
@@ -1381,7 +1381,7 @@ impl<'a, 'b> R8Compiler<'a, 'b> {
                                                                 code.args());
         macro_rules! may_ret {
             ($what:expr) => {{ if ret { $what } else { Ok(()) } }}
-        };
+        }
         Some(match op {
             Quote => may_ret!(self.bt_quote(code)),
             Quasi => may_ret!(self.bt_quasi(code)),
