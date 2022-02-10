@@ -1,19 +1,8 @@
 //! Interactive Read-Eval-Print-Loop
 
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
-use spaik::r8vm::R8VM;
-use spaik::nkgc::PV;
-use spaik::compile::Builtin;
-use spaik::error::{Error, ErrorKind};
-use spaik::fmt::LispFmt;
 use spaik::repl::REPL;
-use std::process;
-use std::fs;
 use std::sync::Mutex;
-use colored::*;
 use lazy_static::lazy_static;
-use wasm_bindgen::prelude::*;
 use std::io;
 use std::os::raw::c_char;
 
@@ -68,16 +57,15 @@ lazy_static! {
             ).unwrap());
 }
 
-#[wasm_bindgen]
-fn reset() -> bool {
+#[no_mangle]
+pub extern fn repl_reset() {
     let repl = GLOBAL_REPL.lock().unwrap();
     *repl = REPL::new(Some(FnFlushWriter::new(xtermjs_write_stdout))).unwrap();
-    true
 }
 
-#[wasm_bindgen]
-fn eval(code: &str) -> Result<String, String> {
-    GLOBAL_REPL.lock().unwrap().eval(code)
+#[no_mangle]
+pub extern fn repl_eval(code: &str) {
+    GLOBAL_REPL.lock().unwrap().eval(code);
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
