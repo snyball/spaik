@@ -147,7 +147,7 @@ impl LispFmt for Box<dyn Subr> {
 impl Traceable for Box<dyn Subr> {
     fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
 
-    fn update_ptrs(&mut self, _reloc: &NkRelocArray) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 pub trait CloneSubr {

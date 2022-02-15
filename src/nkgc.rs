@@ -117,12 +117,12 @@ pub trait SymTypeOf {
 
 pub trait Traceable {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>);
-    fn update_ptrs(&mut self, reloc: &NkRelocArray);
+    fn update_ptrs(&mut self, reloc: &PtrMap);
 }
 
 impl Traceable for String {
     fn trace(&self, _: &mut Vec<*mut NkAtom>) {}
-    fn update_ptrs(&mut self, _reloc: &NkRelocArray) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 impl LispFmt for String {
@@ -215,7 +215,7 @@ impl Traceable for PV {
     }
 
     #[inline]
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         if let PV::Ref(ref mut ptr) = self {
             *ptr = reloc.get(*ptr) as *mut NkAtom;
         }
@@ -591,7 +591,7 @@ impl Traceable for Cons {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         self.car.update_ptrs(reloc);
         self.cdr.update_ptrs(reloc);
     }
@@ -617,7 +617,7 @@ impl Traceable for HashMap<PV, PV> {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         for (k, v) in self.iter_mut() {
             let k_ptr = k as *const PV as *mut PV;
             unsafe {
@@ -638,7 +638,7 @@ impl Traceable for Vec<PV> {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         for v in self.iter_mut() {
             v.update_ptrs(reloc);
         }
@@ -769,7 +769,7 @@ impl LispFmt for Stream {
 
 impl Traceable for Stream {
     fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-    fn update_ptrs(&mut self, _reloc: &NkRelocArray) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 // TODO: Should this be a DST? With locals stored inline?
@@ -787,7 +787,7 @@ impl Traceable for Lambda {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         for v in self.locals.iter_mut() {
             v.update_ptrs(reloc);
         }
@@ -830,7 +830,7 @@ impl Traceable for VLambda {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         for v in self.locals.iter_mut() {
             v.update_ptrs(reloc);
         }
@@ -1238,7 +1238,7 @@ impl Arena {
         for ptr in self.gray.iter_mut() {
             *ptr = self.mem.reloc().get(*ptr) as *mut NkAtom;
         }
-        let reloc_p = self.mem.reloc() as *const NkRelocArray;
+        let reloc_p = self.mem.reloc() as *const PtrMap;
         for obj in self.mem.iter_mut() {
             update_ptr_atom(obj, unsafe { &*reloc_p });
         }

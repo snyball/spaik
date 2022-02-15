@@ -2,13 +2,6 @@
 // FIXME: Write documentation for the unsafe functions.
 #![allow(clippy::missing_safety_doc)]
 
-#[allow(non_upper_case_globals)]
-#[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
-pub mod nk {
-    include!(concat!(env!("OUT_DIR"), "/nuke-sys.rs"));
-}
-
 #[macro_use]
 extern crate lazy_static;
 #[allow(unused_imports)]

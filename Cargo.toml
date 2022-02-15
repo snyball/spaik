@@ -15,14 +15,10 @@ panic = "abort"
 
 [features]
 default = ["repl", "lisp-test"]
-repl = ["colored", "prettytable-rs", "dirs"]
-#tables = ["prettytable-rs"]
+repl = ["colored", "comfy-table", "dirs"]
 readline = ["rustyline"]
 lisp-test = ["colored"]
-#wasm = ["wasm-bindgen"]
-
-[build]
-target = "wasm32-unknown-unknown"
+wasm = ["wasm-bindgen"]
 
 [dependencies]
 lazy_static = "1.4"
@@ -38,11 +34,9 @@ comfy-table = { version = "5.0.0", optional = true, default-features = false, fe
 dirs = { version = "4.0.0", optional = true }
 rustyline = { version = "6.2", optional = true }
 colored = { version = "2.0", optional = true }
-#wasm-bindgen = { version = "0.2.79", optional = true }
 
 [build-dependencies]
-bindgen = "0.53"
-cc = "1.0"
+wasm-bindgen = { version = "0.2.79", optional = true }
 
 [lib]
 name = "spaik"
@@ -77,4 +71,4 @@ path = "src/spaikc.rs"
 [[bin]]
 name = "wasm-repl"
 path = "src/bin/wasm-repl.rs"
-required-features = ["repl"]
+required-features = ["repl", "wasm"]

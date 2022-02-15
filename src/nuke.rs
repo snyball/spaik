@@ -5,7 +5,7 @@
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet};
-use crate::sym_db::{SymDB, StaticSymDB, SYM_DB};
+use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
 use std::mem;
 use std::ptr::{drop_in_place, self};
@@ -136,7 +136,7 @@ macro_rules! fissile_types {
         ];
 
         #[inline]
-        pub fn update_ptr_atom(atom: &mut NkAtom, reloc: &NkRelocArray) {
+        pub fn update_ptr_atom(atom: &mut NkAtom, reloc: &PtrMap) {
             with_atom_mut!(atom, {atom.update_ptrs(reloc)},
                            $(($t,$path)),+)
         }
@@ -203,13 +203,13 @@ pub enum Color {
     Black = 2,
 }
 
-impl fmt::Display for Relocation {
+impl fmt::Display for PtrPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "{:?} => {:?}", self.fst, self.snd)
     }
 }
 
-impl fmt::Display for NkRelocArray {
+impl fmt::Display for PtrMap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "[")?;
         for u in self.0.iter() {
@@ -313,7 +313,7 @@ pub struct Nuke {
     load_max: usize,
     min_block_sz: NkSz,
     sz: usize,
-    reloc: NkRelocArray,
+    reloc: PtrMap,
     last: *mut NkAtom,
     mem: Vec<u8>,
     start_time: SystemTime,
@@ -324,12 +324,13 @@ fn align<T>(p: *mut T, a: isize) -> *mut T {
 }
 
 #[inline(always)]
-unsafe fn memcpy<R, W>(dst: *mut W, src: *const R, sz: usize) {
+pub unsafe fn memcpy<R, W>(dst: *mut W, src: *const R, sz: usize) {
     ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, sz);
 }
 
+#[allow(dead_code)]
 #[inline(always)]
-unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
+pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
     ptr::copy(src as *const u8, dst as *mut u8, sz);
 }
 
@@ -366,7 +367,7 @@ impl Nuke {
             load_max: (load_factor * sz as f64) as usize,
             min_block_sz,
             sz,
-            reloc: NkRelocArray(Vec::new()),
+            reloc: PtrMap(Vec::new()),
             last: ptr::null_mut(),
             mem: Vec::with_capacity(sz),
             start_time: SystemTime::now(),
@@ -588,7 +589,7 @@ impl Nuke {
         NukeIter { item, _phantom: Default::default() }
     }
 
-    pub fn reloc(&self) -> &NkRelocArray {
+    pub fn reloc(&self) -> &PtrMap {
         &self.reloc
     }
 
@@ -751,37 +752,37 @@ impl AtomMeta {
 }
 
 #[derive(Debug)]
-struct Relocation {
+struct PtrPair {
     fst: *mut u8,
     snd: *mut u8,
 }
 
-impl PartialEq for Relocation {
-    fn eq(&self, other: &Relocation) -> bool {
+impl PartialEq for PtrPair {
+    fn eq(&self, other: &PtrPair) -> bool {
         other.fst == self.fst
     }
 }
 
-impl Eq for Relocation {}
+impl Eq for PtrPair {}
 
-impl PartialOrd for Relocation {
-    fn partial_cmp(&self, other: &Relocation) -> Option<Ordering> {
+impl PartialOrd for PtrPair {
+    fn partial_cmp(&self, other: &PtrPair) -> Option<Ordering> {
         self.fst.partial_cmp(&other.fst)
     }
 }
 
-impl Ord for Relocation {
+impl Ord for PtrPair {
     fn cmp(&self, other: &Self) -> Ordering {
         self.fst.cmp(&other.fst)
     }
 }
 
 #[derive(Debug)]
-pub struct NkRelocArray(Vec<Relocation>);
+pub struct PtrMap(Vec<PtrPair>);
 
-impl NkRelocArray {
+impl PtrMap {
     pub fn get<T>(&self, orig: *const T) -> *const T {
-        let srch = Relocation { fst: orig as *mut u8,
+        let srch = PtrPair { fst: orig as *mut u8,
                                 snd: ptr::null_mut::<u8>() };
         match self.0.binary_search(&srch) {
             Ok(idx) => self.0[idx].snd as *const T,
@@ -794,7 +795,7 @@ impl NkRelocArray {
     }
 
     pub fn push<A, B>(&mut self, from: *const A, to: *const B) {
-        self.0.push(Relocation { fst: from as *mut u8,
+        self.0.push(PtrPair { fst: from as *mut u8,
                                  snd: to as *mut u8 })
     }
 
