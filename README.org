@@ -66,11 +66,3 @@ This optimization relies on:
 ** Converting between ~u8~ discriminants and ~enum Thing~
 *SPAIK* often needs to convert integer discriminants into enums, and vice-versa.
 For this it uses ~unsafe { mem::transmute(num) }~.
-
-** Interacting with C code
-Allocation of GC-arenas, as well as the ~sweep~ operation are implemented in C.
-A safe wrapper around this code (~nuke.rs~) is used by ~nkgc::Arena~.
-
-*** Why C though?
-I just found it easier to write this kind of memory-mangling code in C, I'd like
-to see what it would look like in Rust, but I don't want to actually write it.
