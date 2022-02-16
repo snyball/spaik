@@ -996,6 +996,52 @@ impl R8VM {
         Value { kind, src: src.clone() }
     }
 
+    pub unsafe fn pull_ast_norec(&self, v: PV, src: &Source) -> Value {
+        let mut s = self.stdout.lock().unwrap();
+        #[derive(Debug)]
+        enum Thing<'a> {
+            Defer(PV, &'a Source),
+            Cons(&'a Source),
+        }
+        use Thing::*;
+        let mut stack = vec![Defer(v, src)];
+        let mut ostack = vec![];
+        while let Some(action) = stack.pop() {
+            match action {
+                Defer(v, src) => match v {
+                    PV::Sym(sym) => ostack.push(Value { kind: ValueKind::Symbol(sym), src: src.clone() }),
+                    PV::Nil => ostack.push(Value { kind: ValueKind::Nil, src: src.clone() }),
+                    PV::Int(x) => ostack.push(Value { kind: ValueKind::Int(x), src: src.clone() }),
+                    PV::Bool(x) => ostack.push(Value { kind: ValueKind::Bool(x), src: src.clone() }),
+                    PV::Real(x) => ostack.push(Value { kind: ValueKind::Real(x), src: src.clone() }),
+                    PV::Ref(p) => {
+                        match (*p).match_ref() {
+                            NkRef::Cons(nkgc::Cons { car, cdr }) => {
+                                stack.push(Cons(src));
+                                let src = self.mem.get_tag(p).unwrap_or(src);
+                                stack.push(Defer(*car, src));
+                                stack.push(Defer(*cdr, src));
+                            },
+                            NkRef::String(s) => ostack.push(Value { kind: ValueKind::String(s.clone()),
+                                                                    src: src.clone() } ),
+                            NkRef::PV(v) => stack.push(Defer(*v, src)),
+                            x => unimplemented!("inner: {:?}", x),
+                        }
+                    }
+                    PV::UInt(x) => panic!("Stray UInt: {}", x),
+                },
+                Cons(cons_src) => {
+                    let car = ostack.pop().unwrap();
+                    let cdr = ostack.pop().unwrap();
+                    ostack.push(Value { kind: ValueKind::Cons(Box::new(car), Box::new(cdr)),
+                                        src: cons_src.clone() })
+                }
+            }
+        }
+        debug_assert!(ostack.len() <= 1, "Multiple objects in output stack");
+        ostack.pop().expect("No objects in output")
+    }
+
     pub fn expand(&mut self, ast: &Value) -> Option<Result<Value, Error>> {
         ast.op()
            .and_then(|sym| self.macros.get(&sym.id).copied())
