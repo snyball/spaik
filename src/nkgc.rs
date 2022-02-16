@@ -336,6 +336,13 @@ impl PV {
         }
     }
 
+    pub fn ref_inner(&self) -> Option<*mut NkAtom> {
+        match self {
+            PV::Ref(p) => Some(*p),
+            _ => None
+        }
+    }
+
     pub fn cons_iter(&self) -> impl Iterator<Item = ConsElem> {
         ConsIter { item: *self }
     }
@@ -897,6 +904,7 @@ pub struct GCStats {
     pub usage: usize,
     pub size: usize,
     pub num_objects: usize,
+    #[cfg(not(target_arch = "wasm32"))]
     pub time: Duration,
     pub total_allocs: usize,
     pub total_frees: usize

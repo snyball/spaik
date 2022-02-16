@@ -13,6 +13,7 @@ use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt;
 use core::fmt::Debug;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
 
 macro_rules! with_atom {
@@ -316,6 +317,7 @@ pub struct Nuke {
     reloc: PtrMap,
     last: *mut NkAtom,
     mem: Vec<u8>,
+    #[cfg(not(target_arch = "wasm32"))]
     start_time: SystemTime,
 }
 
@@ -334,6 +336,9 @@ pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
     ptr::copy(src as *const u8, dst as *mut u8, sz);
 }
 
+#[cfg(target_pointer_width = "32")]
+const ALIGNMENT: isize = 4;
+#[cfg(target_pointer_width = "64")]
 const ALIGNMENT: isize = 8;
 
 pub struct RelocateToken {
@@ -370,6 +375,7 @@ impl Nuke {
             reloc: PtrMap(Vec::new()),
             last: ptr::null_mut(),
             mem: Vec::with_capacity(sz),
+            #[cfg(not(target_arch = "wasm32"))]
             start_time: SystemTime::now(),
         };
 
@@ -559,7 +565,7 @@ impl Nuke {
 
     #[inline]
     pub fn size_of<T: Fissile>() -> usize {
-        mem::size_of::<T>() + mem::size_of::<NkAtom>() /*- mem::align_of::<T>()*/
+        mem::size_of::<T>() + mem::size_of::<NkAtom>()
     }
 
     #[inline]
@@ -609,6 +615,7 @@ impl Nuke {
             num_objects: self.num_atoms,
             total_allocs: self.num_allocs,
             total_frees: self.num_frees,
+            #[cfg(not(target_arch = "wasm32"))]
             time: SystemTime::now().duration_since(self.start_time)
                                    .unwrap(),
         }
@@ -720,11 +727,20 @@ const META_TYPE_MASK: u8 = 0xfc;
 
 pub struct AtomMeta(u8);
 
-#[repr(C)]
+#[cfg(target_pointer_width = "32")]
+#[repr(C, align(4))]
 pub struct NkAtom {
+    next: *mut NkAtom,
     sz: NkSz,
     meta: AtomMeta,
+}
+
+#[cfg(target_pointer_width = "64")]
+#[repr(C, align(8))]
+pub struct NkAtom {
     next: *mut NkAtom,
+    sz: NkSz,
+    meta: AtomMeta,
 }
 
 impl AtomMeta {

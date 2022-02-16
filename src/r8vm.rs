@@ -8,10 +8,10 @@ use crate::{
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler},
     error::{Error, ErrorKind, Source},
-    fmt::LispFmt,
+    fmt::{LispFmt, VisitSet},
     module::{LispModule, Export, ExportKind},
     nuke::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV},
+    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
     perr::PResult,
     sexpr_parse::Parser,
     subrs::IntoLisp,
@@ -98,6 +98,19 @@ chasm_def! {
     SUB(),
     DIV(),
     MUL()
+}
+
+macro_rules! vmprint {
+    ($vm:expr, $($fmt:expr),+) => {
+        $vm.print_fmt(format_args!($($fmt),+)).unwrap()
+    };
+}
+
+macro_rules! vmprintln {
+    ($vm:expr, $($fmt:expr),+) => {
+        $vm.print_fmt(format_args!($($fmt),+)).unwrap();
+        $vm.println(&"").unwrap();
+    };
 }
 
 #[derive(Debug, Clone)]
@@ -976,9 +989,9 @@ impl R8VM {
                 },
                 NkRef::String(s) => ValueKind::String(s.clone()),
                 NkRef::PV(v) => self.pull_ast(*v, src).kind,
-                x => unimplemented!("{:?}", x),
+                x => unimplemented!("inner: {:?}", x),
             }
-            x => unimplemented!("{:?}", x),
+            PV::UInt(x) => panic!("Stray UInt: {}", x),
         };
         Value { kind, src: src.clone() }
     }
@@ -1099,14 +1112,14 @@ impl R8VM {
             ip = match self.mem.stack[frame] {
                 PV::UInt(x) => x,
                 _ => {
-                    println!("Warning: Incomplete stack trace!");
+                    vmprintln!(self, "Warning: Incomplete stack trace!");
                     break;
                 }
             };
             self.frame = match self.mem.stack[frame+1] {
                 PV::UInt(x) => x,
                 _ => {
-                    println!("Warning: Incomplete stack trace!");
+                    vmprintln!(self, "Warning: Incomplete stack trace!");
                     break;
                 }
             };
@@ -1184,7 +1197,7 @@ impl R8VM {
             let op = &*ip;
             ip = ip.offset(1);
             if self.debug_mode {
-                println!("{}", op);
+                vmprintln!(self, "{}", op);
             }
             match op {
                 // List processing
@@ -1193,7 +1206,6 @@ impl R8VM {
                 LIST(n) => self.mem.list(*n),
                 VLIST() => {
                     let len = self.mem.pop()?.force_int() as u32;
-                    self.mem.stack.len();
                     self.mem.list(len);
                 }
                 CONS() => self.mem.cons_unchecked(),
@@ -1445,7 +1457,7 @@ impl R8VM {
 
             if self.debug_mode {
                 self.dump_stack()?;
-                println!();
+                vmprintln!(self, "");
             }
         };
 
@@ -1637,7 +1649,7 @@ impl R8VM {
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        write!(stdout, "{}", table)?;
+        writeln!(stdout, "{}", table)?;
 
         Ok(())
     }
@@ -1653,7 +1665,7 @@ impl R8VM {
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        write!(stdout, "{}", table)?;
+        writeln!(stdout, "{}", table)?;
 
         Ok(())
     }
@@ -1673,7 +1685,7 @@ impl R8VM {
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        write!(stdout, "{}", table)?;
+        writeln!(stdout, "{}", table)?;
 
         Ok(())
     }
@@ -1705,7 +1717,7 @@ impl R8VM {
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        write!(stdout, "{}", table)?;
+        writeln!(stdout, "{}", table)?;
 
         Ok(())
     }
