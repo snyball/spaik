@@ -274,6 +274,28 @@ macro_rules! with_no_reorder {
     }};
 }
 
+fn find_cycle_nk(root: &mut NkAtom, vs: &mut VisitSet) -> bool {
+    match root.match_ref() {
+        NkRef::Cons(Cons { car, cdr }) => find_cycle_pv(*car, vs) || find_cycle_pv(*cdr, vs),
+        NkRef::Vector(v) => v.iter().any(|r| find_cycle_pv(*r, vs)),
+        NkRef::VLambda(VLambda { locals, .. }) => locals.iter().any(|r| find_cycle_pv(*r, vs)),
+        NkRef::Lambda(Lambda { locals, .. }) => locals.iter().any(|r| find_cycle_pv(*r, vs)),
+        NkRef::PV(r) => find_cycle_pv(*r, vs),
+        _ => false,
+    }
+}
+
+fn find_cycle_pv(root: PV, vs: &mut VisitSet) -> bool {
+    match root {
+        PV::Ref(p) if vs.contains(&(p as *const NkAtom)) => true,
+        PV::Ref(p) => {
+            vs.insert(p as *const NkAtom);
+            find_cycle_nk(unsafe { &mut *p }, vs)
+        }
+        _ => false,
+    }
+}
+
 impl PV {
     pub fn is_zero(&self) -> bool {
            *self == PV::Int(0)
@@ -283,6 +305,11 @@ impl PV {
 
     pub fn type_of(&self) -> SymID {
         self.bt_type_of().sym()
+    }
+
+    pub fn has_cycle(&self) -> bool {
+        let mut vs = VisitSet::default();
+        find_cycle_pv(*self, &mut vs)
     }
 
     pub fn bt_type_of(&self) -> Builtin {
@@ -783,7 +810,7 @@ impl Traceable for Stream {
 #[derive(PartialEq, Debug, Clone)]
 pub struct Lambda {
     code: usize,
-    locals: Vec<PV>,
+    pub(crate) locals: Vec<PV>,
     args: ArgSpec,
 }
 
