@@ -1518,13 +1518,13 @@ impl R8VM {
     pub fn dump_stack(&mut self) -> Result<(), Error> {
         let mut stdout = self.stdout.lock().unwrap();
         writeln!(stdout, "stack:")?;
+        if self.mem.stack.is_empty() {
+            writeln!(stdout, "    (empty)")?;
+        }
         for (idx, val) in self.mem.stack.iter().enumerate().rev() {
             let (idx, frame) = (idx as i64, self.frame as i64);
-            if idx == frame {
-                writeln!(stdout, " -> {}: {}", idx - frame, val)?;
-            } else {
-                writeln!(stdout, "    {}: {}", idx - frame, val)?;
-            }
+            write!(stdout, "{}", if idx == frame { " -> " } else { "    " })?;
+            writeln!(stdout, "{}: {}", idx - frame, val)?;
         }
         Ok(())
     }
