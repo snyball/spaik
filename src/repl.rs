@@ -13,8 +13,7 @@ use std::path::Path;
 use colored::*;
 
 fn make_intro() -> String {
-    format!("
-{read} {arrow} {eval} {arrow} {print} {arrow} {loop}
+    format!("{read} {arrow} {eval} {arrow} {print} {arrow} {loop}
  ┗━━━━━━━━━━━━━━━━━━━━━━┛\n",
             read="read".blue().bold().underline(),
             eval="eval".blue().bold().underline(),
@@ -61,8 +60,10 @@ impl REPL {
         vm.load(stdlib)
           .map(|_| ())
           .or_else(|e| -> Result<(), Error> {
-              vmprintln!(vm, "{}", e.to_string(&vm));
-              vmprintln!(vm, "{}", "Warning: Using bundled stdlib".yellow().bold());
+              #[cfg(not(target_arch = "wasm32"))] {
+                  vmprintln!(vm, "{}", e.to_string(&vm));
+                  vmprintln!(vm, "{}", "Warning: Using bundled stdlib".yellow().bold());
+              }
               vm.eval(include_str!("../lisp/stdlib.lisp"))?;
               Ok(())
           })
@@ -106,7 +107,7 @@ impl REPL {
     }
 
     pub fn print_intro(&mut self) {
-        vmprintln!(self.vm, "{}", make_intro());
+        vmprint!(self.vm, "{}", make_intro());
     }
 
     #[cfg(not(feature = "readline"))]
