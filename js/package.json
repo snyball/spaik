@@ -12,7 +12,7 @@
   "license": "AGPL-3.0",
   "dependencies": {
     "ansi-escape-sequences": "^6.2.1",
-    "local-echo": "github:wavesoft/local-echo",
+    "local-echo": "github:snyball/local-echo",
     "xterm": "^4.17.0",
     "xterm-addon-fit": "^0.5.0"
   },

@@ -3,6 +3,8 @@ import { FitAddon } from "xterm-addon-fit";
 import LocalEchoController from 'local-echo';
 // import ansi from 'ansi-escape-sequences';
 
+const PROMPT: string = '> ';
+
 function to_s(mem: ArrayBufferLike, ptr: number, sz: number) {
     const arr = new Uint8Array(mem, ptr, sz);
     return new TextDecoder().decode(arr);
@@ -15,13 +17,18 @@ interface SPAIKMethods {
     repl_reset: () => void,
 }
 
+interface Command {
+    send: boolean;
+    code: string;
+}
+
 export class SpaikRepl {
     elem: HTMLElement;
     term: Terminal;
     line_buffer: string;
     private wasm: SPAIKMethods;
     private mem: any;
-    private backlog: Array<string>;
+    private backlog: Array<Command>;
     private ready: boolean;
     private fit_addon: FitAddon;
 
@@ -87,24 +94,42 @@ export class SpaikRepl {
         if (this.ready) return;
 
         this.ready = true;
-        for (let code of this.backlog) {
-            this.eval(code)
+        for (let cmd of this.backlog) {
+            if (cmd.send) {
+                this.send_line(cmd.code)
+            } else {
+                this.eval(cmd.code)
+            }
         }
         this.backlog = []
 
         let echo_ctrl = new LocalEchoController();
         this.term.loadAddon(echo_ctrl);
+        echo_ctrl.setUseContinuationPrompt(false);
         let inst = this;
 
         function setup_read() {
-            let prompt = `> `;
-            echo_ctrl.read(prompt).then((code: string) => {
+            echo_ctrl.read(PROMPT).then((code: string) => {
                 inst.eval(code);
                 setup_read();
             })
         }
         setup_read();
 
+    }
+
+    send_line(code: string) {
+        if (this.ready) {
+            this.term.write(PROMPT);
+            this.term.write(code);
+            this.term.write("\r\n")
+            this.eval(code);
+        } else {
+            this.backlog.push({
+                send: true,
+                code
+            })
+        }
     }
 
     reset() {
@@ -121,7 +146,10 @@ export class SpaikRepl {
             this.wasm.repl_eval(ptr, sz);
             this.wasm.dealloc(ptr, sz);
         } else {
-            this.backlog.push(code);
+            this.backlog.push({
+                send: false,
+                code
+            });
         }
     }
 }

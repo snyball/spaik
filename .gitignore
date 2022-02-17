@@ -21,3 +21,7 @@ massif.out.*
 TODO.org
 asm/*
 .dir-locals.el
+js/node_modules
+js/dist
+js/bin
+package-lock.json
