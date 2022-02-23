@@ -3,7 +3,6 @@
 use crate::compile::{Builtin, BUILTIN_SYMBOLS};
 use crate::ast::{Value, ValueKind};
 use crate::r8vm::{RuntimeError, ArgSpec, ArgInt};
-use crate::nk::*;
 use crate::nuke::*;
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
@@ -14,7 +13,7 @@ use fnv::FnvHashMap;
 use std::fmt;
 use std::str;
 use std::ptr;
-use std::time::{SystemTime, Duration};
+use std::time::Duration;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::borrow::Cow;
@@ -118,12 +117,12 @@ pub trait SymTypeOf {
 
 pub trait Traceable {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>);
-    fn update_ptrs(&mut self, reloc: &NkRelocArray);
+    fn update_ptrs(&mut self, reloc: &PtrMap);
 }
 
 impl Traceable for String {
     fn trace(&self, _: &mut Vec<*mut NkAtom>) {}
-    fn update_ptrs(&mut self, _reloc: &NkRelocArray) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 impl LispFmt for String {
@@ -137,9 +136,15 @@ impl LispFmt for String {
 
 pub type SymIDInt = i32;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SymID {
     pub id: SymIDInt,
+}
+
+impl fmt::Debug for SymID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SymID({})", self.id)
+    }
 }
 
 impl Default for SymID {
@@ -210,7 +215,7 @@ impl Traceable for PV {
     }
 
     #[inline]
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         if let PV::Ref(ref mut ptr) = self {
             *ptr = reloc.get(*ptr) as *mut NkAtom;
         }
@@ -269,6 +274,28 @@ macro_rules! with_no_reorder {
     }};
 }
 
+fn find_cycle_nk(root: &mut NkAtom, vs: &mut VisitSet) -> bool {
+    match root.match_ref() {
+        NkRef::Cons(Cons { car, cdr }) => find_cycle_pv(*car, vs) || find_cycle_pv(*cdr, vs),
+        NkRef::Vector(v) => v.iter().any(|r| find_cycle_pv(*r, vs)),
+        NkRef::VLambda(VLambda { locals, .. }) => locals.iter().any(|r| find_cycle_pv(*r, vs)),
+        NkRef::Lambda(Lambda { locals, .. }) => locals.iter().any(|r| find_cycle_pv(*r, vs)),
+        NkRef::PV(r) => find_cycle_pv(*r, vs),
+        _ => false,
+    }
+}
+
+fn find_cycle_pv(root: PV, vs: &mut VisitSet) -> bool {
+    match root {
+        PV::Ref(p) if vs.contains(&(p as *const NkAtom)) => true,
+        PV::Ref(p) => {
+            vs.insert(p as *const NkAtom);
+            find_cycle_nk(unsafe { &mut *p }, vs)
+        }
+        _ => false,
+    }
+}
+
 impl PV {
     pub fn is_zero(&self) -> bool {
            *self == PV::Int(0)
@@ -278,6 +305,11 @@ impl PV {
 
     pub fn type_of(&self) -> SymID {
         self.bt_type_of().sym()
+    }
+
+    pub fn has_cycle(&self) -> bool {
+        let mut vs = VisitSet::default();
+        find_cycle_pv(*self, &mut vs)
     }
 
     pub fn bt_type_of(&self) -> Builtin {
@@ -328,6 +360,13 @@ impl PV {
         PVRefIter {
             done: false,
             item: self,
+        }
+    }
+
+    pub fn ref_inner(&self) -> Option<*mut NkAtom> {
+        match self {
+            PV::Ref(p) => Some(*p),
+            _ => None
         }
     }
 
@@ -586,7 +625,7 @@ impl Traceable for Cons {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         self.car.update_ptrs(reloc);
         self.cdr.update_ptrs(reloc);
     }
@@ -612,7 +651,7 @@ impl Traceable for HashMap<PV, PV> {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         for (k, v) in self.iter_mut() {
             let k_ptr = k as *const PV as *mut PV;
             unsafe {
@@ -633,7 +672,7 @@ impl Traceable for Vec<PV> {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         for v in self.iter_mut() {
             v.update_ptrs(reloc);
         }
@@ -764,14 +803,14 @@ impl LispFmt for Stream {
 
 impl Traceable for Stream {
     fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-    fn update_ptrs(&mut self, _reloc: &NkRelocArray) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 // TODO: Should this be a DST? With locals stored inline?
 #[derive(PartialEq, Debug, Clone)]
 pub struct Lambda {
     code: usize,
-    locals: Vec<PV>,
+    pub(crate) locals: Vec<PV>,
     args: ArgSpec,
 }
 
@@ -782,7 +821,7 @@ impl Traceable for Lambda {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         for v in self.locals.iter_mut() {
             v.update_ptrs(reloc);
         }
@@ -825,7 +864,7 @@ impl Traceable for VLambda {
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
         for v in self.locals.iter_mut() {
             v.update_ptrs(reloc);
         }
@@ -843,8 +882,8 @@ impl LispFmt for VLambda {
 
 /// Come and fight in the arena!
 #[derive(Debug)]
-pub struct Arena<'a> {
-    mem: &'a mut Nuke,
+pub struct Arena {
+    mem: Nuke,
     tags: FnvHashMap<*mut NkAtom, Source>,
     pub(crate) stack: Vec<PV>,
     pub(crate) symdb: SIntern<SymID>,
@@ -854,16 +893,15 @@ pub struct Arena<'a> {
     state: GCState,
     extref_id_cnt: u32,
     no_reorder: bool,
-    start_time: SystemTime,
 }
 
-/// Serialized arena, suitable for freezing the state of a VM.
-#[derive(Debug)]
-struct ColdArena {
-    symbols: Vec<(SymID, String)>,
-    mem: Vec<NkSum>,
-    env: Vec<PV>,
-}
+// /// Serialized arena, suitable for freezing the state of a VM.
+// #[derive(Debug)]
+// struct ColdArena {
+//     symbols: Vec<(SymID, String)>,
+//     mem: Vec<NkSum>,
+//     env: Vec<PV>,
+// }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum GCState {
@@ -872,11 +910,11 @@ enum GCState {
     Sleep(i32),
 }
 
-const DEFAULT_MEMSZ: usize = 32768;
+const DEFAULT_MEMSZ: usize = 32768 * 10000;
 const DEFAULT_GRAYSZ: usize = 256;
 const DEFAULT_STACKSZ: usize = 256;
 const DEFAULT_ENVSZ: usize = 0;
-const GC_SLEEP_CYCLES: i32 = 10000;
+// const GC_SLEEP_CYCLES: i32 = 10000;
 const GC_SLEEP_MEM_BYTES: i32 = 1024 * 10;
 
 fn size_of_ast(v: &Value) -> usize {
@@ -893,19 +931,20 @@ pub struct GCStats {
     pub usage: usize,
     pub size: usize,
     pub num_objects: usize,
+    #[cfg(not(target_arch = "wasm32"))]
     pub time: Duration,
     pub total_allocs: usize,
     pub total_frees: usize
 }
 
-impl Default for Arena<'_> {
+impl Default for Arena {
     fn default() -> Self {
         Arena::new(DEFAULT_MEMSZ)
     }
 }
 
 // Delegate SymDB trait to Arena::symdb
-impl SymDB for Arena<'_> {
+impl SymDB for Arena {
     fn name(&self, sym: SymID) -> Cow<str> {
         (&self.symdb as &dyn SymDB).name(sym)
     }
@@ -915,10 +954,10 @@ impl SymDB for Arena<'_> {
     }
 }
 
-impl<'a> Arena<'a> {
-    pub fn new<'b>(memsz: usize) -> Arena<'b> {
+impl Arena {
+    pub fn new(memsz: usize) -> Arena {
         let mut ar = Arena {
-            mem: unsafe { &mut *Nuke::new(memsz) },
+            mem: Nuke::new(memsz),
             gray: Vec::with_capacity(DEFAULT_GRAYSZ),
             stack: Vec::with_capacity(DEFAULT_STACKSZ),
             env: Vec::with_capacity(DEFAULT_ENVSZ),
@@ -928,7 +967,6 @@ impl<'a> Arena<'a> {
             tags: FnvHashMap::default(),
             no_reorder: false,
             extref_id_cnt: 0,
-            start_time: SystemTime::now(),
         };
         for &blt in BUILTIN_SYMBOLS.iter() {
             ar.symdb.put(String::from(blt));
@@ -994,24 +1032,8 @@ impl<'a> Arena<'a> {
         self.no_reorder = false
     }
 
-    /// TODO: make `used`, `sz`, and `num_atoms` atomic.
-    ///       Then create a begin_profile(t, sz) method that spawns
-    ///       a thread which will save GCStats every t seconds until
-    ///       it reaches sz samples. stop_profile() -> Vec<GCStats>
-    ///       retrieves the stats.
-    ///       -
-    ///       You'll have to figure out how to make atomic variables
-    ///       work across the FFI.
     pub fn stats(&self) -> GCStats {
-        GCStats {
-            usage: self.mem.used as usize,
-            size: self.mem.sz as usize,
-            num_objects: self.mem.num_atoms as usize,
-            total_allocs: self.mem.num_allocs as usize,
-            total_frees: self.mem.num_frees as usize,
-            time: SystemTime::now().duration_since(self.start_time)
-                                   .unwrap(),
-        }
+        self.mem.stats()
     }
 
     pub fn push_sym(&mut self, v: SymID) {
@@ -1036,7 +1058,7 @@ impl<'a> Arena<'a> {
         self.stack.push(v);
     }
 
-    pub fn push_spv(&mut self, v: SPV<'a>) {
+    pub fn push_spv(&mut self, v: SPV) {
         self.push(unsafe { v.pv() });
     }
 
@@ -1074,11 +1096,11 @@ impl<'a> Arena<'a> {
         self.stack.push(NkAtom::make_ref(orig_cell));
     }
 
-    pub fn make_extref(&mut self, v: PV) -> SPV<'a> {
+    pub fn make_extref<'b, 'a: 'b>(&'a mut self, v: PV) -> SPV {
         let id = self.extref_id_cnt;
         self.extref_id_cnt += 1;
         self.extref.insert(id, v);
-        SPV { id, ar: self as *mut Arena<'a> }
+        SPV { id, ar: self as *mut Arena }
     }
 
     pub fn get_ext(&self, id: u32) -> PV {
@@ -1100,7 +1122,7 @@ impl<'a> Arena<'a> {
         self.extref.remove(&id);
     }
 
-    pub fn pop_spv(&mut self) -> Result<SPV<'a>, Error> {
+    pub fn pop_spv(&mut self) -> Result<SPV, Error> {
         if let Some(res) = self.stack.pop() {
             Ok(self.make_extref(res))
         } else {
@@ -1227,9 +1249,9 @@ impl<'a> Arena<'a> {
         self.tags.remove(&item);
     }
 
-    fn update_ptrs(&mut self, reloc: &NkRelocArray) {
-        if reloc.is_empty() {
-            self.mem.confirm_relocation();
+    fn update_ptrs(&mut self, tok: RelocateToken) {
+        if self.mem.reloc().is_empty() {
+            self.mem.confirm_relocation(tok);
             return
         }
 
@@ -1238,7 +1260,7 @@ impl<'a> Arena<'a> {
         }
 
         let tags = self.tags.iter().map(|(ptr, _)| {
-            (*ptr, reloc.get(*ptr))
+            (*ptr, self.mem.reloc().get(*ptr))
         }).collect::<Vec<_>>();
         for (old, new) in tags.into_iter() {
             let src = self.tags.remove(&old).unwrap();
@@ -1246,33 +1268,30 @@ impl<'a> Arena<'a> {
         }
 
         for (_id, pv) in self.extref.iter_mut() {
-            pv.update_ptrs(reloc);
+            pv.update_ptrs(self.mem.reloc());
         }
         for ptr in self.gray.iter_mut() {
-            *ptr = reloc.get(*ptr) as *mut NkAtom;
+            *ptr = self.mem.reloc().get(*ptr) as *mut NkAtom;
         }
+        let reloc_p = self.mem.reloc() as *const PtrMap;
         for obj in self.mem.iter_mut() {
-            update_ptr_atom(obj, reloc);
+            update_ptr_atom(obj, unsafe { &*reloc_p });
         }
         for pv in self.stack.iter_mut().chain(self.env.iter_mut()) {
-            pv.update_ptrs(reloc);
+            pv.update_ptrs(self.mem.reloc());
         }
-        self.mem.confirm_relocation();
+        self.mem.confirm_relocation(tok);
     }
 
     unsafe fn mem_fit_bytes(&mut self, n: usize) {
-        if let Some((nnk, reloc)) = self.mem.fit_bytes(n) {
-            self.mem = &mut *nnk;
-            self.update_ptrs(&*reloc);
-        }
+        let tok = self.mem.make_room(n);
+        self.update_ptrs(tok)
     }
 
     fn mem_fit<T: Fissile>(&mut self, n: usize) {
         unsafe {
-            if let Some((nnk, reloc)) = self.mem.fit::<T>(n) {
-                self.mem = &mut *nnk;
-                self.update_ptrs(&*reloc);
-            }
+            let tok = self.mem.fit::<T>(n);
+            self.update_ptrs(tok);
         }
     }
 
@@ -1283,9 +1302,8 @@ impl<'a> Arena<'a> {
         };
         unsafe {
             let (ptr, grow) = self.mem.alloc::<T>();
-            if let Some((new_nuke, reloc)) = grow {
-                self.mem = &mut *new_nuke;
-                self.update_ptrs(&*reloc);
+            if let Some(tok) = grow {
+                self.update_ptrs(tok);
             }
             ptr
         }
@@ -1299,7 +1317,7 @@ impl<'a> Arena<'a> {
 
     #[inline]
     fn sweep_compact(&mut self) {
-        let reloc = self.mem.sweep_compact();
+        let reloc = unsafe { self.mem.sweep_compact() };
         self.update_ptrs(reloc);
         self.state = GCState::Sleep(GC_SLEEP_MEM_BYTES);
     }
@@ -1321,7 +1339,7 @@ impl<'a> Arena<'a> {
 
     #[inline]
     fn mark_begin(&mut self) {
-        self.state = GCState::Mark(1 + (self.mem.num_atoms / 150) as u32);
+        self.state = GCState::Mark(1 + (self.mem.num_atoms() / 150) as u32);
         let it = self.stack.iter()
                            .chain(self.env.iter())
                            .chain(self.extref.values());
@@ -1343,8 +1361,7 @@ impl<'a> Arena<'a> {
             GCState::Sleep(_) => (),
             GCState::Mark(num_steps) =>
                 self.mark_step(num_steps),
-            GCState::Sweep =>
-                self.sweep_compact()
+            GCState::Sweep => self.sweep_compact(),
         }
     }
 
@@ -1387,30 +1404,30 @@ impl<'a> Arena<'a> {
     }
 }
 
-impl Drop for Arena<'_> {
+impl Drop for Arena {
     fn drop(&mut self) {
         if !self.extref.is_empty() {
             panic!("Dangling references to Arena objects");
         }
         self.ignore_and_sweep();
-        unsafe {
-            nk_destroy(self.mem as *mut Nuke);
-        }
+        // unsafe {
+        //     nk_destroy(self.mem as *mut Nuke);
+        // }
     }
 }
 
 #[derive(Debug)]
-pub struct SPV<'a> {
-    ar: *mut Arena<'a>,
+pub struct SPV {
+    ar: *mut Arena,
     id: u32,
 }
 
-impl<'a> SPV<'a> {
+impl SPV {
     pub unsafe fn pv(&self) -> PV {
         (*self.ar).get_ext(self.id)
     }
 
-    pub unsafe fn ar(&self) -> *mut Arena<'a> {
+    pub unsafe fn ar(&self) -> *mut Arena {
         self.ar
     }
 
@@ -1422,7 +1439,7 @@ impl<'a> SPV<'a> {
         unsafe { self.pv().bt_op() }
     }
 
-    pub fn args(self) -> impl Iterator<Item = SPV<'a>> {
+    pub fn args(self) -> impl Iterator<Item = SPV> {
         self.into_iter().skip(1)
     }
 
@@ -1443,7 +1460,7 @@ impl<'a> SPV<'a> {
     }
 }
 
-impl fmt::Display for SPV<'_> {
+impl fmt::Display for SPV {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         unsafe {
             write!(f, "{}", self.pv().lisp_to_string(&*self.ar))
@@ -1451,20 +1468,20 @@ impl fmt::Display for SPV<'_> {
     }
 }
 
-impl<'a> IntoIterator for SPV<'a> {
-    type Item = SPV<'a>;
-    type IntoIter = SPVIter<'a>;
+impl<'a> IntoIterator for SPV {
+    type Item = SPV;
+    type IntoIter = SPVIter;
     fn into_iter(self) -> Self::IntoIter {
         SPVIter { item: self }
     }
 }
 
-pub struct SPVIter<'a> {
-    item: SPV<'a>
+pub struct SPVIter {
+    item: SPV
 }
 
-impl<'a> Iterator for SPVIter<'a> {
-    type Item = SPV<'a>;
+impl Iterator for SPVIter {
+    type Item = SPV;
     fn next(&mut self) -> Option<Self::Item> {
         let ar = unsafe { &mut *self.item.ar() };
         let item = unsafe { self.item.pv() };
@@ -1478,7 +1495,7 @@ impl<'a> Iterator for SPVIter<'a> {
     }
 }
 
-impl Clone for SPV<'_> {
+impl Clone for SPV {
     fn clone(&self) -> Self {
         unsafe {
             (*self.ar).make_extref(self.pv())
@@ -1486,7 +1503,7 @@ impl Clone for SPV<'_> {
     }
 }
 
-impl Drop for SPV<'_> {
+impl Drop for SPV {
     fn drop(&mut self) {
         unsafe {
             (*self.ar).drop_ext(self.id)

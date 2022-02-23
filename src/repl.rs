@@ -13,8 +13,7 @@ use std::path::Path;
 use colored::*;
 
 fn make_intro() -> String {
-    format!("
-{read} {arrow} {eval} {arrow} {print} {arrow} {loop}
+    format!("{read} {arrow} {eval} {arrow} {print} {arrow} {loop}
  ┗━━━━━━━━━━━━━━━━━━━━━━┛\n",
             read="read".blue().bold().underline(),
             eval="eval".blue().bold().underline(),
@@ -46,13 +45,13 @@ pub trait LineInput {
     fn add_history_entry<S: AsRef<str> + Into<String>>(&mut self, line: S) -> bool;
 }
 
-pub struct REPL<'a> {
-    vm: R8VM<'a>,
+pub struct REPL {
+    vm: R8VM,
     exit_status: Option<i32>,
 }
 
-impl REPL<'_> {
-    pub fn new<'a>(out_override: Option<Box<dyn OutStream>>) -> Result<REPL<'a>, Error> {
+impl REPL {
+    pub fn new(out_override: Option<Box<dyn OutStream>>) -> Result<REPL, Error> {
         let mut vm = R8VM::new();
         if let Some(out) = out_override {
             vm.set_stdout(out);
@@ -61,15 +60,17 @@ impl REPL<'_> {
         vm.load(stdlib)
           .map(|_| ())
           .or_else(|e| -> Result<(), Error> {
-              vmprintln!(vm, "{}", e.to_string(&vm));
-              vmprintln!(vm, "{}", "Warning: Using bundled stdlib".yellow().bold());
+              #[cfg(not(target_arch = "wasm32"))] {
+                  vmprintln!(vm, "{}", e.to_string(&vm));
+                  vmprintln!(vm, "{}", "Warning: Using bundled stdlib".yellow().bold());
+              }
               vm.eval(include_str!("../lisp/stdlib.lisp"))?;
               Ok(())
           })
           .or_else(|e| -> Result<(), Error> {
               vmprintln!(vm, "{}: {}", "Error: ".red().bold(), e.to_string(&vm).white().bold());
               Ok(())
-          });
+          })?;
         Ok(REPL {
             vm,
             exit_status: None,
@@ -106,7 +107,7 @@ impl REPL<'_> {
     }
 
     pub fn print_intro(&mut self) {
-        vmprintln!(self.vm, "{}", make_intro());
+        vmprint!(self.vm, "{}", make_intro());
     }
 
     #[cfg(not(feature = "readline"))]

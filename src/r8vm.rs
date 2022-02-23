@@ -1,18 +1,17 @@
 //! SPAIK R8 Virtual Machine
 
 #[cfg(feature = "repl")]
-use prettytable::{Table, format};
+use comfy_table::Table;
 
 use crate::{
     ast::{Value, ValueKind},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler},
     error::{Error, ErrorKind, Source},
-    fmt::LispFmt,
+    fmt::{LispFmt, VisitSet},
     module::{LispModule, Export, ExportKind},
-    nk::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV},
     nuke::*,
+    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
     perr::PResult,
     sexpr_parse::Parser,
     subrs::IntoLisp,
@@ -101,6 +100,19 @@ chasm_def! {
     MUL()
 }
 
+macro_rules! vmprint {
+    ($vm:expr, $($fmt:expr),+) => {
+        $vm.print_fmt(format_args!($($fmt),+)).unwrap()
+    };
+}
+
+macro_rules! vmprintln {
+    ($vm:expr, $($fmt:expr),+) => {
+        $vm.print_fmt(format_args!($($fmt),+)).unwrap();
+        $vm.println(&"").unwrap();
+    };
+}
+
 #[derive(Debug, Clone)]
 pub struct RuntimeError {
     pub msg: String,
@@ -118,6 +130,9 @@ impl From<&str> for RuntimeError {
         Self { line: 0, msg: String::from(source) }
     }
 }
+
+#[cfg(feature = "repl")]
+const TABLE_STYLE: &str = comfy_table::presets::UTF8_BORDERS_ONLY;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraceFrame {
@@ -612,11 +627,11 @@ pub trait InStream: io::Read + Debug + Send {}
 impl<T> InStream for T where T: io::Read + Debug + Send {}
 
 #[derive(Debug)]
-pub struct R8VM<'a> {
+pub struct R8VM {
     /// Memory
     pmem: Vec<r8c::Op>,
     consts: Vec<NkSum>,
-    pub(crate) mem: Arena<'a>,
+    pub(crate) mem: Arena,
     globals: FnvHashMap<SymID, usize>,
 
     // Named locations/objects
@@ -634,7 +649,7 @@ pub struct R8VM<'a> {
     frame: usize,
 }
 
-impl<'a> Default for R8VM<'a> {
+impl<'a> Default for R8VM {
     fn default() -> Self {
         R8VM {
             pmem: Default::default(),
@@ -684,7 +699,7 @@ struct Regs {
 }
 
 impl Regs {
-    fn save(&mut self, mem: &mut Arena<'_>, num: u8) -> Result<(), RuntimeError> {
+    fn save(&mut self, mem: &mut Arena, num: u8) -> Result<(), RuntimeError> {
         for i in 0..num {
             let v = mem.pop()?;
             self.vals[i as usize] = v;
@@ -695,7 +710,7 @@ impl Regs {
         Ok(())
     }
 
-    fn restore(&mut self, mem: &mut Arena<'_>) {
+    fn restore(&mut self, mem: &mut Arena) {
         for i in (0..self.idx).rev() {
             mem.push(self.vals[i as usize]);
         }
@@ -727,7 +742,7 @@ macro_rules! vm_call_with {
     }};
 }
 
-impl SymDB for R8VM<'_> {
+impl SymDB for R8VM {
     fn name(&self, sym: SymID) -> Cow<str> {
         (&self.mem.symdb as &dyn SymDB).name(sym)
     }
@@ -737,10 +752,10 @@ impl SymDB for R8VM<'_> {
     }
 }
 
-unsafe impl<'a> Send for R8VM<'a> {}
+unsafe impl<'a> Send for R8VM {}
 
-impl<'a> R8VM<'a> {
-    pub fn new<'b>() -> R8VM<'b> {
+impl R8VM {
+    pub fn new<'b>() -> R8VM {
         let mut vm = R8VM {
             pmem: vec![r8c::Op::HCF()],
             ..Default::default()
@@ -974,11 +989,57 @@ impl<'a> R8VM<'a> {
                 },
                 NkRef::String(s) => ValueKind::String(s.clone()),
                 NkRef::PV(v) => self.pull_ast(*v, src).kind,
-                x => unimplemented!("{:?}", x),
+                x => unimplemented!("inner: {:?}", x),
             }
-            x => unimplemented!("{:?}", x),
+            PV::UInt(x) => panic!("Stray UInt: {}", x),
         };
         Value { kind, src: src.clone() }
+    }
+
+    pub unsafe fn pull_ast_norec(&self, v: PV, src: &Source) -> Value {
+        let mut s = self.stdout.lock().unwrap();
+        #[derive(Debug)]
+        enum Thing<'a> {
+            Defer(PV, &'a Source),
+            Cons(&'a Source),
+        }
+        use Thing::*;
+        let mut stack = vec![Defer(v, src)];
+        let mut ostack = vec![];
+        while let Some(action) = stack.pop() {
+            match action {
+                Defer(v, src) => match v {
+                    PV::Sym(sym) => ostack.push(Value { kind: ValueKind::Symbol(sym), src: src.clone() }),
+                    PV::Nil => ostack.push(Value { kind: ValueKind::Nil, src: src.clone() }),
+                    PV::Int(x) => ostack.push(Value { kind: ValueKind::Int(x), src: src.clone() }),
+                    PV::Bool(x) => ostack.push(Value { kind: ValueKind::Bool(x), src: src.clone() }),
+                    PV::Real(x) => ostack.push(Value { kind: ValueKind::Real(x), src: src.clone() }),
+                    PV::Ref(p) => {
+                        match (*p).match_ref() {
+                            NkRef::Cons(nkgc::Cons { car, cdr }) => {
+                                stack.push(Cons(src));
+                                let src = self.mem.get_tag(p).unwrap_or(src);
+                                stack.push(Defer(*car, src));
+                                stack.push(Defer(*cdr, src));
+                            },
+                            NkRef::String(s) => ostack.push(Value { kind: ValueKind::String(s.clone()),
+                                                                    src: src.clone() } ),
+                            NkRef::PV(v) => stack.push(Defer(*v, src)),
+                            x => unimplemented!("inner: {:?}", x),
+                        }
+                    }
+                    PV::UInt(x) => panic!("Stray UInt: {}", x),
+                },
+                Cons(cons_src) => {
+                    let car = ostack.pop().unwrap();
+                    let cdr = ostack.pop().unwrap();
+                    ostack.push(Value { kind: ValueKind::Cons(Box::new(car), Box::new(cdr)),
+                                        src: cons_src.clone() })
+                }
+            }
+        }
+        debug_assert!(ostack.len() <= 1, "Multiple objects in output stack");
+        ostack.pop().expect("No objects in output")
     }
 
     pub fn expand(&mut self, ast: &Value) -> Option<Result<Value, Error>> {
@@ -1097,14 +1158,14 @@ impl<'a> R8VM<'a> {
             ip = match self.mem.stack[frame] {
                 PV::UInt(x) => x,
                 _ => {
-                    println!("Warning: Incomplete stack trace!");
+                    vmprintln!(self, "Warning: Incomplete stack trace!");
                     break;
                 }
             };
             self.frame = match self.mem.stack[frame+1] {
                 PV::UInt(x) => x,
                 _ => {
-                    println!("Warning: Incomplete stack trace!");
+                    vmprintln!(self, "Warning: Incomplete stack trace!");
                     break;
                 }
             };
@@ -1182,7 +1243,7 @@ impl<'a> R8VM<'a> {
             let op = &*ip;
             ip = ip.offset(1);
             if self.debug_mode {
-                println!("{}", op);
+                vmprintln!(self, "{}", op);
             }
             match op {
                 // List processing
@@ -1191,7 +1252,6 @@ impl<'a> R8VM<'a> {
                 LIST(n) => self.mem.list(*n),
                 VLIST() => {
                     let len = self.mem.pop()?.force_int() as u32;
-                    self.mem.stack.len();
                     self.mem.list(len);
                 }
                 CONS() => self.mem.cons_unchecked(),
@@ -1443,7 +1503,7 @@ impl<'a> R8VM<'a> {
 
             if self.debug_mode {
                 self.dump_stack()?;
-                println!();
+                vmprintln!(self, "");
             }
         };
 
@@ -1458,13 +1518,13 @@ impl<'a> R8VM<'a> {
     pub fn dump_stack(&mut self) -> Result<(), Error> {
         let mut stdout = self.stdout.lock().unwrap();
         writeln!(stdout, "stack:")?;
+        if self.mem.stack.is_empty() {
+            writeln!(stdout, "    (empty)")?;
+        }
         for (idx, val) in self.mem.stack.iter().enumerate().rev() {
             let (idx, frame) = (idx as i64, self.frame as i64);
-            if idx == frame {
-                writeln!(stdout, " -> {}: {}", idx - frame, val)?;
-            } else {
-                writeln!(stdout, "    {}: {}", idx - frame, val)?;
-            }
+            write!(stdout, "{}", if idx == frame { " -> " } else { "    " })?;
+            writeln!(stdout, "{}: {}", idx - frame, val)?;
         }
         Ok(())
     }
@@ -1503,7 +1563,7 @@ impl<'a> R8VM<'a> {
      * - `sym` : Symbol mapped to the function, see Arena::sym.
      * - `args` : Arguments that should be passed.
      */
-    pub fn call(&mut self, sym: SymID, args: &[PV]) -> Result<SPV<'a>, Error> {
+    pub fn call(&mut self, sym: SymID, args: &[PV]) -> Result<SPV, Error> {
         let pv = self.raw_call(sym, args)?;
         Ok(self.mem.make_extref(pv))
     }
@@ -1516,7 +1576,7 @@ impl<'a> R8VM<'a> {
         }))
     }
 
-    pub fn call_s(&mut self, name: &str, args: &[PV]) -> Result<SPV<'a>, Error> {
+    pub fn call_s(&mut self, name: &str, args: &[PV]) -> Result<SPV, Error> {
         let sym = self.mem.symdb
                           .get(name)
                           .ok_or_else(|| error!(UndefinedFunctionString,
@@ -1625,54 +1685,54 @@ impl<'a> R8VM<'a> {
 
     #[cfg(feature = "repl")]
     pub fn dump_macro_tbl(&self) -> Result<(), Error> {
-        use prettytable::{row, cell};
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-        table.set_titles(row!["Macro", "Function"]);
+        table.load_preset(TABLE_STYLE);
+        table.set_header(vec!["Macro", "Function"]);
         for (&macro_sym, &fn_sym) in self.macros.iter() {
-            table.add_row(row![self.sym_name(macro_sym.into()),
+            table.add_row(vec![self.sym_name(macro_sym.into()),
                                self.sym_name(fn_sym)]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        table.print(&mut*stdout)?;
+        writeln!(stdout, "{}", table)?;
+
         Ok(())
     }
 
     #[cfg(feature = "repl")]
     pub fn dump_symbol_tbl(&self) -> Result<(), Error> {
-        use prettytable::{row, cell};
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-        table.set_titles(row!["Symbol", "ID"]);
+        table.load_preset(TABLE_STYLE);
+        table.set_header(vec!["Symbol", "ID"]);
         for (id, name) in self.mem.symdb.iter() {
-            table.add_row(row![name, id.id]);
+            table.add_row(vec![name, &id.id.to_string()]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        table.print(&mut*stdout)?;
+        writeln!(stdout, "{}", table)?;
+
         Ok(())
     }
 
     #[cfg(feature = "repl")]
     pub fn dump_env_tbl(&self) -> Result<(), Error> {
-        use prettytable::{row, cell};
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-        table.set_titles(row!["Symbol", "Value", "Index"]);
+        table.load_preset(TABLE_STYLE);
+        table.set_header(vec!["Symbol", "Value", "Index"]);
         for (&sym, &idx) in self.globals.iter() {
-            table.add_row(row![self.sym_name(sym),
-                               self.mem
-                                   .get_env(idx)
-                                   .lisp_to_string(&self.mem),
-                               idx]);
+            table.add_row(vec![self.sym_name(sym),
+                               &self.mem
+                                    .get_env(idx)
+                                    .lisp_to_string(&self.mem),
+                               &idx.to_string()]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        table.print(&mut*stdout)?;
+        writeln!(stdout, "{}", table)?;
+
         Ok(())
     }
 
@@ -1692,19 +1752,19 @@ impl<'a> R8VM<'a> {
 
     #[cfg(feature = "repl")]
     pub fn dump_fn_tbl(&self) -> Result<(), Error> {
-        use prettytable::{row, cell};
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
 
-        table.set_titles(row!["Name", "Nargs", "Position"]);
+        table.load_preset(TABLE_STYLE);
+        table.set_header(vec!["Name", "Nargs", "Position"]);
         for (&sym, func) in self.funcs.iter() {
-            table.add_row(row![self.sym_name(sym.into()),
-                               func.args,
-                               func.pos]);
+            table.add_row(vec![self.sym_name(sym.into()),
+                               &func.args.to_string(),
+                               &func.pos.to_string()]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
-        table.print(&mut*stdout)?;
+        writeln!(stdout, "{}", table)?;
+
         Ok(())
     }
 

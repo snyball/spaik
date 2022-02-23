@@ -8,15 +8,15 @@ use std::io::prelude::*;
 use std::error::Error;
 use std::process::exit;
 
-enum TestResult<'a> {
+enum TestResult {
     Pass,
     Fail {
-        expect: SPV<'a>,
-        got: SPV<'a>
+        expect: SPV,
+        got: SPV
     }
 }
 
-impl TestResult<'_> {
+impl TestResult {
     pub fn new(res: SPV) -> Option<TestResult> {
         Some(match res.bt_op() {
             Some(Builtin::KwPass) => TestResult::Pass,

@@ -1,18 +1,20 @@
-//! Nuclear Data Types
+/*!
+ * The Nuclear Allocator
+ */
 
-use crate::nk::*;
-use crate::nkgc::{PV, Traceable, Arena, SymID};
+use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet};
-use crate::sym_db::SymDB;
+use crate::sym_db::{SymDB, SYM_DB};
+use core::slice;
 use std::mem;
-use std::ptr::drop_in_place;
+use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
-use std::ffi;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt;
-use std::ptr;
 use core::fmt::Debug;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::SystemTime;
 
 macro_rules! with_atom {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
@@ -100,6 +102,7 @@ macro_rules! fissile_types {
             fn from(item: $path) -> Self { NkSum::$t(item) }
         })+
 
+        #[inline]
         fn clone_atom(item: &NkAtom) -> NkSum {
             unsafe {
                 match item.type_of() {
@@ -111,8 +114,10 @@ macro_rules! fissile_types {
         // FIXME: This uses dynamic dispatch to potentially reduce a little
         //        code-duplication, the problem could also be solved using a
         //        macro-macro (which could be far more general).
+        #[inline]
         pub fn trace_map_mut<T, F>(atom: &mut NkAtom, f: F) -> T
-            where F: Fn(&mut dyn Traceable) -> T {
+            where F: Fn(&mut dyn Traceable) -> T
+        {
             with_atom_mut!(atom, { f(atom) },
                            $(($t,$path)),+)
         }
@@ -131,21 +136,25 @@ macro_rules! fissile_types {
             $(|x| { unsafe { drop_in_place(x as *mut $path) } }),+
         ];
 
-        pub fn update_ptr_atom(atom: &mut NkAtom, reloc: &NkRelocArray) {
+        #[inline]
+        pub fn update_ptr_atom(atom: &mut NkAtom, reloc: &PtrMap) {
             with_atom_mut!(atom, {atom.update_ptrs(reloc)},
                            $(($t,$path)),+)
         }
 
+        #[inline]
         pub fn mark_atom(atom: &mut NkAtom, gray: &mut Vec<*mut NkAtom>) {
             with_atom_mut!(atom, {atom.trace(gray)}, $(($t,$path)),+);
             atom.set_color(Color::Black)
         }
 
+        #[inline]
         fn to_fissile_mut<'a>(atom: *mut NkAtom) -> NkMut<'a> {
             let atom = unsafe { &mut *atom };
             with_atom_inst!(atom, NkMut, {atom}, $(($t,$path)),+)
         }
 
+        #[inline]
         fn to_fissile_ref<'a>(atom: *const NkAtom) -> NkRef<'a> {
             // FIXME: with_atom(_inst)! is not flexible enough, it needs to be able
             //        to deal with both &ref and &mut ref. Hence this war crime:
@@ -195,57 +204,16 @@ pub enum Color {
     Black = 2,
 }
 
-impl PartialEq for PairVoidP {
-    fn eq(&self, other: &PairVoidP) -> bool {
-        other.fst == self.fst
-    }
-}
-
-impl Eq for PairVoidP {}
-
-impl PartialOrd for PairVoidP {
-    fn partial_cmp(&self, other: &PairVoidP) -> Option<Ordering> {
-        self.fst.partial_cmp(&other.fst)
-    }
-}
-
-impl Ord for PairVoidP {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.fst.cmp(&other.fst)
-    }
-}
-
-impl NkRelocArray {
-    pub fn get<T>(&self, orig: *const T) -> *const T {
-        let arr: &[PairVoidP] = unsafe { self.elems.as_slice(self.length as usize) };
-        let srch = PairVoidP { fst: orig as *mut ffi::c_void,
-                               snd: ptr::null_mut::<ffi::c_void>() };
-        match arr.binary_search(&srch) {
-            Ok(idx) => arr[idx].snd as *const T,
-            Err(_) => orig
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.length as usize
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-impl fmt::Display for PairVoidP {
+impl fmt::Display for PtrPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "{:?} => {:?}", self.fst, self.snd)
     }
 }
 
-impl fmt::Display for NkRelocArray {
+impl fmt::Display for PtrMap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        let arr: &[PairVoidP] = unsafe { self.elems.as_slice(self.length as usize) };
         write!(f, "[")?;
-        for u in arr {
+        for u in self.0.iter() {
             write!(f, "{}, ", u)?;
         }
         write!(f, "]")
@@ -253,6 +221,11 @@ impl fmt::Display for NkRelocArray {
 }
 
 impl NkAtom {
+    #[inline]
+    pub unsafe fn destroy(&mut self) {
+        DESTRUCTORS[self.meta.typ() as usize](self.fastcast_mut::<u8>());
+    }
+
     pub fn make_ref<T: Fissile>(p: *mut T) -> PV {
         PV::Ref(NkAtom::make_raw_ref(p))
     }
@@ -280,6 +253,14 @@ impl NkAtom {
     pub unsafe fn fastcast<T>(&self) -> *const T {
         const DELTA: isize = mem::size_of::<NkAtom>() as isize;
         (self as *const NkAtom as *const u8).offset(DELTA) as *mut T
+    }
+
+    pub fn raw(&self) -> &[u8] {
+        const DELTA: isize = mem::size_of::<NkAtom>() as isize;
+        unsafe {
+            let p = (self as *const NkAtom as *const u8).offset(DELTA);
+            slice::from_raw_parts(p, self.sz as usize)
+        }
     }
 
     pub fn cast<T: Fissile>(&mut self) -> Option<&mut T> {
@@ -315,101 +296,398 @@ impl NkAtom {
     pub fn type_of(&self) -> NkT {
         unsafe { mem::transmute(self.meta.typ() as u8) }
     }
+
+    pub fn full_size(&self) -> usize {
+        mem::size_of::<NkAtom>() + self.sz as usize
+    }
 }
 
-type RelocInfo = Option<(*mut Nuke, *const NkRelocArray)>;
+#[allow(dead_code)]
+pub struct Nuke {
+    free: *mut u8,
+    grow_num: usize,
+    used: usize,
+    num_frees: usize,
+    num_allocs: usize,
+    num_atoms: usize,
+    load_factor: f64,
+    load_max: usize,
+    min_block_sz: NkSz,
+    sz: usize,
+    reloc: PtrMap,
+    last: *mut NkAtom,
+    mem: Vec<u8>,
+    #[cfg(not(target_arch = "wasm32"))]
+    start_time: SystemTime,
+}
+
+fn align<T>(p: *mut T, a: isize) -> *mut T {
+    (((p as isize) + a - 1) & !(a - 1)) as *mut T
+}
+
+#[inline(always)]
+pub unsafe fn memcpy<R, W>(dst: *mut W, src: *const R, sz: usize) {
+    ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, sz);
+}
+
+#[allow(dead_code)]
+#[inline(always)]
+pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
+    ptr::copy(src as *const u8, dst as *mut u8, sz);
+}
+
+#[cfg(target_pointer_width = "32")]
+const ALIGNMENT: isize = 4;
+#[cfg(target_pointer_width = "64")]
+const ALIGNMENT: isize = 8;
+
+pub struct RelocateToken {
+    p: PhantomData<u8>,
+}
+
+impl RelocateToken {
+    fn new() -> RelocateToken {
+        RelocateToken { p: Default::default() }
+    }
+}
 
 impl Nuke {
-    pub fn new(sz: usize) -> *mut Nuke {
+    pub fn new(sz: usize) -> Nuke {
+        let load_factor = 0.90;
+        let min_block_sz = minimal_fissile_sz();
+
+        assert!(min_block_sz > 0, "Minimum allocation size cannot be 0.");
+        assert!(sz >= 128, "Nuke too small");
+        assert!(load_factor >= 0.5 && load_factor < 1.0,
+               "Load factor outside of [0.5, 1.0) range.");
+
+        let mut nk = Nuke {
+            free: ptr::null_mut(),
+            grow_num: sz,
+            used: 0,
+            num_frees: 0,
+            num_allocs: 0,
+            num_atoms: 0,
+            load_factor,
+            load_max: (load_factor * sz as f64) as usize,
+            min_block_sz,
+            sz,
+            reloc: PtrMap(Vec::new()),
+            last: ptr::null_mut(),
+            mem: Vec::with_capacity(sz),
+            #[cfg(not(target_arch = "wasm32"))]
+            start_time: SystemTime::now(),
+        };
+
+        unsafe { nk.mem.set_len(sz) }
+        nk.last = nk.fst();
+        nk.free = nk.offset(mem::size_of::<NkAtom>());
+        nk.used = mem::size_of::<NkAtom>();
         unsafe {
-            nk_new(sz as u64, minimal_fissile_sz(), 0.90)
+            (*nk.fst()).set_color(Color::Black);
+            (*nk.fst()).meta.set_typ(0);
+            (*nk.fst()).next = ptr::null_mut();
+            (*nk.fst()).sz = 0;
         }
+        nk.num_atoms = 1;
+
+        nk
     }
 
-    #[inline]
     #[must_use = "Relocation must be confirmed"]
-    pub fn compact<'z>(&mut self) -> &'z NkRelocArray  {
-        let nkp = self as *mut Nuke;
-        unsafe {
-            nk_compact(nkp);
-            let reloc = nk_check_relocation(nkp);
-            debug_assert!(!reloc.is_null());
-            &*reloc
+    pub unsafe fn compact(&mut self) -> RelocateToken {
+        let mut node = self.fst();
+        let mut npos;
+        let mut start = self.offset::<u8>(0);
+
+        loop {
+            let next_node = (*node).next;
+            npos = start as *mut NkAtom;
+            let sz = mem::size_of::<NkAtom>() + (*node).sz as usize;
+            if npos != node {
+                self.reloc.push(node, npos);
+                memcpy(npos, node, sz);
+            }
+            start = align(start.offset(sz as isize), ALIGNMENT);
+            if next_node.is_null() {
+                break;
+            } else {
+                (*npos).next = start as *mut NkAtom;
+                node = next_node;
+            }
         }
+
+        self.last = npos;
+        self.free = start;
+
+        RelocateToken::new()
     }
 
-    #[inline]
     #[must_use = "Relocation must be confirmed"]
-    pub fn sweep_compact<'z>(&mut self) -> &'z NkRelocArray  {
-        let nkp = self as *mut Nuke;
-        unsafe {
-            nk_sweep_compact(nkp);
-            let reloc = nk_check_relocation(nkp);
-            debug_assert!(!reloc.is_null());
-            &*reloc
+    pub unsafe fn sweep_compact(&mut self) -> RelocateToken {
+        let mut node = self.fst();
+        let mut npos;
+        let mut start = self.offset::<u8>(0);
+
+        loop {
+            let next_node = {
+                let mut num_frees = 0;
+                let mut n = (*node).next;
+                while !n.is_null() {
+                    if (*n).color() == Color::White {
+                        (*n).destroy();
+                        self.used -= (*n).full_size();
+                        num_frees += 1;
+                    } else {
+                        break;
+                    }
+                    n = (*n).next;
+                }
+                self.num_atoms -= num_frees;
+                self.num_frees += num_frees;
+                n
+            };
+
+            let sz = (*node).full_size();
+            npos = start as *mut NkAtom;
+
+            if npos != node {
+                self.reloc.push(node, npos);
+                memcpy(npos, node, sz);
+            }
+
+            (*npos).set_color(Color::White);
+            start = align(start.offset(sz as isize), ALIGNMENT);
+
+            if next_node.is_null() {
+                (*npos).next = ptr::null_mut();
+                break;
+            } else {
+                (*npos).next = start as *mut NkAtom;
+                node = next_node;
+            }
         }
+
+        self.last = npos;
+        (*self.fst()).set_color(Color::Black);
+        self.free = start;
+
+        RelocateToken::new()
     }
 
-    pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, RelocInfo) {
-        let ty = T::type_of() as u8;
-        let nkp = self as *mut Nuke;
-        let ptr = nk_alloc(nkp, mem::size_of::<T>() as NkSz, ty) as *mut T;
-        if !ptr.is_null() {
-            return (ptr, None);
+    #[must_use = "Relocation must be confirmed"]
+    pub unsafe fn grow(&mut self, fit: usize) -> RelocateToken {
+        let new_sz = (self.sz << 1).max(self.sz + fit);
+        self.sz = new_sz;
+        self.load_max = (self.load_factor * self.sz as f64) as usize;
+
+        let mut used = 0;
+        let mut num_atoms = 0;
+
+        let mut new_vec: Vec<u8> = Vec::with_capacity(new_sz);
+        new_vec.set_len(new_sz);
+        let mut mem = new_vec.as_mut_ptr();
+        let mut new_node = ptr::null_mut();
+        let mut node = self.fst();
+        while !node.is_null() {
+            let sz = (*node).full_size();
+            memcpy(mem, node, sz);
+            self.reloc.push(node, mem);
+            new_node = mem as *mut NkAtom;
+            mem = align(mem.offset(sz as isize), ALIGNMENT);
+            (*new_node).next = mem as *mut NkAtom;
+            node = (*node).next;
+
+            used += sz;
+            num_atoms += 1;
         }
-        let nkp = nk_make_room(nkp, Nuke::size_of::<T>() as u64);
-        let reloc = nk_check_relocation(nkp);
-        assert!(!reloc.is_null(), "Relocation array missing after relocation.");
-        let ptr = nk_alloc(nkp, mem::size_of::<T>() as NkSz, ty) as *mut T;
-        assert!(!ptr.is_null(), "Unable to fit after nk_make_room");
-        (ptr, Some((nkp, reloc)))
+
+        self.free = mem;
+        (*new_node).next = ptr::null_mut();
+        self.last = new_node;
+        self.mem = new_vec;
+
+        debug_assert!(num_atoms == self.num_atoms, "Number of atoms did not match");
+        debug_assert!(used == self.used, "Usage count did not match");
+
+        RelocateToken::new()
     }
 
-    pub unsafe fn fit_bytes(&mut self, num_bytes: usize) -> RelocInfo {
-        let nkp = self as *mut Nuke;
-        let nkp = nk_make_room(nkp, num_bytes as u64);
-        let reloc = nk_check_relocation(nkp);
-        if reloc.is_null() {
-            None
+    #[must_use = "Relocation must be confirmed"]
+    pub unsafe fn make_room(&mut self, fit: usize) -> RelocateToken {
+        if self.used + fit > self.load_max {
+            self.grow(fit)
         } else {
-            Some((nkp, reloc))
+            self.compact()
         }
+    }
+
+    pub fn confirm_relocation(&mut self, t: RelocateToken) {
+        drop(t);
+        self.reloc.0.clear();
+    }
+
+    pub fn fst(&mut self) -> *mut NkAtom {
+        self.mem.as_mut_ptr() as *mut NkAtom
+    }
+
+    pub fn offset<T>(&mut self, n: usize) -> *mut T {
+        unsafe {
+            self.mem.as_mut_ptr().offset(n as isize) as *mut T
+        }
+    }
+
+    #[must_use = "Relocation must be confirmed"]
+    pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
+        let full_sz = mem::size_of::<T>() + mem::size_of::<NkAtom>();
+        let ret = (self.free.offset(full_sz as isize) >= self.offset(self.sz))
+                  .then(|| self.make_room(full_sz));
+
+        let cur = self.free as *mut NkAtom;
+        let last = self.last;
+        self.last = cur;
+
+        self.free = (cur as *mut u8).offset(full_sz as isize);
+        self.used += full_sz;
+        self.num_atoms += 1;
+        self.num_allocs += 1;
+
+        (*cur).next = ptr::null_mut();
+        (*cur).sz = mem::size_of::<T>() as NkSz;
+        (*cur).set_color(Color::Black);
+        (*cur).meta.set_typ(T::type_of() as u8);
+
+        (*last).next = cur;
+
+        let p = (cur as *mut u8).offset(mem::size_of::<NkAtom>() as isize) as *mut T;
+        (p, ret)
     }
 
     #[inline]
     pub fn size_of<T: Fissile>() -> usize {
-        mem::size_of::<T>() + mem::size_of::<NkAtom>() /*- mem::align_of::<T>()*/
+        mem::size_of::<T>() + mem::size_of::<NkAtom>()
     }
 
     #[inline]
-    pub unsafe fn fit<T: Fissile>(&mut self, num: usize) -> RelocInfo {
-        self.fit_bytes(Nuke::size_of::<T>() * num)
+    pub unsafe fn fit<T: Fissile>(&mut self, num: usize) -> RelocateToken {
+        self.make_room(Nuke::size_of::<T>() * num)
     }
 
     #[inline]
-    pub fn confirm_relocation(&mut self) {
-        unsafe { nk_confirm_relocation(self as *mut Nuke) }
+    #[deprecated]
+    pub unsafe fn fit_bytes(&mut self, num: usize) -> RelocateToken {
+        self.make_room(num)
     }
 
-    pub fn iter_mut(&mut self) -> NukeIter<'_> {
-        let fst = unsafe { nk_head(self as *mut Nuke) };
-        NukeIter { item: fst,
-                   _phantom: Default::default() }
+    pub fn head(&mut self) -> *mut NkAtom {
+        unsafe { (*self.fst()).next }
+    }
+
+    pub fn iter_mut(&mut self) -> NukeIterMut<'_> {
+        NukeIterMut { item: self.head(),
+                      _phantom: Default::default() }
+    }
+
+    pub fn iter(&self) -> NukeIter<'_> {
+        let item = unsafe {
+            (*(self.mem.as_ptr() as *const NkAtom)).next
+        };
+        NukeIter { item, _phantom: Default::default() }
+    }
+
+    pub fn reloc(&self) -> &PtrMap {
+        &self.reloc
+    }
+
+    pub fn num_atoms(&self) -> usize {
+        self.num_atoms
+    }
+
+    /// TODO: make `used`, `sz`, and `num_atoms` atomic.
+    ///       Then create a begin_profile(t, sz) method that spawns
+    ///       a thread which will save GCStats every t seconds until
+    ///       it reaches sz samples. stop_profile() -> Vec<GCStats>
+    ///       retrieves the stats.
+    pub fn stats(&self) -> GCStats {
+        GCStats {
+            usage: self.used,
+            size: self.sz,
+            num_objects: self.num_atoms,
+            total_allocs: self.num_allocs,
+            total_frees: self.num_frees,
+            #[cfg(not(target_arch = "wasm32"))]
+            time: SystemTime::now().duration_since(self.start_time)
+                                   .unwrap(),
+        }
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn nk_destroy_atom(p: *mut NkAtom) {
-    let ty = (*p).meta.typ() as usize;
-    DESTRUCTORS[ty]((*p).fastcast_mut::<u8>());
+struct RawDebugStr<'a>(&'a str);
+
+impl fmt::Debug for RawDebugStr<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.0)
+    }
 }
 
-pub struct NukeIter<'a> {
+struct DebugHexBytes<'a>(&'a [u8]);
+
+impl fmt::Debug for DebugHexBytes<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        if f.alternate() {
+            writeln!(f, "[")?;
+            write!(f, "    ")?;
+            for (i, c) in self.0.iter().enumerate() {
+                write!(f, "{:02X}", c)?;
+                if (i+1) % 30 == 0 && i+1 != self.0.len() {
+                    writeln!(f)?;
+                    write!(f, "    ")?;
+                } else {
+                    write!(f, " ")?;
+                }
+            }
+            writeln!(f)?;
+            write!(f, "]")?;
+        } else {
+            for c in self.0.iter() {
+                write!(f, "{:02X}", c)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for NkAtom {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let fmted = self.lisp_to_string(&SYM_DB);
+        f.debug_struct("NkAtom")
+         .field("type", &self.type_of())
+         .field("color", &self.color())
+         .field("sz", &self.sz)
+         .field("this", &(self as *const NkAtom))
+         .field("next", &self.next)
+         .field("obj", &RawDebugStr(&fmted))
+         .field("raw", &DebugHexBytes(self.raw()))
+         .finish()
+    }
+}
+
+impl fmt::Debug for Nuke {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("Nuke")
+         .field("sz", &self.sz)
+         .field("used", &self.used)
+         .field("mem", &self.iter().collect::<Vec<_>>())
+         .finish()
+    }
+}
+
+pub struct NukeIterMut<'a> {
     item: *mut NkAtom,
     _phantom: PhantomData<&'a NkAtom>
 }
 
-impl<'a> Iterator for NukeIter<'a> {
+impl<'a> Iterator for NukeIterMut<'a> {
     type Item = &'a mut NkAtom;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -423,10 +701,121 @@ impl<'a> Iterator for NukeIter<'a> {
     }
 }
 
-impl Drop for Nuke {
-    fn drop(&mut self) {
+pub struct NukeIter<'a> {
+    item: *const NkAtom,
+    _phantom: PhantomData<&'a NkAtom>
+}
+
+impl<'a> Iterator for NukeIter<'a> {
+    type Item = &'a NkAtom;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.item.is_null() { return None; }
         unsafe {
-            nk_destroy(self as *mut Nuke)
+            let item = &*self.item;
+            self.item = item.next;
+            Some(item)
         }
+    }
+}
+
+
+type NkSz = u16;
+
+const META_COLOR_MASK: u8 = 0x03;
+const META_TYPE_MASK: u8 = 0xfc;
+
+pub struct AtomMeta(u8);
+
+#[cfg(target_pointer_width = "32")]
+#[repr(C, align(4))]
+pub struct NkAtom {
+    next: *mut NkAtom,
+    sz: NkSz,
+    meta: AtomMeta,
+}
+
+#[cfg(target_pointer_width = "64")]
+#[repr(C, align(8))]
+pub struct NkAtom {
+    next: *mut NkAtom,
+    sz: NkSz,
+    meta: AtomMeta,
+}
+
+impl AtomMeta {
+    #[inline]
+    pub fn typ(&self) -> u8 {
+        (self.0 & META_TYPE_MASK) >> 2
+    }
+
+    #[inline]
+    pub fn color(&self) -> u8 {
+        self.0 & META_COLOR_MASK
+    }
+
+    #[inline]
+    pub fn set_color(&mut self, color: u8) {
+        debug_assert!(color < 4, "Bitfield content out of range");
+        self.0 = (self.0 & META_TYPE_MASK) | color;
+    }
+
+    #[inline]
+    pub fn set_typ(&mut self, typ: u8) {
+        debug_assert!(typ < 64, "Type number too large");
+        self.0 = (self.0 & META_COLOR_MASK) | (typ << 2);
+    }
+}
+
+#[derive(Debug)]
+struct PtrPair {
+    fst: *mut u8,
+    snd: *mut u8,
+}
+
+impl PartialEq for PtrPair {
+    fn eq(&self, other: &PtrPair) -> bool {
+        other.fst == self.fst
+    }
+}
+
+impl Eq for PtrPair {}
+
+impl PartialOrd for PtrPair {
+    fn partial_cmp(&self, other: &PtrPair) -> Option<Ordering> {
+        self.fst.partial_cmp(&other.fst)
+    }
+}
+
+impl Ord for PtrPair {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.fst.cmp(&other.fst)
+    }
+}
+
+#[derive(Debug)]
+pub struct PtrMap(Vec<PtrPair>);
+
+impl PtrMap {
+    pub fn get<T>(&self, orig: *const T) -> *const T {
+        let srch = PtrPair { fst: orig as *mut u8,
+                                snd: ptr::null_mut::<u8>() };
+        match self.0.binary_search(&srch) {
+            Ok(idx) => self.0[idx].snd as *const T,
+            Err(_) => orig
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len() as usize
+    }
+
+    pub fn push<A, B>(&mut self, from: *const A, to: *const B) {
+        self.0.push(PtrPair { fst: from as *mut u8,
+                                 snd: to as *mut u8 })
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }

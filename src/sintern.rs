@@ -1,6 +1,7 @@
 //! String Interner Data Structure
 
 use fnv::FnvHashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 
 use crate::sym_db::SymDB;
@@ -19,13 +20,25 @@ type StringID = SymIDInt;
  * A bijection between String IDs and Strings, avoids storing more than one copy
  * of the strings.
 */
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct SIntern<T>
     where T: Into<StringID> + From<StringID> + Default + Copy
 {
     start: StringID,
     strings: Vec<(*const u8, usize)>,
     lookup: HashMap<String, T>,
+}
+
+impl<T> Debug for SIntern<T>
+    where T: Into<StringID> + From<StringID> + Default + Copy + Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SIntern")
+         .field("start", &self.start)
+         // .field("strings", &self.strings)
+         .field("lookup", &self.lookup)
+         .finish_non_exhaustive()
+    }
 }
 
 impl<T> Default for SIntern<T>
