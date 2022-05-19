@@ -2,7 +2,7 @@ use spaik::r8vm::R8VM;
 use spaik::nkgc::SPV;
 use spaik::compile::Builtin;
 use colored::*;
-use std::fs;
+use std::{fs, fmt};
 use std::fs::File;
 use std::io::prelude::*;
 use std::error::Error;
@@ -33,7 +33,42 @@ impl TestResult {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[derive(Debug)]
+enum TestError {
+    WrongResult {
+        expect: String,
+        got: String,
+    },
+    RuntimeError {
+        origin: spaik::error::Error,
+    }
+}
+
+impl fmt::Display for TestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            TestError::RuntimeError { origin } => write!(f, "{origin}"),
+            TestError::WrongResult { expect, got } => {
+                write!(f, "{expect} != {got}")
+            }
+        }
+    }
+}
+
+impl Error for TestError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            TestError::RuntimeError { origin } => Some(origin),
+            _ => None
+        }
+    }
+
+    fn cause(&self) -> Option<&dyn Error> {
+        self.source()
+    }
+}
+
+fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let mut vm = R8VM::new();
     let tests_path = "./tests";
     let stdlib = vm.sym_id("stdlib");
@@ -42,7 +77,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     match vm.load(stdlib).and_then(|_| vm.load(test)) {
         Err(e) => {
             println!("{}", e.to_string(&vm));
-            exit(1);
+            return Err(e.into());
         }
         _ => ()
     }
@@ -58,7 +93,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Err(e) => {
                 println!("Error when loading {}", path.display());
                 println!("{}", e.to_string(&vm));
-                exit(1);
+                return Err(e.into());
             },
         }
     }
@@ -67,6 +102,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let test_fn_prefix = "tests/";
     let test_fns = vm.get_funcs_with_prefix(test_fn_prefix);
+    let mut err_results = vec![];
 
     println!("Running tests ...");
     for func in test_fns.iter() {
@@ -79,15 +115,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Some(TestResult::Pass) =>
                     println!("  - {} [{}]", name.bold(), "✓".green().bold()),
                 Some(TestResult::Fail { expect, got }) => {
+                    let expect = expect.to_string();
+                    let got = got.to_string();
+
                     println!("  - {} [{}]", name.red().bold(), "✘".red().bold());
                     println!("    Expected:");
-                    for line in expect.to_string().lines() {
+                    for line in expect.lines() {
                         println!("      {}", line);
                     }
                     println!("    Got:");
                     for line in got.to_string().lines() {
                         println!("      {}", line);
                     }
+
+                    err_results.push(TestError::WrongResult { expect, got });
                 }
                 _ => ()
             }
@@ -96,8 +137,30 @@ fn main() -> Result<(), Box<dyn Error>> {
                 for line in e.to_string(&vm).lines() {
                     println!("    {}", line)
                 }
+                err_results.push(TestError::RuntimeError { origin: e })
             },
         }
     }
-    Ok(())
+
+    Ok(err_results)
+}
+
+fn main() {
+    exit(match run_tests() {
+        Ok(_) => 0,
+        Err(_) => 1
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lisp_tests() {
+        let results = run_tests().unwrap();
+        for res in results {
+            panic!("{res}");
+        }
+    }
 }
