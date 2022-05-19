@@ -65,10 +65,6 @@ name = "scratch"
 path = "src/scratch.rs"
 
 [[bin]]
-name = "spaikc"
-path = "src/spaikc.rs"
-
-[[bin]]
 name = "wasm-repl"
 path = "src/bin/wasm-repl.rs"
 required-features = ["repl", "wasm"]
