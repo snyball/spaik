@@ -2,9 +2,11 @@
  * The Nuclear Allocator
  */
 
+use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet};
+use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
 use std::any::{TypeId, Any};
@@ -220,7 +222,7 @@ impl LispFmt for Object {
 }
 
 impl Object {
-    fn new<T: Fissile + 'static>(obj: T) -> Object {
+    pub fn new<T: Fissile + 'static>(obj: T) -> Object {
         let mem = vec![];
         Object {
             type_id: TypeId::of::<T>(),
@@ -249,30 +251,30 @@ impl Object {
         }
     }
 
-    fn cast<T: Fissile + 'static>(&self) -> Option<&T> {
+    pub fn cast<T: Fissile + 'static>(&self) -> Result<&T, Error> {
         let id = TypeId::of::<T>();
         if id != self.type_id {
-            return None;
+            // FIXME: Better error
+            return err!(SomeError, msg: String::from("Object cast error"))
         }
         let ptr = self.mem.as_ptr();
-        Some(unsafe {
+        Ok(unsafe {
             &*(ptr as *const T)
         })
     }
 
-    fn fastcast_mut<T: Fissile + 'static>(&mut self) -> &mut T {
+    pub unsafe fn fastcast_mut<T: Fissile + 'static>(&mut self) -> &mut T {
         let ptr = self.mem.as_mut_ptr();
-        unsafe {
-            &mut*(ptr as *mut T)
-        }
+        &mut*(ptr as *mut T)
     }
 
-    fn cast_mut<T: Fissile + 'static>(&mut self) -> Option<&mut T> {
+    pub fn cast_mut<T: Fissile + 'static>(&mut self) -> Result<&mut T, Error> {
         let id = TypeId::of::<T>();
         if id != self.type_id {
-            return None;
+            // FIXME: Better error
+            return err!(SomeError, msg: String::from("Object cast error"))
         }
-        Some(self.fastcast_mut())
+        Ok(unsafe { self.fastcast_mut() })
     }
 }
 
