@@ -7,7 +7,8 @@ use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet};
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
-use std::mem;
+use std::any::{TypeId, Any};
+use std::{mem, any};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
@@ -185,6 +186,118 @@ macro_rules! fissile_types {
     };
 }
 
+trait Fuse: Fissile {
+}
+
+#[derive(Clone)]
+pub struct Object {
+    type_id: TypeId,
+    trace_fnp: unsafe fn(*const u8, gray: &mut Vec<*mut NkAtom>),
+    update_ptrs_fnp: unsafe fn(*mut u8, reloc: &PtrMap),
+    destructor_fnp: unsafe fn(*mut u8),
+    lisp_fmt_fnp: unsafe fn(*const u8, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    debug_fmt_fnp: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    mem: Vec<u8>,
+}
+
+impl Debug for Object {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Object {{ ")?;
+        unsafe {
+            (self.debug_fmt_fnp)(self.mem.as_ptr(), f)?;
+        }
+        write!(f, " }}")?;
+        Ok(())
+    }
+}
+
+impl LispFmt for Object {
+    fn lisp_fmt(&self, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            (self.lisp_fmt_fnp)(self.mem.as_ptr(), db, visited, f)
+        }
+    }
+}
+
+impl Object {
+    fn new<T: Fissile + 'static>(obj: T) -> Object {
+        let mem = vec![];
+        Object {
+            type_id: TypeId::of::<T>(),
+            trace_fnp: |obj, gray| {
+                let obj = unsafe { &*( obj as *const T ) };
+                obj.trace(gray)
+            },
+            update_ptrs_fnp: |obj, reloc| {
+                let obj = unsafe { &mut*( obj as *mut T ) };
+                obj.update_ptrs(reloc)
+            },
+            destructor_fnp: |obj| {
+                unsafe {
+                    drop_in_place(obj as *mut T)
+                }
+            },
+            lisp_fmt_fnp: |obj, db, visited, f| -> fmt::Result {
+                let obj = unsafe { &mut*( obj as *mut T ) };
+                obj.lisp_fmt(db, visited, f)
+            },
+            debug_fmt_fnp: |obj, f| -> fmt::Result {
+                let obj = unsafe { &mut*( obj as *mut T ) };
+                obj.fmt(f)
+            },
+            mem
+        }
+    }
+
+    fn cast<T: Fissile + 'static>(&self) -> Option<&T> {
+        let id = TypeId::of::<T>();
+        if id != self.type_id {
+            return None;
+        }
+        let ptr = self.mem.as_ptr();
+        Some(unsafe {
+            &*(ptr as *const T)
+        })
+    }
+
+    fn fastcast_mut<T: Fissile + 'static>(&mut self) -> &mut T {
+        let ptr = self.mem.as_mut_ptr();
+        unsafe {
+            &mut*(ptr as *mut T)
+        }
+    }
+
+    fn cast_mut<T: Fissile + 'static>(&mut self) -> Option<&mut T> {
+        let id = TypeId::of::<T>();
+        if id != self.type_id {
+            return None;
+        }
+        Some(self.fastcast_mut())
+    }
+}
+
+impl Traceable for Object {
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+        unsafe {
+            (self.trace_fnp)(self.mem.as_ptr(), gray);
+        }
+    }
+
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
+        unsafe {
+            (self.update_ptrs_fnp)(self.mem.as_mut_ptr(), reloc);
+        }
+    }
+}
+
+impl Drop for Object {
+    fn drop(&mut self) {
+        unsafe {
+            (self.destructor_fnp)(self.mem.as_mut_ptr());
+        }
+    }
+}
+
 fissile_types! {
     (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
     (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
@@ -193,6 +306,7 @@ fissile_types! {
     (PV, Builtin::Ref.sym(), crate::nkgc::PV),
     (Vector, Builtin::Vector.sym(), Vec<PV>),
     (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),
+    (Struct, Builtin::Struct.sym(), crate::nuke::Object),
     (Subroutine, Builtin::Subr.sym(), Box<dyn crate::subrs::Subr>)
 }
 

@@ -186,6 +186,8 @@ builtins! {
     (Quasi, "sys::quasi"),
     (Unquote, "sys::unquote"),
     (USplice, "sys::usplice"),
+    (Obj, "obj"),
+    (Struct, "struct"),
     (Loop, "loop"),
     (Cdr, "cdr"),
     (Car, "car"),
