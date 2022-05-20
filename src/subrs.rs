@@ -1,7 +1,7 @@
 //! Rust Subroutines for SPAIK LISP
 
 use crate::r8vm::{ArgSpec, R8VM};
-use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena};
+use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::nuke::*;
 use crate::fmt::{LispFmt, VisitSet};
@@ -176,10 +176,41 @@ impl IntoLisp for Box<dyn Subr> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TestObj {
+    x: f32,
+    y: f32,
+}
+
+impl Traceable for TestObj {
+    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
+}
+
+impl LispFmt for TestObj {
+    fn lisp_fmt(&self,
+                _db: &dyn SymDB,
+                _visited: &mut VisitSet,
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Fissile for TestObj {
+    fn type_of() -> NkT {
+        NkT::Struct
+    }
+}
+
 #[inline]
-fn my_function(x: i32, y: i32) -> i32 {
+fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
     println!("Inside my_function: {} {}", x, y);
     let res = x + y.pow(2);
+    println!("obj1: {:?}", obj);
+    println!("mutating obj2: {:?} ...", obj2);
+    obj2.x += obj.x;
+    obj2.y += obj.y;
+    println!("obj2: {:?}", obj2);
     println!("res: {}", res);
     res
 }
@@ -197,11 +228,13 @@ impl my_function_obj {
 
 unsafe impl Subr for my_function_obj {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-        const SPEC: ArgSpec = ArgSpec::normal(2);
+        const SPEC: ArgSpec = ArgSpec::normal(4);
         SPEC.check(Default::default(), args.len() as u16)?;
         let x = args[0].try_into().map_err(|e: Error| e.argn(0))?;
         let y = args[1].try_into().map_err(|e: Error| e.argn(1))?;
-        my_function(x, y).into_pv(&mut vm.mem)
+        let ObjRef(z) = (&args[2]).try_into().map_err(|e: Error| e.argn(2))?;
+        let ObjRef(w) = (&args[3]).try_into().map_err(|e: Error| e.argn(3))?;
+        my_function(x, y, z, w).into_pv(&mut vm.mem)
     }
 
     fn name(&self) -> &'static str { "my-function" }
