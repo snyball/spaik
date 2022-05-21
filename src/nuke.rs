@@ -478,7 +478,7 @@ impl Nuke {
 
         assert!(min_block_sz > 0, "Minimum allocation size cannot be 0.");
         assert!(sz >= 128, "Nuke too small");
-        assert!(load_factor >= 0.5 && load_factor < 1.0,
+        assert!((0.5..1.0).contains(&load_factor),
                "Load factor outside of [0.5, 1.0) range.");
 
         let mut nk = Nuke {
@@ -528,7 +528,7 @@ impl Nuke {
                 self.reloc.push(node, npos);
                 memcpy(npos, node, sz);
             }
-            start = align(start.offset(sz as isize), ALIGNMENT);
+            start = align(start.add(sz), ALIGNMENT);
             if next_node.is_null() {
                 break;
             } else {
@@ -577,7 +577,7 @@ impl Nuke {
             }
 
             (*npos).set_color(Color::White);
-            start = align(start.offset(sz as isize), ALIGNMENT);
+            start = align(start.add(sz), ALIGNMENT);
 
             if next_node.is_null() {
                 (*npos).next = ptr::null_mut();
@@ -605,6 +605,7 @@ impl Nuke {
         let mut num_atoms = 0;
 
         let mut new_vec: Vec<u8> = Vec::with_capacity(new_sz);
+        #[allow(clippy::uninit_vec)]
         new_vec.set_len(new_sz);
         let mut mem = new_vec.as_mut_ptr();
         let mut new_node = ptr::null_mut();
@@ -614,7 +615,7 @@ impl Nuke {
             memcpy(mem, node, sz);
             self.reloc.push(node, mem);
             new_node = mem as *mut NkAtom;
-            mem = align(mem.offset(sz as isize), ALIGNMENT);
+            mem = align(mem.add(sz), ALIGNMENT);
             (*new_node).next = mem as *mut NkAtom;
             node = (*node).next;
 
@@ -653,21 +654,21 @@ impl Nuke {
 
     pub fn offset<T>(&mut self, n: usize) -> *mut T {
         unsafe {
-            self.mem.as_mut_ptr().offset(n as isize) as *mut T
+            self.mem.as_mut_ptr().add(n) as *mut T
         }
     }
 
     #[must_use = "Relocation must be confirmed"]
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
         let full_sz = mem::size_of::<T>() + mem::size_of::<NkAtom>();
-        let ret = (self.free.offset(full_sz as isize) >= self.offset(self.sz))
+        let ret = (self.free.add(full_sz) >= self.offset(self.sz))
                   .then(|| self.make_room(full_sz));
 
         let cur = self.free as *mut NkAtom;
         let last = self.last;
         self.last = cur;
 
-        self.free = (cur as *mut u8).offset(full_sz as isize);
+        self.free = (cur as *mut u8).add(full_sz);
         self.used += full_sz;
         self.num_atoms += 1;
         self.num_allocs += 1;
@@ -679,7 +680,7 @@ impl Nuke {
 
         (*last).next = cur;
 
-        let p = (cur as *mut u8).offset(mem::size_of::<NkAtom>() as isize) as *mut T;
+        let p = (cur as *mut u8).add(mem::size_of::<NkAtom>()) as *mut T;
         (p, ret)
     }
 

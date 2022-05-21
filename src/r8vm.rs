@@ -259,11 +259,11 @@ impl SysFn {
     }
 }
 
-pub fn mk_sysfn_lookup<'a>(funcs: &'a [SysFn]) -> HashMap<&'a str, &'a SysFn> {
+pub fn mk_sysfn_lookup(funcs: &[SysFn]) -> HashMap<&str, &SysFn> {
     funcs.iter().map(|f| (f.name, f)).collect()
 }
 
-pub fn mk_sysfn_idx_lookup<'a>(funcs: &'a [SysFn]) -> HashMap<&'a str, i64> {
+pub fn mk_sysfn_idx_lookup(funcs: &[SysFn]) -> HashMap<&str, i64> {
     funcs.iter()
          .enumerate()
          .map(|(i, f)| (f.name, i as i64))
@@ -439,7 +439,7 @@ defsysfn! {
     }
 
     use vm fn make_symbol(a: Any) -> Sym {
-        Ok(vm.mem.symdb.put(tostring(vm, a)).into())
+        Ok(vm.mem.symdb.put(tostring(vm, a)))
     }
 
     use vm fn eval(ast: Any) -> Any {
@@ -463,7 +463,7 @@ defsysfn! {
     use vm fn macroexpand(ast: Any) -> Any {
         let mut ast = unsafe { pv_to_value(ast, &Source::none()) };
         let v = vm.macroexpand(&mut ast)?;
-        vm.push_ast(&v);
+        vm.push_ast(v);
         vm.mem.pop()
     }
 
@@ -829,14 +829,14 @@ impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G, H);
 unsafe impl<'a> Send for R8VM {}
 
 impl R8VM {
-    pub fn new<'b>() -> R8VM {
+    pub fn new() -> R8VM {
         let mut vm = R8VM {
             pmem: vec![r8c::Op::HCF()],
             ..Default::default()
         };
 
         for (i, sysfn) in SYSTEM_FUNCTIONS.iter().enumerate() {
-            let sym = vm.mem.symdb.put(sysfn.name.replace("_", "-"));
+            let sym = vm.mem.symdb.put(sysfn.name.replace('_', "-"));
             vm.sysfns.insert(sym.id, i);
         }
 
@@ -934,11 +934,9 @@ impl R8VM {
             *v = ast?;
             return self.eval_macroexpand(v);
         }
-        if let Some(bt) = v.bt_op() {
-            if let Builtin::EvalWhen = bt {
-                *v = R8Compiler::new(self).bt_eval_when(v)?;
-                return Ok(v);
-            } 
+        if let Some(Builtin::EvalWhen) = v.bt_op() {
+            *v = R8Compiler::new(self).bt_eval_when(v)?;
+            return Ok(v);
         }
         for arg in v.args_mut() {
             self.eval_macroexpand(arg)?;
@@ -1195,7 +1193,7 @@ impl R8VM {
         for (name, func) in self.funcs.iter() {
             pos_to_fn.push((func.pos, *name));
         }
-        pos_to_fn.sort();
+        pos_to_fn.sort_unstable();
 
         let get_name = |pos| {
             pos_to_fn[match pos_to_fn.binary_search_by(|s| s.0.cmp(&pos)) {
@@ -1368,7 +1366,7 @@ impl R8VM {
                     };
                     let vec = self.mem.pop()?;
                     let elem = with_ref!(vec, Vector(v) => {
-                        v.get(idx).ok_or_else(|| error!(IndexError, idx))
+                        v.get(idx).ok_or(error!(IndexError, idx))
                     }).map_err(|e| e.op(op))?;
                     self.mem.push(*elem);
                 }
@@ -1430,7 +1428,7 @@ impl R8VM {
                                                  .collect();
                     let name = SymID { id: *sym };
                     let args = self.funcs
-                                   .get(&sym)
+                                   .get(sym)
                                    .ok_or(error_src!(Source::none(),
                                                      UndefinedFunction,
                                                      name))?.args;

@@ -158,7 +158,7 @@ impl Parser<'_, '_> {
                 (&mut it).take(j - i).for_each(drop);
                 (i+1, j)
             };
-            match &text[..] {
+            match text {
                 "(" => {
                     let range = inner();
                     push(self.parse_rec(range)?, &mut mods)
@@ -166,7 +166,7 @@ impl Parser<'_, '_> {
                 _ => {
                     if let Some(m) = sexpr_modifier(text) {
                         let symdb: &mut dyn SymDB = &mut self.vm.mem;
-                        let sym = Value::from_sym(symdb.put_sym(m).into(),
+                        let sym = Value::from_sym(symdb.put_sym(m),
                                                   Source::new(line, col));
                         let tail = Value::new_tail(Box::new(sym));
                         modifier!(src.clone(), tail);
@@ -335,7 +335,7 @@ impl TokRange {
     }
 
     #[inline]
-    pub fn into_tok<'a>(&self, line: u32, col: u32, src: &'a str) -> Token<'a> {
+    pub fn make_tok<'a>(&self, line: u32, col: u32, src: &'a str) -> Token<'a> {
         Token { line, col, text: &src[self.beg..self.end] }
     }
 
@@ -404,7 +404,7 @@ pub fn tokenize<'a>(text: &'a str, frags: &Fragment) -> PResult<Vec<Token<'a>>> 
                                       start: line_info };
     let mut add_tok = |start: &LineTracker, acc: &TokRange| if !acc.is_empty() {
         let (line, col) = start.get();
-        toks.push(acc.into_tok(line, col, text));
+        toks.push(acc.make_tok(line, col, text));
     };
 
     let mut it = text.char_indices().peekable();
@@ -488,13 +488,13 @@ pub fn tokenize<'a>(text: &'a str, frags: &Fragment) -> PResult<Vec<Token<'a>>> 
                             // Given `-->` is an operator, the input ended with
                             // something like `this-->`, which will be
                             // interpreted as [(this), (-->)]
-                            add_tok(&start, &acc);
+                            add_tok(start, acc);
                             add_tok(&op_start, &op_span);
                             break Done
                         } else {
                             // Given `-->` is an operator, the input ended with
                             // something like `this--`, which will be a symbol.
-                            add_tok(&start, &acc.join(&op_span));
+                            add_tok(start, &acc.join(&op_span));
                             break Done
                         }
                     }

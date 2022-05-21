@@ -58,6 +58,10 @@ impl Env {
         self.vars.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn empty() -> Env {
         Env::new(vec![])
     }
@@ -268,7 +272,7 @@ pub fn arg_parse(args: &Value) -> Result<(Vec<SymID>, ArgSpec), Error> {
     let mut modifier = None;
     let mut had_opt = false;
 
-    while let Some(arg) = it.next() {
+    for arg in it.by_ref() {
         if let Value { kind: ValueKind::Symbol(sym), .. } = arg {
             use Builtin::*;
             match Builtin::from_sym(*sym) {
@@ -1511,7 +1515,7 @@ impl<'a> R8Compiler<'a> {
             self.compile_app(ret, op, &code)?;
         } else if code.is_atom() {
             if ret {
-                return self.compile_atom(&code);
+                return self.compile_atom(code);
             }
         } else if let Some(lambda_bind) = code.bt_lambda_bind() {
             self.cc_let(ret, lambda_bind?)?;

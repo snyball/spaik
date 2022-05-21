@@ -181,9 +181,9 @@ impl Value {
         let src = self.src.clone();
         match it.next() {
             Some(Value { kind: ValueKind::Symbol(var), .. }) => {
-                let init = it.next().ok_or_else(|| {
+                let init = it.next().ok_or(
                     error_src!(src, ArgError, op, expect, got_num: 1)
-                })?;
+                )?;
                 Ok(Define::Var(*var, init))
             }
             Some(fn_def @ Value { kind: ValueKind::Cons(..), .. }) => {
@@ -437,11 +437,7 @@ impl Value {
     }
 
     pub fn sapp(&self) -> Option<(SymID, impl Iterator<Item = &Value>)> {
-        if let Some(sym) = self.op() {
-            Some((sym, self.args()))
-        } else {
-            None
-        }
+        self.op().map(|sym| (sym, self.args()))
     }
 
     pub fn app(&self) -> Option<(&Value, impl Iterator<Item = &Value>)> {

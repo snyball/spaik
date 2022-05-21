@@ -88,9 +88,9 @@ impl Import {
     pub fn new(path: &[SymID], imports: &[SymID]) -> Import {
         Import {
             path_len: path.len().try_into().unwrap(),
-            path: path.iter().copied().collect(),
+            path: path.to_vec(),
             syms_len: imports.len().try_into().unwrap(),
-            syms: imports.iter().copied().collect()
+            syms: imports.to_vec()
         }
     }
 }
@@ -171,9 +171,9 @@ pub struct LispModule {
 }
 
 impl LispModule {
-    pub fn new<ASM>(pmem_in: &Vec<ASM>,
+    pub fn new<ASM>(pmem_in: &[ASM],
                     symtbl_in: &SIntern<SymID>,
-                    consts: &Vec<NkSum>,
+                    consts: &[NkSum],
                     imports: Vec<Import>,
                     exports: Vec<Export>) -> LispModule
         where ASM: ASMOp
@@ -187,7 +187,7 @@ impl LispModule {
             let bytes = name.as_bytes();
             symtbl.push(SymEntry { name: Vec::from(bytes),
                                    name_len: bytes.len().try_into().unwrap(),
-                                   sym: sym.into() });
+                                   sym });
         }
         let mut strings = vec![];
         strings.extend(consts.iter().map(|c| match c {

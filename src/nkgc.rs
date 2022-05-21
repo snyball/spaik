@@ -162,7 +162,7 @@ impl LispFmt for String {
 
 pub type SymIDInt = i32;
 
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 pub struct SymID {
     pub id: SymIDInt,
 }
@@ -170,12 +170,6 @@ pub struct SymID {
 impl fmt::Debug for SymID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SymID({})", self.id)
-    }
-}
-
-impl Default for SymID {
-    fn default() -> SymID {
-        SymID { id: 0 }
     }
 }
 
@@ -294,7 +288,8 @@ macro_rules! cmp_op {
 macro_rules! with_no_reorder {
     ($mem:expr, $it:block) => {{
         $mem.forbid_reordering();
-        let res = (|| $it)();
+        let mut f = || $it;
+        let res = f();
         $mem.allow_reordering();
         res
     }};
@@ -568,6 +563,7 @@ impl Hash for PV {
         match *self {
             PV::Ref(x) => match unsafe { (*x).match_ref() } {
                 NkRef::String(s) => s.hash(state),
+                // FIXME:
                 x => unimplemented!("No hash implementation for: {:?}", x),
             },
             PV::Sym(x) => x.hash(state),
@@ -575,7 +571,7 @@ impl Hash for PV {
             PV::UInt(x) => x.hash(state),
             PV::Bool(x) => x.hash(state),
             PV::Nil => 0.hash(state),
-            x => unimplemented!("No hash implementation for: {:?}", x),
+            PV::Real(x) => x.to_ne_bytes().hash(state),
         }
     }
 }
@@ -791,7 +787,7 @@ impl<'a> Iterator for PVRefIter<'a> {
             PV::Nil => return None,
             PV::Ref(r) => match_gcell!(*r, {
                 Cons(Cons { car, cdr }) => {
-                    self.item = &cdr;
+                    self.item = cdr;
                     car
                 },
                 String(_) => {
@@ -946,7 +942,7 @@ const GC_SLEEP_MEM_BYTES: i32 = 1024 * 10;
 fn size_of_ast(v: &Value) -> usize {
     match &v.kind {
         ValueKind::Cons(car, cdr) =>
-            size_of_ast(&car) + size_of_ast(&cdr) + Nuke::size_of::<Cons>(),
+            size_of_ast(car) + size_of_ast(cdr) + Nuke::size_of::<Cons>(),
         ValueKind::String(_) => Nuke::size_of::<String>(),
         _ => 0
     }
@@ -1122,7 +1118,7 @@ impl Arena {
         self.stack.push(NkAtom::make_ref(orig_cell));
     }
 
-    pub fn make_extref<'b, 'a: 'b>(&'a mut self, v: PV) -> SPV {
+    pub fn make_extref(&mut self, v: PV) -> SPV {
         let id = self.extref_id_cnt;
         self.extref_id_cnt += 1;
         self.extref.insert(id, v);
@@ -1204,8 +1200,8 @@ impl Arena {
             ValueKind::Cons(car, cdr) => {
                 let gcell = self.alloc::<Cons>();
                 self.tag(NkAtom::make_raw_ref(gcell), car.src.clone());
-                let car = self.alloc_ast(&car);
-                let cdr = self.alloc_ast(&cdr);
+                let car = self.alloc_ast(car);
+                let cdr = self.alloc_ast(cdr);
                 ptr::write(gcell, Cons { car, cdr });
                 NkAtom::make_ref(gcell)
             }
