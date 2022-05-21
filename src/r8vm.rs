@@ -18,7 +18,7 @@ use crate::{
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
-use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
+use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex, ops::SubAssign};
 
 chasm_def! {
     r8c:
@@ -751,6 +751,78 @@ impl SymDB for R8VM {
         self.mem.symdb.put_ref(name)
     }
 }
+
+pub trait Args {
+    fn push(self, mem: &mut Arena) -> Result<(), Error>;
+    fn nargs(&self) -> usize;
+}
+
+impl Args for &[PV] {
+    fn push(self, mem: &mut Arena) -> Result<(), Error> {
+        for arg in self.iter().copied() {
+            mem.push(arg);
+        }
+        Ok(())
+    }
+
+    fn nargs(&self) -> usize {
+        self.len()
+    }
+}
+
+impl<const N: usize> Args for &[PV; N] {
+    fn push(self, mem: &mut Arena) -> Result<(), Error> {
+        for arg in self.iter().copied() {
+            mem.push(arg);
+        }
+        Ok(())
+    }
+
+    fn nargs(&self) -> usize {
+        self.len()
+    }
+}
+
+macro_rules! impl_args_tuple {
+    ($($arg:ident),*) => {
+        impl<$($arg),*> Args for ($($arg),*,)
+            where $($arg: IntoLisp),*
+        {
+            fn push(self, mem: &mut Arena) -> Result<(), Error> {
+                #[allow(non_snake_case)]
+                let ($($arg),*,) = self;
+                $(
+                    #[allow(non_snake_case)]
+                    let $arg = $arg.into_pv(mem)?;
+                    mem.push($arg);
+                )*
+                Ok(())
+            }
+
+            fn nargs(&self) -> usize {
+                count_args!($($arg),*)
+            }
+        }
+    };
+}
+
+impl Args for () {
+    fn push(self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
+    fn nargs(&self) -> usize { 0 }
+}
+
+impl_args_tuple!(X);
+impl_args_tuple!(X, Y);
+impl_args_tuple!(X, Y, Z);
+impl_args_tuple!(X, Y, Z, W);
+impl_args_tuple!(X, Y, Z, W, A);
+impl_args_tuple!(X, Y, Z, W, A, B);
+impl_args_tuple!(X, Y, Z, W, A, B, C);
+impl_args_tuple!(X, Y, Z, W, A, B, C, D);
+impl_args_tuple!(X, Y, Z, W, A, B, C, D, E);
+impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F);
+impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G);
+impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G, H);
 
 unsafe impl<'a> Send for R8VM {}
 
@@ -1563,9 +1635,17 @@ impl R8VM {
      * - `sym` : Symbol mapped to the function, see Arena::sym.
      * - `args` : Arguments that should be passed.
      */
-    pub fn call(&mut self, sym: SymID, args: &[PV]) -> Result<SPV, Error> {
-        let pv = self.raw_call(sym, args)?;
-        Ok(self.mem.make_extref(pv))
+    pub fn call<A>(&mut self, sym: SymID, args: A) -> Result<PV, Error>
+        where A: Args
+    {
+        Ok(vm_call_with!(self, sym, args.nargs(), { args.push(&mut self.mem)? }))
+    }
+
+    pub fn call_spv<A>(&mut self, sym: SymID, args: A) -> Result<SPV, Error>
+        where A: Args
+    {
+        let res = self.call(sym, args)?;
+        Ok(self.mem.make_extref(res))
     }
 
     pub fn raw_call(&mut self, sym: SymID, args: &[PV]) -> Result<PV, Error> {
@@ -1574,14 +1654,6 @@ impl R8VM {
                 self.mem.push(*arg);
             }
         }))
-    }
-
-    pub fn call_s(&mut self, name: &str, args: &[PV]) -> Result<SPV, Error> {
-        let sym = self.mem.symdb
-                          .get(name)
-                          .ok_or_else(|| error!(UndefinedFunctionString,
-                                                name: name.to_string()))?;
-        self.call(sym, args)
     }
 
     pub fn print_stack(&self) {

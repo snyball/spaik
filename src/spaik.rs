@@ -1,4 +1,8 @@
-use crate::{r8vm::R8VM, subrs::{Subr, IntoLisp, RefIntoLisp, Ignore}, nkgc::{SymID, SPV, PV}, error::Error, fmt::LispFmt, sym_db::SymDB, compile::Builtin};
+use crate::r8vm::{R8VM, Args};
+use crate::sym_db::SymDB;
+use crate::error::Error;
+use crate::nkgc::{SymID, PV};
+use crate::subrs::{Subr, IntoLisp, RefIntoLisp, Ignore};
 
 /// A Spaik Context
 pub struct Spaik {
@@ -63,18 +67,13 @@ impl Spaik {
         self.vm.load(lib)
     }
 
-    pub fn call<V, R>(&mut self,
-                      sym: V,
-                      args: &[&dyn RefIntoLisp])
-                      -> Result<R, Error>
+    pub fn call<V, A, R>(&mut self, sym: V, args: A) -> Result<R, Error>
         where V: VMInto<SymID>,
-              R: TryFrom<PV, Error = Error>
+              A: Args,
+              R: TryFrom<PV, Error = Error>,
     {
         let sym = sym.vm_into(&mut self.vm);
-        let args_pv = args.iter()
-                          .map(|v| v.ref_into_pv(&mut self.vm.mem))
-                          .collect::<Result<Vec<PV>, _>>()?;
-        self.vm.raw_call(sym, &args_pv[..]).and_then(|pv| {
+        self.vm.call(sym, args).and_then(|pv| {
             let r = pv.try_into()?;
             Ok(r)
         })
@@ -113,7 +112,7 @@ mod tests {
         let y = 2;
         let z = 3;
         let w = 4;
-        let result: i32 = vm.call("plus", args![x, y, z, w, 5]).unwrap();
+        let result: i32 = vm.call("plus", (x, y, z, w, 5)).unwrap();
         assert_eq!(result, 15);
     }
 }
