@@ -135,7 +135,7 @@ impl SymDB for SIntern<SymID> {
         Cow::Borrowed(self.name(sym).unwrap())
     }
 
-    fn put(&mut self, name: &str) -> SymID {
+    fn put_sym(&mut self, name: &str) -> SymID {
         self.put(String::from(name))
     }
 }

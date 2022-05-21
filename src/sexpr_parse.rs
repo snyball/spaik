@@ -166,7 +166,7 @@ impl Parser<'_, '_> {
                 _ => {
                     if let Some(m) = sexpr_modifier(text) {
                         let symdb: &mut dyn SymDB = &mut self.vm.mem;
-                        let sym = Value::from_sym(symdb.put(m).into(),
+                        let sym = Value::from_sym(symdb.put_sym(m).into(),
                                                   Source::new(line, col));
                         let tail = Value::new_tail(Box::new(sym));
                         modifier!(src.clone(), tail);

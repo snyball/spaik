@@ -1,10 +1,10 @@
 #![allow(unused_imports)]
 #[macro_use]
 extern crate spaik;
-use spaik::perr::*;
 use spaik::r8vm::*;
 use spaik::nkgc::{SymID, PV};
 use spaik::error::Error;
+use spaik::spaik::Spaik;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::File;

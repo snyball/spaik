@@ -13,12 +13,29 @@ use std::ptr;
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to do memory allocation.
 pub trait IntoLisp: Sized {
-    fn into_spv<'a>(self, mem: &mut Arena) -> Result<SPV, Error> {
+    fn into_spv(self, mem: &mut Arena) -> Result<SPV, Error> {
         let pv = self.into_pv(mem)?;
         Ok(mem.make_extref(pv))
     }
 
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error>;
+}
+
+pub trait RefIntoLisp {
+    fn ref_into_spv(&self, mem: &mut Arena) -> Result<SPV, Error> {
+        let pv = self.ref_into_pv(mem)?;
+        Ok(mem.make_extref(pv))
+    }
+
+    fn ref_into_pv(&self, mem: &mut Arena) -> Result<PV, Error>;
+}
+
+impl<T> RefIntoLisp for T
+    where T: IntoLisp + Clone
+{
+    fn ref_into_pv(&self, mem: &mut Arena) -> Result<PV, Error> {
+        self.clone().into_pv(mem)
+    }
 }
 
 macro_rules! pv_convert {
@@ -58,6 +75,46 @@ pv_convert!(Int,
 
 pv_convert!(Real,
             f32);
+
+impl IntoLisp for () {
+    fn into_pv(self, _: &mut Arena) -> Result<PV, Error> {
+        Ok(PV::Nil)
+    }
+}
+
+impl TryFrom<PV> for () {
+    type Error = Error;
+    fn try_from(v: PV) -> Result<(), Self::Error> {
+        if let PV::Nil = v {
+            Ok(())
+        } else {
+            Err(Error {
+                ty: ErrorKind::TypeError {
+                    expect: PV::Nil.type_of(),
+                    got: v.type_of(),
+                    op: Default::default(),
+                    argn: 0
+                },
+                src: None
+            })
+        }
+    }
+}
+
+pub struct Ignore;
+
+impl IntoLisp for Ignore {
+    fn into_pv(self, _: &mut Arena) -> Result<PV, Error> {
+        Ok(PV::Nil)
+    }
+}
+
+impl TryFrom<PV> for Ignore {
+    type Error = Error;
+    fn try_from(v: PV) -> Result<Ignore, Self::Error> {
+        Ok(Ignore)
+    }
+}
 
 impl IntoLisp for bool {
     fn into_pv(self, _: &mut Arena) -> Result<PV, Error> {

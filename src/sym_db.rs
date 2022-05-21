@@ -7,7 +7,7 @@ use std::borrow::Cow;
 pub trait SymDB {
     fn name(&self, sym: SymID) -> Cow<str>;
 
-    fn put(&mut self, name: &str) -> SymID;
+    fn put_sym(&mut self, name: &str) -> SymID;
 }
 
 #[derive(Default, Clone, Debug)]
@@ -21,7 +21,7 @@ impl SymDB for StaticSymDB {
         }
     }
 
-    fn put(&mut self, name: &str) -> SymID {
+    fn put_sym(&mut self, name: &str) -> SymID {
         panic!("Attempted to create symbol `{}' in FmtSymID", name);
     }
 }

@@ -975,7 +975,7 @@ impl SymDB for Arena {
         (&self.symdb as &dyn SymDB).name(sym)
     }
 
-    fn put(&mut self, name: &str) -> SymID {
+    fn put_sym(&mut self, name: &str) -> SymID {
         self.symdb.put_ref(name)
     }
 }
