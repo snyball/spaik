@@ -538,6 +538,7 @@ impl PV {
                     u.car.equalp(v.car) && u.cdr.equalp(v.cdr),
                 (NkRef::PV(u), NkRef::PV(v)) => u.equalp(*v),
                 (NkRef::Vector(u), NkRef::Vector(v)) =>
+                    u.len() == v.len() &&
                     u.iter().zip(v.iter()).all(|(u, v)| u.equalp(*v)),
                 _ => u == v,
             },
