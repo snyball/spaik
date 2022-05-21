@@ -12,6 +12,7 @@ use crate::fmt::LispFmt;
 use std::path::Path;
 use colored::*;
 
+#[allow(unused)]
 fn make_intro() -> String {
     format!("{read} {arrow} {eval} {arrow} {print} {arrow} {loop}
  ┗━━━━━━━━━━━━━━━━━━━━━━┛\n",

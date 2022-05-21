@@ -8,7 +8,7 @@ use crate::{
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler},
     error::{Error, ErrorKind, Source},
-    fmt::{LispFmt, VisitSet},
+    fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
     nuke::*,
     nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
@@ -18,7 +18,7 @@ use crate::{
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
-use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex, ops::SubAssign};
+use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
 
 chasm_def! {
     r8c:
@@ -100,12 +100,14 @@ chasm_def! {
     MUL()
 }
 
+#[allow(unused_macros)]
 macro_rules! vmprint {
     ($vm:expr, $($fmt:expr),+) => {
         $vm.print_fmt(format_args!($($fmt),+)).unwrap()
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! vmprintln {
     ($vm:expr, $($fmt:expr),+) => {
         $vm.print_fmt(format_args!($($fmt),+)).unwrap();
@@ -1069,7 +1071,6 @@ impl R8VM {
     }
 
     pub unsafe fn pull_ast_norec(&self, v: PV, src: &Source) -> Value {
-        let mut s = self.stdout.lock().unwrap();
         #[derive(Debug)]
         enum Thing<'a> {
             Defer(PV, &'a Source),

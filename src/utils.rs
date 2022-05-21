@@ -26,11 +26,13 @@ const STACK_SZ: usize = 32;
 
 // Helpful when needing to store a stack on *the* stack.
 #[derive(Default)]
+#[allow(unused)]
 pub struct Stack<T> {
     elems: [T; STACK_SZ],
     top: u8,
 }
 
+#[allow(unused)]
 impl<T: Copy + Default> Stack<T> {
     pub fn new() -> Stack<T> {
         Default::default()
@@ -86,6 +88,7 @@ macro_rules! from_many {
     }
 }
 
+#[allow(unused)]
 pub fn is_sorted<T>(xs: &[T]) -> bool
 where T: Ord {
     xs.iter()

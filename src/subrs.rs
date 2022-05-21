@@ -111,7 +111,7 @@ impl IntoLisp for Ignore {
 
 impl TryFrom<PV> for Ignore {
     type Error = Error;
-    fn try_from(v: PV) -> Result<Ignore, Self::Error> {
+    fn try_from(_v: PV) -> Result<Ignore, Self::Error> {
         Ok(Ignore)
     }
 }
@@ -276,6 +276,7 @@ fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
 #[derive(Clone)]
 pub struct my_function_obj {}
 
+#[allow(unused)]
 impl my_function_obj {
     #[inline]
     pub fn new() -> Box<dyn Subr> {

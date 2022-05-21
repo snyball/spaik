@@ -16,7 +16,7 @@ pub(crate) mod utils;
 #[macro_use]
 pub(crate) mod perr;
 #[macro_use]
-pub(crate) mod chasm;
+pub mod chasm;
 #[macro_use]
 pub mod nkgc;
 #[macro_use]
@@ -35,6 +35,6 @@ pub mod nuke;
 pub(crate) mod module;
 pub mod spaik;
 #[cfg(feature = "repl")]
-pub(crate) mod repl;
+pub mod repl;
 //pub mod asm_parse;
 //pub mod arg_parse_tests;

@@ -2,15 +2,11 @@ use crate::r8vm::{R8VM, Args};
 use crate::sym_db::SymDB;
 use crate::error::Error;
 use crate::nkgc::{SymID, PV};
-use crate::subrs::{Subr, IntoLisp, RefIntoLisp, Ignore};
+use crate::subrs::{Subr, IntoLisp, Ignore};
 
 /// A Spaik Context
 pub struct Spaik {
     vm: R8VM
-}
-
-pub struct VarName {
-    sym: SymID,
 }
 
 pub trait VMInto<T> {
@@ -22,8 +18,6 @@ impl VMInto<SymID> for &str {
         vm.mem.put_sym(self)
     }
 }
-
-struct ArgList<'a, 'b: 'a>(&'a [&'b dyn RefIntoLisp]);
 
 impl Spaik {
     pub fn new() -> Result<Spaik, Error> {

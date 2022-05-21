@@ -6,11 +6,10 @@ use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet};
-use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
-use std::any::{TypeId, Any};
-use std::{mem, any};
+use std::any::TypeId;
+use std::mem::{self, size_of};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
@@ -223,7 +222,12 @@ impl LispFmt for Object {
 
 impl Object {
     pub fn new<T: Fissile + 'static>(obj: T) -> Object {
-        let mem = vec![];
+        let mut mem: Vec<u8> = Vec::with_capacity(size_of::<T>());
+        unsafe {
+            ptr::copy_nonoverlapping(&obj as *const T as *const u8,
+                                     mem.as_mut_ptr(),
+                                     size_of::<T>())
+        }
         Object {
             type_id: TypeId::of::<T>(),
             trace_fnp: |obj, gray| {

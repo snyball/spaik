@@ -102,11 +102,6 @@ pub enum Cmp2<'a> {
 pub struct Get<'a>(pub &'a Value,
                    pub &'a Value);
 
-pub struct DefineVar<'a>(pub SymID,
-                         pub &'a Value);
-pub struct DefineFunc<'a>(pub SymID,
-                          pub ArgList,
-                          pub &'a Value);
 pub enum Define<'a> {
     Var(SymID, &'a Value),
     Func(SymID, ArgList, &'a Value)
