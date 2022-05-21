@@ -217,6 +217,7 @@ builtins! {
     (Lte, "<="),
     (Gte, ">="),
     (Eq, "="),
+    (Eqp, "eq?"),
     (Not, "not"),
     (DefineStatic, "intr::define-static"),
     (Define, "define"),
@@ -1436,6 +1437,7 @@ impl<'a> R8Compiler<'a> {
             Lte => may_ret!(self.cmp_binop(code, (LTE, &[]))),
             Gte => may_ret!(self.cmp_binop(code, (GTE, &[]))),
             Eq => may_ret!(self.cmp_binop(code, (EQL, &[]))),
+            Eqp => may_ret!(self.cmp_binop(code, (EQLP, &[]))),
             DebugVarIdx => may_ret!(self.bt_var_idx(code)),
             _ => return None
         })

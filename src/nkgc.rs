@@ -529,6 +529,22 @@ impl PV {
         }
     }
 
+    pub fn equalp(&self, other: PV) -> bool {
+        match (*self, other) {
+            (PV::Ref(u), PV::Ref(v)) => match unsafe { ((*u).match_ref(),
+                                                        (*v).match_ref()) } {
+                (NkRef::String(u), NkRef::String(v)) => u == v,
+                (NkRef::Cons(u), NkRef::Cons(v)) =>
+                    u.car.equalp(v.car) && u.cdr.equalp(v.cdr),
+                (NkRef::PV(u), NkRef::PV(v)) => u.equalp(*v),
+                (NkRef::Vector(u), NkRef::Vector(v)) =>
+                    u.iter().zip(v.iter()).all(|(u, v)| u.equalp(*v)),
+                _ => u == v,
+            },
+            _ => *self == other
+        }
+    }
+
     num_op!(add, Add, +);
     num_op!(sub, Sub, -);
     num_op!(div, Div, /);

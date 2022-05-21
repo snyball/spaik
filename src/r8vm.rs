@@ -85,6 +85,7 @@ chasm_def! {
 
     // Logic
     EQL(),
+    EQLP(),
     GT(),
     GTE(),
     LT(),
@@ -687,6 +688,7 @@ def_stack_op! {
     DIV_OP("/"):  [x, y] => { x.div(y) };
     MUL_OP("*"):  [x, y] => { x.mul(y) };
     EQL_OP("="):  [x, y] => { Ok(Bool(x == y)) };
+    EQLP_OP("eq?"):  [x, y] => { Ok(Bool(x.equalp(*y))) };
 }
 
 const CAR_OP: StackOpFn<PV> =
@@ -1455,6 +1457,7 @@ impl R8VM {
 
                 // Logic
                 EQL() => EQL_OP(&mut self.mem.stack)?,
+                EQLP() => EQLP_OP(&mut self.mem.stack)?,
                 GT() => GT_OP(&mut self.mem.stack)?,
                 GTE() => GTE_OP(&mut self.mem.stack)?,
                 LT() => LT_OP(&mut self.mem.stack)?,
