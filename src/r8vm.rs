@@ -11,10 +11,10 @@ use crate::{
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
     nuke::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
+    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self, ObjRef},
     perr::PResult,
     sexpr_parse::Parser,
-    subrs::IntoLisp,
+    subrs::{IntoLisp, Subr},
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
@@ -382,6 +382,69 @@ macro_rules! featurefn {
         };
         funk()
     }};
+}
+
+// TODO: Replace the whole SYSCALL machinery with Subr
+#[allow(non_camel_case_types)]
+mod sysfns {
+    use std::{fmt::Write, ptr};
+
+    use crate::{subrs::Subr, nkgc::PV, error::Error, nuke::NkAtom, fmt::LispFmt};
+    use super::{R8VM, tostring};
+
+    #[derive(Clone, Copy, Debug)]
+    struct println {}
+
+    impl println {
+        pub fn new() -> Box<dyn Subr> {
+            Box::new(println {})
+        }
+    }
+
+    unsafe impl Subr for println {
+        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            match &args[..] {
+                [x] => {
+                    let s = tostring(vm, *x);
+                    vm.println(&s)?;
+                    Ok(*x)
+                },
+                _ => err!(ArgError,
+                          expect: super::ArgSpec::normal(1),
+                          got_num: args.len() as u32,
+                          op: vm.sym_id(self.name()))
+            }
+        }
+
+        fn name(&self) -> &'static str {
+            "println"
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct concat {}
+
+    impl concat {
+        pub fn new() -> Box<dyn Subr> {
+            Box::new(concat {})
+        }
+    }
+
+    unsafe impl Subr for concat {
+        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            let mut out = String::new();
+            for arg in args.iter() {
+                write!(&mut out, "{}", arg).unwrap();
+            }
+            let cell = vm.mem.alloc::<String>();
+            unsafe { ptr::write(cell, out) }
+            Ok(NkAtom::make_ref(cell))
+        }
+
+        fn name(&self) -> &'static str {
+            "concat"
+        }
+    }
 }
 
 defsysfn! {
