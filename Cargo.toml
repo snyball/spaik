@@ -1,6 +1,6 @@
 [package]
 name = "spaik"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Jonas Møller <jonas@nimda.no>"]
 description = "A Lisp"
 readme = "doc/README.md"
