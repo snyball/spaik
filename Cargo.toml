@@ -1,6 +1,6 @@
 [package]
 name = "spaik"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jonas Møller <jonas@nimda.no>"]
 description = "A Lisp"
 readme = "README.org"
@@ -10,7 +10,7 @@ homepage = "https://github.com/snyball/spaik"
 license = "BSD-2-Clause"
 
 [profile.release]
-# lto = "fat"
+#lto = "fat"
 panic = "abort"
 
 [features]
