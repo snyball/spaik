@@ -2,6 +2,33 @@
 
 The *SPAIK* Lisp implementation:
 
+plus.lisp
+
+#+begin_src lisp
+(defun plus (&rest xs)
+  (let ((s 0))
+    (dolist (x xs)
+      (set s (+ s x)))
+    s))
+#+end_src
+
+call.rs
+
+#+begin_src rust
+use spaik::spaik::Spaik;
+use spaik::error::Error;
+
+fn api_func_call() -> Result<(), Error> {
+    let mut vm = Spaik::new()?;
+    vm.load("plus")?;
+    let (x, y, z) = (1, 2, 3);
+    let result: i32 = vm.call("plus", (x, y, z, 4, 5))?;
+    assert_eq!(result, 15);
+}
+#+end_src
+
+The implementation includes the following main parts:
+
 - *CHASM*: generates virtual ISAs from a simple description of op-codes
 - *R8VM*: Stack-based virtual machine
   + Supports tracebacks on errors
@@ -12,6 +39,7 @@ The *SPAIK* Lisp implementation:
 - *SINTERN*: String-interner
 - *ERROR*: Structural error type for gradually building errors upwards through
   the call stack.
+- *SPAIK*: Public API.
 
 See ~lisp/test.lisp~ and the ~tests/*.lisp~ files for an example of a non-trivial
 macro, and ~lisp/self.lisp~ for a non-trivial program.

@@ -1,3 +1,5 @@
+//! SPAIK public API
+
 use crate::r8vm::{R8VM, Args};
 use crate::sym_db::SymDB;
 use crate::error::Error;
