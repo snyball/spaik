@@ -122,25 +122,25 @@ pub trait Traceable {
 
 pub struct ObjRef<T>(pub T);
 
-impl<'a, T> TryFrom<&'a PV> for ObjRef<&'a T>
+impl<'a, T> TryFrom<PV> for ObjRef<&'a T>
     where T: Fissile + 'static
 {
     type Error = Error;
 
-    fn try_from(v: &'a PV) -> Result<ObjRef<&'a T>, Self::Error> {
-        Ok(ObjRef(with_ref!(*v, Struct(v) => {
+    fn try_from(v: PV) -> Result<ObjRef<&'a T>, Self::Error> {
+        Ok(ObjRef(with_ref!(v, Struct(v) => {
             v.cast::<T>()
         })?))
     }
 }
 
-impl<'a, T> TryFrom<&'a PV> for ObjRef<&'a mut T>
+impl<'a, T> TryFrom<PV> for ObjRef<&'a mut T>
     where T: Fissile + 'static
 {
     type Error = Error;
 
-    fn try_from(v: &'a PV) -> Result<ObjRef<&'a mut T>, Self::Error> {
-        Ok(ObjRef(with_ref_mut!(*v, Struct(v) => {
+    fn try_from(v: PV) -> Result<ObjRef<&'a mut T>, Self::Error> {
+        Ok(ObjRef(with_ref_mut!(v, Struct(v) => {
             v.cast_mut::<T>()
         })?))
     }

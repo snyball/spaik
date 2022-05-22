@@ -9,6 +9,7 @@ use crate::sym_db::SymDB;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::ptr;
+use spaik_proc_macros::{spaik, spaik_internal};
 
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to do memory allocation.
@@ -62,7 +63,15 @@ macro_rules! pv_convert {
                     })
                 }
             }
-        })*
+        }
+        impl TryFrom<PV> for ObjRef<$from_t> {
+            type Error = Error;
+            #[inline(always)]
+            fn try_from(v: PV) -> Result<ObjRef<$from_t>, Self::Error> {
+                Ok(ObjRef(v.try_into()?))
+            }
+        }
+        )*
     };
 }
 
@@ -259,7 +268,7 @@ impl Fissile for TestObj {
     }
 }
 
-#[inline]
+#[spaik_internal]
 fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
     println!("Inside my_function: {} {}", x, y);
     let res = x + y.pow(2);
@@ -270,32 +279,6 @@ fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
     println!("obj2: {:?}", obj2);
     println!("res: {}", res);
     res
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Clone)]
-pub struct my_function_obj {}
-
-#[allow(unused)]
-impl my_function_obj {
-    #[inline]
-    pub fn new() -> Box<dyn Subr> {
-        Box::new(my_function_obj {})
-    }
-}
-
-unsafe impl Subr for my_function_obj {
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-        const SPEC: ArgSpec = ArgSpec::normal(4);
-        SPEC.check(Default::default(), args.len() as u16)?;
-        let x = args[0].try_into().map_err(|e: Error| e.argn(0))?;
-        let y = args[1].try_into().map_err(|e: Error| e.argn(1))?;
-        let ObjRef(z) = (&args[2]).try_into().map_err(|e: Error| e.argn(2))?;
-        let ObjRef(w) = (&args[3]).try_into().map_err(|e: Error| e.argn(3))?;
-        my_function(x, y, z, w).into_pv(&mut vm.mem)
-    }
-
-    fn name(&self) -> &'static str { "my-function" }
 }
 
 unsafe impl Subr for VLambda {
