@@ -1,6 +1,6 @@
 #+TITLE: SPAIK
 
-The *SPAIK* Lisp implementation:
+The *SPAIK* Lisp implementation, with a [[https://moesys.no/en/#spaik][live demo]]!
 
 plus.lisp
 

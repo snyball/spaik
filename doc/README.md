@@ -1,13 +1,9 @@
----
-author: Jonas Møller
-title: SPAIK
----
-
-The **SPAIK** Lisp implementation:
+The **SPAIK** Lisp implementation, with a [live
+demo](https://moesys.no/en/#spaik)!
 
 plus.lisp
 
-``` lisp
+``` {.commonlisp org-language="lisp"}
 (defun plus (&rest xs)
   (let ((s 0))
     (dolist (x xs)
