@@ -3,7 +3,7 @@ demo](https://moesys.no/en/#spaik)!
 
 plus.lisp
 
-``` {.commonlisp org-language="lisp"}
+``` commonlisp
 (defun plus (&rest xs)
   (let ((s 0))
     (dolist (x xs)
