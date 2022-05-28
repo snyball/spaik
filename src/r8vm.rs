@@ -384,54 +384,97 @@ macro_rules! featurefn {
     }};
 }
 
+macro_rules! subr {
+    (fn $name:ident[$name_s:expr](&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
+                    -> Result<PV, Error> $body:block) => {
+        #[derive(Clone, Copy, Debug)]
+        struct $name {}
+
+        #[allow(dead_code)]
+        impl $name {
+            pub fn new() -> Box<dyn Subr> { Box::new($name {}) }
+        }
+
+        unsafe impl Subr for $name {
+            fn call(&mut $self, $vm: &mut R8VM, $args: &[PV]) -> Result<PV, Error> $body
+            fn name(&self) -> &'static str { $name_s }
+        }
+    };
+
+    (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
+                    -> Result<PV, Error> $body:block) => {
+        subr!(fn $name[stringify!($name)](&mut $self, $vm : &mut R8VM, $args : &[PV])
+                                          -> Result<PV, Error> $body);
+    };
+
+    (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, args: ($($arg:ident),*)) -> Result<PV, Error> $body:block) => {
+        subr!(fn $name(&mut $self, $vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            subr_args!(($($arg),*) $self $vm args {
+                $body
+            })
+        });
+    }
+}
+
+macro_rules! subr_args {
+    (($($arg:ident),*) $self:ident $vm:ident $args:ident $body:block) => {
+        match &$args[..] {
+            [$($arg),*] => {
+                $body
+            },
+            _ => err!(ArgError,
+                      expect: ArgSpec::normal(count_args!($($arg),*)),
+                      got_num: $args.len() as u32,
+                      op: $vm.sym_id($self.name()))
+        }
+    };
+}
+
+macro_rules! std_subrs {
+    ($(fn $name:ident($($inner:tt)*) -> Result<PV, Error> $body:block)*) => {
+        $(subr!(fn $name($($inner)*) -> Result<PV, Error> $body);)*
+    };
+}
+
 // TODO: Replace the whole SYSCALL machinery with Subr
 #[allow(non_camel_case_types)]
 mod sysfns {
     use std::{fmt::Write, ptr};
 
     use crate::{subrs::Subr, nkgc::PV, error::Error, nuke::NkAtom, fmt::LispFmt};
-    use super::{R8VM, tostring};
+    use super::{R8VM, tostring, ArgSpec};
 
-    #[derive(Clone, Copy, Debug)]
-    struct println {}
-
-    impl println {
-        pub fn new() -> Box<dyn Subr> {
-            Box::new(println {})
+    std_subrs! {
+        fn println(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+            let s = tostring(vm, *x);
+            vm.println(&s)?;
+            Ok(*x)
         }
-    }
 
-    unsafe impl Subr for println {
-        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-            match &args[..] {
-                [x] => {
-                    let s = tostring(vm, *x);
-                    vm.println(&s)?;
-                    Ok(*x)
-                },
-                _ => err!(ArgError,
-                          expect: super::ArgSpec::normal(1),
-                          got_num: args.len() as u32,
-                          op: vm.sym_id(self.name()))
+        fn print(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+            let s = tostring(vm, *x);
+            vm.print(&s)?;
+            Ok(*x)
+        }
+
+        fn string(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+            let cell = vm.mem.alloc::<String>();
+            unsafe {
+                ptr::write(cell, x.lisp_to_string(&vm.mem));
             }
+            Ok(NkAtom::make_ref(cell))
         }
 
-        fn name(&self) -> &'static str {
-            "println"
+        fn eval(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+            vm.eval_ast(*x)
         }
-    }
 
-    #[derive(Clone, Copy, Debug)]
-    struct concat {}
-
-    impl concat {
-        pub fn new() -> Box<dyn Subr> {
-            Box::new(concat {})
+        fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+            vm.read(&tostring(vm, *x))?;
+            vm.mem.pop()
         }
-    }
 
-    unsafe impl Subr for concat {
-        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             let mut out = String::new();
             for arg in args.iter() {
                 write!(&mut out, "{}", arg).unwrap();
@@ -439,10 +482,6 @@ mod sysfns {
             let cell = vm.mem.alloc::<String>();
             unsafe { ptr::write(cell, out) }
             Ok(NkAtom::make_ref(cell))
-        }
-
-        fn name(&self) -> &'static str {
-            "concat"
         }
     }
 }
@@ -474,10 +513,6 @@ defsysfn! {
 
     use _vm fn modulo(a: Int, base: Int) -> Int {
         Ok(a % base)
-    }
-
-    use vm fn make_subroutine(name: Sym, args: Any, ast: Any) {
-        vm.defun(name, args, ast)
     }
 
     use vm fn set_macro(macro_name: Sym, fn_name: Sym) {
