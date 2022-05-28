@@ -9,7 +9,7 @@ use crate::sym_db::SymDB;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::ptr;
-use spaik_proc_macros::{spaik, spaik_internal};
+use spaik_proc_macros::spaikfn;
 
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to do memory allocation.
@@ -268,7 +268,7 @@ impl Fissile for TestObj {
     }
 }
 
-#[spaik_internal]
+#[spaikfn]
 fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
     println!("Inside my_function: {} {}", x, y);
     let res = x + y.pow(2);

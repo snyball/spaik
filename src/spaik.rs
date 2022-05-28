@@ -1,9 +1,10 @@
 //! SPAIK public API
 
+use crate::nuke::Fissile;
 use crate::r8vm::{R8VM, Args};
 use crate::sym_db::SymDB;
 use crate::error::Error;
-use crate::nkgc::{SymID, PV};
+use crate::nkgc::{SymID, PV, ObjRef};
 use crate::subrs::{Subr, IntoLisp, Ignore};
 
 /// A Spaik Context
@@ -39,6 +40,29 @@ impl Spaik {
     {
         let var = var.vm_into(&mut self.vm);
         self.vm.set(var, obj).unwrap();
+    }
+
+    pub fn get_clone<V, T>(&mut self, var: V) -> Result<T, Error>
+        where V: VMInto<SymID>, T: Fissile + 'static + Clone
+    {
+        self.get_ref_mut(var).map(|rf: &mut T| (*rf).clone())
+    }
+
+    pub fn get_ref<'a, V, T>(&'a mut self, var: V) -> Result<&'a T, Error>
+        where V: VMInto<SymID>, T: Fissile + 'static
+    {
+        self.get_ref_mut(var).map(|rf| &*rf)
+    }
+
+    pub fn get_ref_mut<'a, V, T>(&'a mut self, var: V) -> Result<&'a mut T, Error>
+        where V: VMInto<SymID>, T: Fissile + 'static
+    {
+        let name = var.vm_into(&mut self.vm);
+        let idx = self.vm.get_env_global(name)
+                         .ok_or_else(|| error!(UndefinedVariable,
+                                               var: name))?;
+        let ObjRef(x): ObjRef<&mut T> = self.vm.mem.get_env(idx).try_into()?;
+        Ok(x)
     }
 
     pub fn eval<E, R>(&mut self, expr: E) -> Result<R, Error>
@@ -85,6 +109,12 @@ macro_rules! args {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+
+    use spaik_proc_macros::spaikfn;
+
+    use crate::{nuke::{PtrMap, NkAtom, Object}, fmt::VisitSet};
+
     use super::*;
 
     #[test]
@@ -110,5 +140,102 @@ mod tests {
         let w = 4;
         let result: i32 = vm.call("plus", (x, y, z, w, 5)).unwrap();
         assert_eq!(result, 15);
+    }
+
+    #[test]
+    fn register_fn() {
+        #[spaikfn]
+        fn funky_function(x: i32, y: i32) -> i32 {
+            x + 2 + y
+        }
+
+        let mut vm = Spaik::new().unwrap();
+        vm.register(funky_function_obj::new());
+        let result: i32 = vm.eval("(funky-function 2 8)").unwrap();
+        assert_eq!(result, 12);
+
+        // FIXME: The vm_call_with! macro should eventually support this:
+        // let result: i32 = vm.call("funky-function", (4, 8)).unwrap();
+        // assert_eq!(result, 14);
+    }
+
+    #[test]
+    fn register_fn_mutate_struct() {
+        use crate::nkgc::Traceable;
+        use crate::fmt::LispFmt;
+
+        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+        pub struct TestObj {
+            x: f32,
+            y: f32,
+        }
+
+        impl Traceable for TestObj {
+            fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
+            fn update_ptrs(&mut self, _reloc: &PtrMap) {}
+        }
+
+        impl LispFmt for TestObj {
+            fn lisp_fmt(&self,
+                        _db: &dyn SymDB,
+                        _visited: &mut VisitSet,
+                        f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:?}", self)
+            }
+        }
+
+        impl crate::nuke::Fissile for TestObj {
+            fn type_of() -> crate::nuke::NkT {
+                crate::nuke::NkT::Struct
+            }
+        }
+
+        impl IntoLisp for TestObj {
+            fn into_pv(self, mem: &mut crate::nkgc::Arena) -> Result<PV, Error> {
+                Ok(mem.put(Object::new(self)))
+            }
+        }
+
+        #[spaikfn]
+        fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
+            let res = x + y.pow(2);
+            obj2.x += obj.x;
+            obj2.y += obj.y;
+            res
+        }
+
+        #[spaikfn]
+        fn obj_x(obj: &TestObj) -> f32 {
+            obj.x
+        }
+
+        #[spaikfn]
+        fn obj_y(obj: &TestObj) -> f32 {
+            obj.y
+        }
+
+        let mut vm = Spaik::new().unwrap();
+        vm.register(my_function_obj::new());
+        vm.register(obj_x_obj::new());
+        vm.register(obj_y_obj::new());
+        let src_obj = TestObj { x: 1.0, y: 3.0 };
+        let dst_obj = TestObj { x: 1.0, y: 2.0 };
+        vm.set("src-obj", src_obj.clone());
+        vm.set("dst-obj", dst_obj.clone());
+        vm.exec("(my-function 1 1 src-obj dst-obj)").unwrap();
+        vm.exec("(println dst-obj)").unwrap();
+        let x: f32 = vm.eval("(obj-x dst-obj)").unwrap();
+        let y: f32 = vm.eval("(obj-y dst-obj)").unwrap();
+        assert_eq!(x, 2.0);
+        assert_eq!(y, 5.0);
+        let dst_obj_2: TestObj = vm.get_clone("dst-obj").unwrap();
+        assert_eq!(dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
+                                        y: dst_obj.y + src_obj.y });
+        let dst_obj_2: &TestObj = vm.get_ref("dst-obj").unwrap();
+        assert_eq!(*dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
+                                         y: dst_obj.y + src_obj.y });
+        let dst_obj_2: &TestObj = vm.get_ref_mut("dst-obj").unwrap();
+        assert_eq!(*dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
+                                         y: dst_obj.y + src_obj.y });
     }
 }
