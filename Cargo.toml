@@ -30,6 +30,8 @@ log = "0.4"
 binwrite = "0.2.1"
 binread = "2.1.1"
 
+spaik-proc-macros = { path = 'proc-macros' }
+
 comfy-table = { version = "5.0.0", optional = true, default-features = false, features = [] }
 dirs = { version = "4.0.0", optional = true }
 rustyline = { version = "6.2", optional = true }
