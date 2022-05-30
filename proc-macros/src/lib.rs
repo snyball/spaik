@@ -1,10 +1,12 @@
 extern crate proc_macro;
 
+use std::fmt::format;
+
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, token::Struct, Data, DataStruct, FieldsNamed};
 
 fn crate_root() -> proc_macro2::TokenStream {
     let found_crate = crate_name("spaik")
@@ -91,6 +93,18 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
+    let data = input.data.clone();
+    let fields = match data {
+        Data::Struct(DataStruct {
+            fields: syn::Fields::Named(FieldsNamed { named, .. }), ..
+        }) => named,
+        _ => unimplemented!()
+    }.into_iter().map(|f| {
+        let id = f.ident.clone().expect("Identifier");
+        (format!(":{id}"), id)
+    });
+    let field_names = fields.clone().map(|(_, id)| id);
+    let field_kws = fields.map(|(kw, _)| kw);
 
     let out = quote! {
         impl #root::nkgc::Traceable for #name {
@@ -103,7 +117,9 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream
                         _db: &dyn #root::sym_db::SymDB,
                         _visited: &mut #root::fmt::VisitSet,
                         f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{:?}", self)
+                write!(f, "({}", stringify!(#name))?;
+                #( write!(f, " {} {}", #field_kws, self.#field_names)?; )*
+                write!(f, ")")
             }
         }
 
