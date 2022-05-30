@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput};
 
 fn crate_root() -> proc_macro2::TokenStream {
     let found_crate = crate_name("spaik")
@@ -83,4 +83,44 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
 #[proc_macro_attribute]
 pub fn spaikfn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     spaik_fn_impl(crate_root(), item)
+}
+
+#[proc_macro_derive(Fissile)]
+pub fn derive_fissile(item: TokenStream) -> TokenStream
+{
+    let root = crate_root();
+    let input = parse_macro_input!(item as DeriveInput);
+    let name = input.ident.clone();
+
+    let out = quote! {
+        impl #root::nkgc::Traceable for #name {
+            fn trace(&self, _gray: &mut Vec<*mut #root::nuke::NkAtom>) {}
+            fn update_ptrs(&mut self, _reloc: &#root::nuke::PtrMap) {}
+        }
+
+        impl #root::fmt::LispFmt for #name {
+            fn lisp_fmt(&self,
+                        _db: &dyn #root::sym_db::SymDB,
+                        _visited: &mut #root::fmt::VisitSet,
+                        f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{:?}", self)
+            }
+        }
+
+        impl #root::nuke::Fissile for #name {
+            fn type_of() -> #root::nuke::NkT {
+                #root::nuke::NkT::Struct
+            }
+        }
+
+        impl #root::subrs::IntoLisp for #name {
+            fn into_pv(self, mem: &mut #root::nkgc::Arena)
+                       -> core::result::Result<#root::nkgc::PV, #root::error::Error>
+            {
+                Ok(mem.put(#root::nuke::Object::new(self)))
+            }
+        }
+    };
+
+    out.into()
 }

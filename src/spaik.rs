@@ -111,7 +111,7 @@ macro_rules! args {
 mod tests {
     use std::fmt;
 
-    use spaik_proc_macros::spaikfn;
+    use spaik_proc_macros::{spaikfn, Fissile};
 
     use crate::{nuke::{PtrMap, NkAtom, Object}, fmt::VisitSet};
 
@@ -161,39 +161,10 @@ mod tests {
 
     #[test]
     fn register_fn_mutate_struct() {
-        use crate::nkgc::Traceable;
-        use crate::fmt::LispFmt;
-
-        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Fissile)]
         pub struct TestObj {
             x: f32,
             y: f32,
-        }
-
-        impl Traceable for TestObj {
-            fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-            fn update_ptrs(&mut self, _reloc: &PtrMap) {}
-        }
-
-        impl LispFmt for TestObj {
-            fn lisp_fmt(&self,
-                        _db: &dyn SymDB,
-                        _visited: &mut VisitSet,
-                        f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "{:?}", self)
-            }
-        }
-
-        impl crate::nuke::Fissile for TestObj {
-            fn type_of() -> crate::nuke::NkT {
-                crate::nuke::NkT::Struct
-            }
-        }
-
-        impl IntoLisp for TestObj {
-            fn into_pv(self, mem: &mut crate::nkgc::Arena) -> Result<PV, Error> {
-                Ok(mem.put(Object::new(self)))
-            }
         }
 
         #[spaikfn]
