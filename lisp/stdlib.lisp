@@ -214,14 +214,25 @@
          ,@body
          (set ,xs (cdr ,xs))))))
 
+(defmacro for (cnd &body body)
+  (let ((name (car cnd))
+        (init (car (cdr cnd)))
+        (sentinel '<ζ>::iter-stop)
+        (it (gensym)))
+    `(let ((,name nil)
+           (,it (iter ,init)))
+       (loop (set ,name (next ,it))
+             (if (= ,name ,sentinel) (break))
+             ,@body))))
+
 (defmacro range (cnd &body body)
   (let ((loop-var (car cnd))
         (min (caadr cnd))
         (max (cadadr cnd)))
     `(let ((,loop-var ,min))
        (while (< ,loop-var ,max)
-         ,@body
-         (inc! ,loop-var)))))
+              ,@body
+              (inc! ,loop-var)))))
 
 (defun range-list (a b)
   (let ((xs nil))
