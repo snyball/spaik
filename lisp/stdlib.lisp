@@ -193,7 +193,6 @@
 (alias make-symbol sys::make-symbol)
 (fn-alias macroexpand (x) sys::macroexpand)
 (fn-alias type-of (x) sys::type-of)
-(fn-alias disassemble (x) sys::disassemble)
 (2-ary-to-n-ary sys::concat-symbols concat-symbols)
 
 (defmacro load (lib)
@@ -365,9 +364,6 @@
   (if (and (cons? a) (cons? b))
       (equal-cons? a b)
     (= a b)))
-
-(defun exit (&? status)
-  (sys::exit (or status 'ok)))
 
 (defun dot-node-label (node)
   (make-symbol (or (and (string? node)

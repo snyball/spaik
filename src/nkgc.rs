@@ -215,6 +215,22 @@ pub enum PV {
     Nil,
 }
 
+impl TryFrom<PV> for SymID {
+    type Error = crate::error::Error;
+
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        if let PV::Sym(v) = value {
+            Ok(v)
+        } else {
+            err!(TypeError,
+                 expect: Builtin::Symbol.sym(),
+                 got: value.type_of(),
+                 op: Builtin::Nil.sym(),
+                 argn: 0)
+        }
+    }
+}
+
 impl fmt::Display for PV {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self as &dyn LispFmt)

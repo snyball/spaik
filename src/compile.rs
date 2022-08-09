@@ -202,6 +202,7 @@ builtins! {
     (Get, "get"),
     (Push, "push"),
     (Pop, "pop"),
+    (Exit, "exit"),
     (Len, "len"),
     (Lambda, "lambda"),
     (Call, "call"),

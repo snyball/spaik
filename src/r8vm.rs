@@ -462,7 +462,7 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, convert::Infallible};
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::Error, fmt::{LispFmt, FmtWrap}};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind}, fmt::{LispFmt, FmtWrap}, compile::Builtin};
     use super::{R8VM, tostring, ArgSpec};
 
     std_subrs! {
@@ -510,7 +510,90 @@ mod sysfns {
         }
 
         fn iter(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
-            x.make_iter()?.into_pv(&mut vm.mem)
+            x.make_iter().map_err(|e| e.argn(1))?.into_pv(&mut vm.mem)
+        }
+
+        fn exit(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            let status = args.first().copied().unwrap_or(PV::Sym(Builtin::KwOk.sym()));
+            Err(Error { ty: ErrorKind::Exit {
+                status: status.try_into().map_err(|e: Error|
+                                                  e.argn(1).op(Builtin::Exit.sym()))?
+            }, src: None })
+        }
+
+        fn dump_macro_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+            featurefn!("repl", vm.dump_macro_tbl()?)?;
+            Ok(PV::Nil)
+        }
+
+        fn dump_sym_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+            featurefn!("repl", vm.dump_symbol_tbl()?)?;
+            Ok(PV::Nil)
+        }
+
+        fn dump_env_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+            featurefn!("repl", vm.dump_env_tbl()?)?;
+            Ok(PV::Nil)
+        }
+
+        fn dump_fn_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+            featurefn!("repl", vm.dump_fn_tbl()?)?;
+            Ok(PV::Nil)
+        }
+
+        fn disassemble(&mut self, vm: &mut R8VM, args: (func)) -> Result<PV, Error> {
+            featurefn!("repl", vm.dump_fn_code((*func).try_into()?)?)?;
+            Ok(PV::Nil)
+        }
+
+        fn sum(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            let mut it = args.iter();
+            let mut s = it.next().copied().unwrap_or(PV::Int(0));
+            for i in it {
+                s = s.add(i)?;
+            }
+            Ok(s)
+        }
+
+        fn asum(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            if args.len() == 1 {
+                return PV::Int(0).sub(&args[0])
+            }
+            let mut it = args.iter();
+            let mut s = it.next().ok_or(error!(ArgError,
+                                               expect: ArgSpec::rest(1, 0),
+                                               got_num: 0,
+                                               op: Builtin::Sub.sym()))
+                                 .copied()?;
+            for i in it {
+                s = s.sub(i)?;
+            }
+            Ok(s)
+        }
+
+        fn product(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            let mut it = args.iter();
+            let mut s = it.next().copied().unwrap_or(PV::Int(1));
+            for i in it {
+                s = s.mul(i)?;
+            }
+            Ok(s)
+        }
+
+        fn aproduct(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            if args.len() == 1 {
+                return PV::Int(1).div(&args[0])
+            }
+            let mut it = args.iter();
+            let mut s = it.next().ok_or(error!(ArgError,
+                                               expect: ArgSpec::rest(1, 0),
+                                               got_num: 0,
+                                               op: Builtin::Div.sym()))
+                                 .copied()?;
+            for i in it {
+                s = s.div(i)?;
+            }
+            Ok(s)
         }
     }
 }
@@ -559,33 +642,6 @@ defsysfn! {
         let v = vm.macroexpand(&mut ast)?;
         vm.push_ast(v);
         vm.mem.pop()
-    }
-
-    use vm fn dump_macro_tbl() {
-        featurefn!("repl", vm.dump_macro_tbl()?)
-    }
-
-    use vm fn dump_sym_tbl() {
-        featurefn!("repl", vm.dump_symbol_tbl()?)
-    }
-
-    use vm fn dump_env_tbl() {
-        featurefn!("repl", vm.dump_env_tbl()?)
-    }
-
-    use vm fn dump_fn_tbl() {
-        featurefn!("repl", vm.dump_fn_tbl()?)
-    }
-
-    use vm fn disassemble(func: Sym) {
-        featurefn!("repl", vm.dump_fn_code(func)?)
-    }
-
-    use vm fn exit(status: Sym) {
-        // Written in a strange way in order to assist the type-checker.
-        Err(Error { ty: ErrorKind::Exit { status },
-                    src: None })?; // boom
-        Ok(())
     }
 
     use vm fn type_of(obj: Any) -> Sym {
@@ -943,8 +999,12 @@ impl R8VM {
 
         macro_rules! addfn {
             ($name:ident) => {
-                let sym = vm.mem.put_sym(stringify!($name));
-                vm.set(sym, sysfns::$name().into_subr()).unwrap();
+                addfn!(stringify!($name), $name);
+            };
+
+            ($name:expr, $fn:ident) => {
+                let sym = vm.mem.put_sym($name);
+                vm.set(sym, sysfns::$fn().into_subr()).unwrap();
             };
         }
 
@@ -955,7 +1015,17 @@ impl R8VM {
         addfn!(eval);
         addfn!(read);
         addfn!(concat);
+        addfn!(exit);
         addfn!(iter);
+        addfn!("dump-macro-tbl", dump_macro_tbl);
+        addfn!("dump-sym-tbl", dump_sym_tbl);
+        addfn!("dump-env-tbl", dump_env_tbl);
+        addfn!("dump-fn-tbl", dump_fn_tbl);
+        addfn!("+", sum);
+        addfn!("-", asum);
+        addfn!("*", product);
+        addfn!("/", aproduct);
+        addfn!(disassemble);
 
         vm
     }
