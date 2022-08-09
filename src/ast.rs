@@ -44,12 +44,12 @@ fn fmt_value(val: &Value, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             loop {
                 match &head.kind {
                     Cons(car, cdr) => {
-                        fmt_value(&*car, f, db)?;
+                        fmt_value(car, f, db)?;
                         if cdr.is_nil() {
                             break;
                         }
                         write!(f, " ")?;
-                        head = &*cdr;
+                        head = cdr;
                     }
                     _ => {
                         write!(f, " . ")?;
@@ -160,7 +160,7 @@ impl Value {
                         };
                         match &decl[..] {
                             [Value { kind: ValueKind::Symbol(sym), src }, val] =>
-                                Ok(LetBinding(*sym, *val, src)),
+                                Ok(LetBinding(*sym, val, src)),
                             _ => err()
                         }
                     }).collect::<Result<Vec<_>, Error>>()?;
@@ -345,7 +345,7 @@ impl Value {
                 *cdr = Box::new(Value::new_tail(val));
                 break;
             }
-            node = if let ValueKind::Cons(ref mut cdar, _) = (*cdr).kind {
+            node = if let ValueKind::Cons(ref mut cdar, _) = cdr.kind {
                 cdar
             } else {
                 cdr

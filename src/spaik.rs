@@ -48,7 +48,7 @@ impl Spaik {
         self.get_ref_mut(var).map(|rf: &mut T| (*rf).clone())
     }
 
-    pub fn get_ref<'a, V, T>(&'a mut self, var: V) -> Result<&'a T, Error>
+    pub fn get_ref<V, T>(&mut self, var: V) -> Result<&T, Error>
         where V: VMInto<SymID>, T: Fissile + 'static
     {
         self.get_ref_mut(var).map(|rf| &*rf)
@@ -61,13 +61,12 @@ impl Spaik {
      *
      * - `var` : Variable name
      */
-    pub fn get_ref_mut<'a, V, T>(&'a mut self, var: V) -> Result<&'a mut T, Error>
+    pub fn get_ref_mut<V, T>(&mut self, var: V) -> Result<&mut T, Error>
         where V: VMInto<SymID>, T: Fissile + 'static
     {
         let name = var.vm_into(&mut self.vm);
         let idx = self.vm.get_env_global(name)
-                         .ok_or_else(|| error!(UndefinedVariable,
-                                               var: name))?;
+                         .ok_or(error!(UndefinedVariable, var: name))?;
         let ObjRef(x): ObjRef<&mut T> = self.vm.mem.get_env(idx).try_into()?;
         Ok(x)
     }
@@ -146,11 +145,7 @@ macro_rules! args {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt;
-
     use spaik_proc_macros::{spaikfn, Fissile};
-
-    use crate::{nuke::{PtrMap, NkAtom, Object}, fmt::VisitSet};
 
     use super::*;
 

@@ -11,14 +11,14 @@ use crate::{
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
     nuke::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self, ObjRef},
+    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
     perr::PResult,
     sexpr_parse::Parser,
     subrs::{IntoLisp, Subr},
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
-use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex, iter};
+use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
 
 chasm_def! {
     r8c:
@@ -460,11 +460,9 @@ macro_rules! std_subrs {
 // TODO: Replace the whole SYSCALL machinery with Subr
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, ptr, convert::Infallible};
+    use std::{fmt::Write, convert::Infallible};
 
-    use spaik_proc_macros::spaiklib;
-
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::Error, nuke::NkAtom, fmt::{LispFmt, FmtWrap}, sym_db::SymDB, compile::Builtin};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::Error, fmt::{LispFmt, FmtWrap}};
     use super::{R8VM, tostring, ArgSpec};
 
     std_subrs! {
@@ -747,7 +745,7 @@ pub struct R8VM {
     frame: usize,
 }
 
-impl<'a> Default for R8VM {
+impl Default for R8VM {
     fn default() -> Self {
         R8VM {
             pmem: Default::default(),
@@ -923,7 +921,7 @@ impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F);
 impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G);
 impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G, H);
 
-unsafe impl<'a> Send for R8VM {}
+unsafe impl Send for R8VM {}
 
 impl R8VM {
     pub fn new() -> R8VM {
@@ -980,7 +978,8 @@ impl R8VM {
         Ok(())
     }
 
-    pub fn set_subr(&mut self, name: SymID, obj: Box<dyn Subr>) {
+    pub fn set_subr(&mut self, _name: SymID, _obj: Box<dyn Subr>) {
+        todo!()
     }
 
     pub fn set_debug_mode(&mut self, debug_mode: bool) {

@@ -217,7 +217,7 @@ impl Iter {
 
 impl Clone for Iter {
     fn clone(&self) -> Self {
-        Self { root: self.root.clone(),
+        Self { root: self.root,
                it: self.it.clone_box() }
     }
 }
@@ -249,9 +249,9 @@ impl Traceable for Iter {
 
 impl LispFmt for Iter {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
-                visited: &mut VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                _db: &dyn SymDB,
+                _visited: &mut VisitSet,
+                _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
     }
 }
@@ -719,7 +719,7 @@ impl Nuke {
     }
 
     pub fn confirm_relocation(&mut self, t: RelocateToken) {
-        drop(t);
+        #[allow(clippy::drop_non_drop)] drop(t);
         self.reloc.0.clear();
     }
 

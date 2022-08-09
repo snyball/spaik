@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ParseErr {
     pub line: u32,
     pub col: u32,

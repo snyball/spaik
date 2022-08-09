@@ -1,6 +1,6 @@
 //! Rust Subroutines for SPAIK LISP
 
-use crate::r8vm::{ArgSpec, R8VM};
+use crate::r8vm::R8VM;
 use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::nuke::*;
@@ -9,7 +9,6 @@ use crate::sym_db::SymDB;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::ptr;
-use spaik_proc_macros::spaikfn;
 
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to do memory allocation.

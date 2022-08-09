@@ -10,7 +10,7 @@ use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
 use std::collections::HashMap;
 use fnv::FnvHashMap;
-use std::fmt::{self, format};
+use std::fmt;
 use std::{str, char};
 use std::ptr;
 use std::time::Duration;
@@ -427,7 +427,7 @@ impl PV {
                       //              the array that String refers to, not to the
                       //              String struct itself, which may move.
                       String(xs) => {
-                          let it = xs.chars().map(|c| PV::Char(c));
+                          let it = xs.chars().map(PV::Char);
                           let it: IT = Box::new(it);
                           Ok(it)
                       },
@@ -442,7 +442,7 @@ impl PV {
                       }
             ).map_err(|e| e.op(Builtin::Iter.sym()))?;
 
-        Ok(nuke::Iter::new(self.clone(), it))
+        Ok(nuke::Iter::new(*self, it))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = PV> {
@@ -1581,7 +1581,7 @@ impl fmt::Display for SPV {
     }
 }
 
-impl<'a> IntoIterator for SPV {
+impl IntoIterator for SPV {
     type Item = SPV;
     type IntoIter = SPVIter;
     fn into_iter(self) -> Self::IntoIter {

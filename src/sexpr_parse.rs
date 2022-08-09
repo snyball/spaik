@@ -270,7 +270,7 @@ impl Fragment {
         self.choices.iter()
                     .find(|Fragment { c, .. }| *c == nc)
                     .map(Advance)
-                    .or_else(|| if self.end {
+                    .or(if self.end {
                         Some(Valid)
                     } else {
                         None

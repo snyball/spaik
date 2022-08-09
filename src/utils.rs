@@ -79,7 +79,7 @@ macro_rules! count_args {
 macro_rules! from_many {
     ( $to:ty |$v:ident| { $($from:ty => $action:block),+ } ) => {
         $(
-            impl<'a> From<$from> for $to {
+            impl From<$from> for $to {
                 fn from($v: $from) -> $to {
                     $action
                 }

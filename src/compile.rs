@@ -139,7 +139,7 @@ macro_rules! builtins {
         impl Builtin {
             pub fn from_sym(n: SymID) -> Option<Builtin> {
                 let nint = i32::from(n);
-                if nint >= 0 && nint < count_args!($($sym),*) {
+                if (0..count_args!($($sym),*)).contains(&nint) {
                     Some(unsafe { mem::transmute(n) })
                 } else {
                     None
@@ -1527,7 +1527,7 @@ impl<'a> R8Compiler<'a> {
 
     fn compile(&mut self, ret: bool, code: &Value) -> Result<(), Error> {
         if let Some(op) = code.op() {
-            self.compile_app(ret, op, &code)?;
+            self.compile_app(ret, op, code)?;
         } else if code.is_atom() {
             if ret {
                 return self.compile_atom(code);

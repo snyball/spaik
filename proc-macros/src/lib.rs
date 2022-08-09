@@ -1,12 +1,10 @@
 extern crate proc_macro;
 
-use std::fmt::format;
-
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, token::Struct, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, AttributeArgs};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, AttributeArgs};
 
 fn crate_root() -> proc_macro2::TokenStream {
     let found_crate = crate_name("spaik")
@@ -87,22 +85,22 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
 
 #[proc_macro_attribute]
 pub fn spaikfn(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let meta = parse_macro_input!(attr as AttributeArgs);
+    let _meta = parse_macro_input!(attr as AttributeArgs);
     spaik_fn_impl(crate_root(), item)
 }
 
 #[proc_macro_attribute]
 pub fn spaikiface(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemImpl);
-    let items = input.items
-                     .clone()
-                     .into_iter()
-                     .filter_map(|i| match i {
-                         ImplItem::Method(m) => Some(m),
-                         _ => None,
-                     })
-                     .map(|m| {
-                     });
+    let _items = input.items
+                      .clone()
+                      .into_iter()
+                      .filter_map(|i| match i {
+                          ImplItem::Method(m) => Some(m),
+                          _ => None,
+                      })
+                      .map(|_m| {
+                      });
 
     let out = quote! {
         #input
@@ -111,7 +109,7 @@ pub fn spaikiface(_attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn spaiklib(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn spaiklib(_attr: TokenStream, _item: TokenStream) -> TokenStream {
     quote!().into()
 }
 
