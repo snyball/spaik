@@ -850,7 +850,7 @@ impl<'a> R8Compiler<'a> {
         self.asm.op(op);
     }
 
-    fn bt_next(&mut self, code: &Value) -> Result<(), Error> {
+    fn bt_next(&mut self, ret: bool, code: &Value) -> Result<(), Error> {
         if code.nargs() == 0 {
             self.bt_loop_next(code)
         } else {
@@ -865,6 +865,7 @@ impl<'a> R8Compiler<'a> {
                             self.asm_op(chasm!(GET idx));
                             let idx = self.with_env(|env| env.anon())?;
                             self.asm_op(chasm!(NXIT idx));
+                            self.asm_op(chasm!(POPA 1, 1));
                             self.env_pop(1)?;
                         }
                     }
@@ -873,6 +874,7 @@ impl<'a> R8Compiler<'a> {
                     self.compile(true, init)?;
                     let idx = self.with_env(|env| env.anon())?;
                     self.asm_op(chasm!(NXIT idx));
+                    self.asm_op(chasm!(POPA 1, 1));
                     self.env_pop(1)?;
                 }
                 _ => return err_src!(code.src.clone(), ArgError,
@@ -880,6 +882,9 @@ impl<'a> R8Compiler<'a> {
                                      op: Builtin::Next.sym(),
                                      got_num: args.len() as u32)
             };
+            if !ret {
+                self.asm_op(chasm!(POP 1));
+            }
             Ok(())
         }
     }
@@ -1411,6 +1416,29 @@ impl<'a> R8Compiler<'a> {
         self.env_pop(nargs as usize)
     }
 
+    fn bt_char(&mut self, code: &Value) -> Result<(), Error> {
+        let v = code.args().next().ok_or(error!(ArgError,
+                                                expect: ArgSpec::normal(1),
+                                                got_num: 0,
+                                                op: Builtin::Char.sym()))?;
+        if let Value { kind: ValueKind::Symbol(s), .. } = v {
+            let mut it = self.vm.sym_name(*s).chars();
+            let c = it.next().ok_or(error!(CharSpecError, spec: *s))?;
+            if it.next().is_some() {
+                return err!(CharSpecError, spec: *s)
+            }
+            let u: u32 = c.into();
+            self.asm_op(chasm!(CHAR u));
+            Ok(())
+        } else {
+            err!(TypeError,
+                 expect: Builtin::Symbol.sym(),
+                 got: code.type_of(),
+                 op: Builtin::Char.sym(),
+                 argn: 1)
+        }
+    }
+
     fn compile_builtin(&mut self,
                        ret: bool,
                        op: Builtin,
@@ -1431,7 +1459,7 @@ impl<'a> R8Compiler<'a> {
                                           ctx: Builtin::Quasi.sym(),
                                           op: op.sym()),
             If => self.bt_if(ret, code),
-            Next => self.bt_next(code),
+            Next => self.bt_next(ret, code),
             Break => self.bt_break(code),
             Let => self.bt_let(ret, code),
             And => self.bt_and(ret, code),
@@ -1475,6 +1503,7 @@ impl<'a> R8Compiler<'a> {
             Eq => may_ret!(self.cmp_binop(code, (EQL, &[]))),
             Eqp => may_ret!(self.cmp_binop(code, (EQLP, &[]))),
             DebugVarIdx => may_ret!(self.bt_var_idx(code)),
+            Char => may_ret!(self.bt_char(code)),
             _ => return None
         })
     }

@@ -213,7 +213,7 @@
     `(let ((,name nil)
            (,it (iter ,init)))
        (loop (set ,name (next ,it))
-             (if (= ,name ,sentinel) (break))
+             (if (= ,name ',sentinel) (break))
              ,@body))))
 
 (defmacro range (cnd &body body)
