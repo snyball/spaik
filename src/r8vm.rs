@@ -59,7 +59,6 @@ chasm_def! {
     VCALL(func: SymIDInt, nargs: u16),
     // TODO: APPLY()
     CLZCALL(nargs: u16),
-    SYSCALL(idx: u16),
     RET(),
     HCF(),
 
@@ -233,137 +232,6 @@ macro_rules! stack_ref_op {
     };
 }
 
-pub struct SysFn {
-    pub nargs: u16,
-    pub name: &'static str,
-    f: fn(&mut R8VM, &[PV]) -> Result<PV, Error>,
-}
-
-impl SysFn {
-    // FIXME: Implementing Fn isn't in Rust stable yet, so I can't just do sys_fn(stack),
-    //        change this into an `impl Fn<_> for SysFn` later on.
-    fn call(&self, vm: &mut R8VM) -> Result<(), Error> {
-        let slen = vm.mem.stack.len();
-        if slen < (self.nargs as usize) {
-            return Err(RuntimeError::new(format!(
-                "System call expected {} args, but got {}.",
-                self.nargs,
-                slen
-            )).into());
-        }
-        self.call_unchecked(vm)
-    }
-
-    /// Works like call, but will panic if there aren't enough arguments
-    /// on the stack.
-    fn call_unchecked(&self, vm: &mut R8VM) -> Result<(), Error> {
-        let top = vm.mem.stack.len() - (self.nargs as usize);
-        let args = vm.mem.stack.drain(top..).collect::<Vec<PV>>();
-        let res = (self.f)(vm, &args[..])?;
-        vm.mem.stack.push(res);
-        Ok(())
-    }
-}
-
-pub fn mk_sysfn_lookup(funcs: &[SysFn]) -> HashMap<&str, &SysFn> {
-    funcs.iter().map(|f| (f.name, f)).collect()
-}
-
-pub fn mk_sysfn_idx_lookup(funcs: &[SysFn]) -> HashMap<&str, i64> {
-    funcs.iter()
-         .enumerate()
-         .map(|(i, f)| (f.name, i as i64))
-         .collect()
-}
-
-pub fn mk_default_sysfn_idx_lookup() -> HashMap<&'static str, i64> {
-    mk_sysfn_idx_lookup(&SYSTEM_FUNCTIONS)
-}
-
-macro_rules! sysfn_pat {
-    ( $arg:ident : Any ) => {
-        $arg
-    };
-    ( $arg:ident : $type:ident ) => {
-        PV::$type($arg)
-    };
-}
-
-macro_rules! sysfn_ret {
-    ( $res:expr, Any ) => {
-        $res
-    };
-    ( $res:expr, ) => {
-        PV::Nil
-    };
-    ( $res:expr, Nil ) => {
-        PV::Nil
-    };
-    ( $res:expr, $otype:ident ) => {
-        PV::$otype($res)
-    };
-}
-
-macro_rules! defsysfn {
-    ( $( use $vm:ident fn $name:ident ( $( $arg:ident : $type:ident ),* ) $(-> $otype:ident)* $body:block )* ) => {
-        pub const SYSTEM_FUNCTIONS: [SysFn; count_args!($($name),*)] = sysfn!(
-            $( use $vm fn $name ( $( $arg : $type ),* ) $(-> $otype)* $body )*
-        );
-    }
-}
-
-macro_rules! sysfn {
-    ( $( use $vm:ident fn $name:ident ( $( $arg:ident : $type:ident ),* )
-         $(-> $otype:ident)*
-         $body:block
-    )* ) =>
-    {
-        [
-            $(SysFn {
-                nargs: count_args!($($arg),*),
-                name: concat!("sys::", stringify!($name)),
-                #[allow(unused_variables)]
-                f: |$vm, args: &[PV]| -> Result<PV, Error> {
-                    #[allow(clippy::match_ref_pats, unused_variables)]
-                    let res: Result<_, Error> = match args {
-                        #[warn(unused_variables)]
-                        &[$(sysfn_pat!($arg : $type)),*] => { $body }
-                        x => return Err(RuntimeError::new(
-                            format!("Illegal arguments for syscall: (sys::{} {})",
-                                    stringify!($name).to_string().replace("_", "-"), {
-                                        x.iter()
-                                         .map(|v| v.lisp_to_string(&$vm.mem))
-                                         .collect::<Vec<_>>()
-                                         .join(" ")
-                                    } )).into()),
-                    };
-                    #[allow(unreachable_code)]
-                    match res {
-                        Ok(_res) => Ok(sysfn_ret!(_res, $($otype)*)),
-                        Err(e) => Err(e)
-                    }
-                }
-            }),*
-        ]
-    }
-}
-
-#[macro_export]
-macro_rules! spaik {
-    ($vm:expr => ( $fn:expr, ($call:expr),+ )) =>
-        { $vm.call($fn, &[($call.into()),+]) };
-    ($vm:expr => ( $fn:literal, ($call:expr),+ )) =>
-        { $vm.call_s($fn, &[($call.into()),+]) };
-    ($vm:expr => ( $fn:expr )) =>
-        { $vm.call($fn, &[]) };
-    ($vm:expr => ( $fn:literal )) =>
-        { $vm.call_s($fn, &[]) };
-    ($vm:expr => $val:expr) =>
-        { $vm.getvar($fn) };
-    ($vm:expr => ( $val:literal )) =>
-        { $vm.getvar_s($fn) };
-}
-
 fn tostring(vm: &R8VM, x: PV) -> String {
     match x {
         PV::Ref(y) => match unsafe { (*y).match_ref() } {
@@ -437,7 +305,6 @@ macro_rules! std_subrs {
     };
 }
 
-// TODO: Replace the whole SYSCALL machinery with Subr
 #[allow(non_camel_case_types)]
 mod sysfns {
     use std::{fmt::Write, convert::Infallible};
@@ -687,9 +554,6 @@ mod sysfns {
     }
 }
 
-defsysfn! {
-}
-
 pub type ArgInt = u16;
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
@@ -821,7 +685,6 @@ pub struct R8VM {
     macros: FnvHashMap<SymIDInt, SymID>,
     funcs: FnvHashMap<SymIDInt, Func>,
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
-    sysfns: FnvHashMap<SymIDInt, usize>,
 
     stdout: Mutex<Box<dyn OutStream>>,
     stdin: Mutex<Box<dyn InStream>>,
@@ -842,7 +705,6 @@ impl Default for R8VM {
             macros: Default::default(),
             funcs: Default::default(),
             func_labels: Default::default(),
-            sysfns: Default::default(),
             stdout: Mutex::new(Box::new(io::stdout())),
             stdin: Mutex::new(Box::new(io::stdin())),
             debug_mode: false,
@@ -1016,11 +878,6 @@ impl R8VM {
             ..Default::default()
         };
 
-        for (i, sysfn) in SYSTEM_FUNCTIONS.iter().enumerate() {
-            let sym = vm.mem.symdb.put(sysfn.name.replace('_', "-"));
-            vm.sysfns.insert(sym.id, i);
-        }
-
         vm.funcs.insert(Builtin::HaltFunc.sym().into(), Func {
             pos: 0,
             sz: 1,
@@ -1077,7 +934,6 @@ impl R8VM {
         self.breaks.shrink_to_fit();
         self.funcs.shrink_to_fit();
         self.func_labels.shrink_to_fit();
-        self.sysfns.shrink_to_fit();
     }
 
     pub fn set<T: IntoLisp>(&mut self, var: SymID, obj: T) -> Result<(), Error> {
@@ -1139,10 +995,6 @@ impl R8VM {
 
     pub fn get_env_global(&self, name: SymID) -> Option<usize> {
         self.globals.get(&name).copied()
-    }
-
-    pub fn get_sysfn(&self, name: SymID) -> Option<usize> {
-        self.sysfns.get(&name.id).copied()
     }
 
     /// Reads LISP code into an AST.
@@ -1750,15 +1602,6 @@ impl R8VM {
                     self.mem.stack.truncate(old_frame);
                     self.mem.push(rv);
                 }
-                SYSCALL(n) => {
-                    let dip = self.ip_delta(ip);
-                    let res = SYSTEM_FUNCTIONS[*n as usize].call(self);
-                    // System functions may re-allocate pmem, which will invalidate
-                    // the `ip` pointer. Therefore we compute `dip` and reset `ip` after
-                    // calling the system function.
-                    ip = self.ret_to(dip);
-                    res?;
-                }
                 CLZCALL(nargs) => ip = self.op_clzcall(ip, *nargs)?,
 
                 // Stack manipulation
@@ -1963,8 +1806,6 @@ impl R8VM {
             let sym_name = |sym: SymIDInt| self.sym_name(sym.into()).to_string();
             Some((op.name().to_lowercase(), match op {
                 VCALL(name, args) => vec![sym_name(name), args.to_string()],
-                SYSCALL(idx) => vec![SYSTEM_FUNCTIONS[idx as usize]
-                                     .name.to_string()],
                 SYM(sym) => vec![sym_name(sym)],
                 CLZ(sym, env) => vec![sym_name(sym), env.to_string()],
                 _ => return None

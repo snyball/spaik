@@ -2,11 +2,10 @@
 
 use crate::nuke::{NkSum, NkRef};
 use crate::nkgc::{PV, SymID, Cons};
-use crate::r8vm::{R8VM, r8c, ArgSpec, SYSTEM_FUNCTIONS};
+use crate::r8vm::{R8VM, r8c, ArgSpec};
 use crate::r8vm::r8c::Op as R8C;
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl};
 use crate::chasm;
-use crate::r8vm::mk_default_sysfn_idx_lookup;
 use crate::error::{Error, ErrorKind, Source};
 use crate::ast::{Value, ValueKind, ListBuilder, Arith2, Cmp2};
 use crate::ast;
@@ -525,11 +524,6 @@ struct LoopCtx {
     end: Lbl,
     ret: bool,
     height: usize,
-}
-
-lazy_static! {
-    static ref SYSFNS: HashMap<&'static str, i64> =
-        mk_default_sysfn_idx_lookup();
 }
 
 impl<'a> R8Compiler<'a> {
@@ -1528,10 +1522,6 @@ impl<'a> R8Compiler<'a> {
         } else if let Some(res) = self.vm.expand(code) { // Macro application
             let code = res?;
             self.compile(ret, &code)
-        } else if let Some(idx) = self.vm.get_sysfn(op) { // System call
-            let spec = ArgSpec::normal(SYSTEM_FUNCTIONS[idx].nargs);
-            self.gen_call(ret, op, (r8c::OpName::SYSCALL, &[idx.into()]),
-                          spec, code.args())
         } else if let Ok(()) = self.asm_get_var(op, &code.src) { // Closure call
             self.with_env(|env| env.anon())?;
             self.gen_call_nargs(ret, (r8c::OpName::CLZCALL,
