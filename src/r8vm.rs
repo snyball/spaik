@@ -82,6 +82,7 @@ chasm_def! {
     PUSH(val: i32),
     PUSHF(val: u32),
     SYM(id: SymIDInt),
+    CHAR(c: u32),
     CLZ(sym: SymIDInt, nenv: u16),
     CLZAV(nargs: u16, nenv: u16), // Commit the closure environment
     BOOL(val: u8),
@@ -237,7 +238,8 @@ fn tostring(vm: &R8VM, x: PV) -> String {
         PV::Ref(y) => match unsafe { (*y).match_ref() } {
             NkRef::String(s) => s.clone(),
             _ => x.lisp_to_string(&vm.mem),
-        }
+        },
+        PV::Char(c) => format!("{c}"),
         _ => x.lisp_to_string(&vm.mem),
     }
 }
@@ -349,7 +351,10 @@ mod sysfns {
                     write!(&mut out, "{s}").unwrap();
                     Ok(())
                 }).or_else(|_| -> Result<(), Infallible> {
-                    write!(&mut out, "{}", FmtWrap { val, db: vm }).unwrap();
+                    match val {
+                        PV::Char(c) => write!(&mut out, "{c}").unwrap(),
+                        _ => write!(&mut out, "{}", FmtWrap { val, db: vm }).unwrap(),
+                    }
                     Ok(())
                 }).unwrap();
             }
@@ -1627,6 +1632,7 @@ impl R8VM {
                 }
                 PUSH(n) => self.mem.push(PV::Int(i64::from(*n))),
                 PUSHF(n) => self.mem.push(PV::Real(f32::from_bits(*n))),
+                CHAR(c) => self.mem.push(PV::Char(char::from_u32_unchecked(*c))),
                 SYM(id) => self.mem.push(PV::Sym((*id).into())),
                 SAV(num) => regs.save(&mut self.mem, *num)?,
                 RST() => regs.restore(&mut self.mem),

@@ -76,6 +76,7 @@ pub enum ErrorKind {
     Exit { status: SymID },
     IOError { kind: std::io::ErrorKind },
     MissingFeature { flag: &'static str },
+    CharSpecError { spec: SymID },
 }
 
 impl From<std::io::Error> for Error {
@@ -235,6 +236,9 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         }
         ErrorKind::MissingFeature { flag } =>
             write!(f, "Missing Feature: {}", flag)?,
+        CharSpecError { spec } =>
+            write!(f, "Invalid char spec `{}', use exactly one character in the symbol",
+                   nameof(*spec))?,
         x => unimplemented!("{:?}", x),
     }
     if let Some(src) = &err.src {

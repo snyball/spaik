@@ -215,10 +215,7 @@ pub enum PV {
     Nil,
 }
 
-macro_rules! try_pv_kind {
-    () => {
-    };
-}
+impl Eq for PV {}
 
 impl TryFrom<PV> for SymID {
     type Error = crate::error::Error;
