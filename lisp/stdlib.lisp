@@ -98,7 +98,7 @@
 
 (defun gensym ()
   (defvar num-syms 0)
-  (let ((sym (sys::make-symbol (sys::concat "<β>::#" num-syms))))
+  (let ((sym (sys::make-symbol (concat "<β>::#" num-syms))))
     (inc! num-syms)
     sym))
 
