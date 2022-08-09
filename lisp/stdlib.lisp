@@ -190,13 +190,11 @@
 (alias disall sys::disassemble-all)
 (alias to-symbol sys::make-symbol)
 (alias read sys::read)
-(alias string sys::string)
 (alias make-symbol sys::make-symbol)
 (fn-alias macroexpand (x) sys::macroexpand)
 (fn-alias type-of (x) sys::type-of)
 (fn-alias disassemble (x) sys::disassemble)
 (2-ary-to-n-ary sys::concat-symbols concat-symbols)
-(2-ary-to-n-ary sys::concat concat)
 
 
 (defun eval (expr)
@@ -237,9 +235,6 @@
 
 (defmacro ignore (&body code)
   `(progn ,@code nil))
-
-(defmacro println (&rest args)
-  `(ignore (sys::println (concat ,@args))))
 
 (defmacro take! (var)
   (let ((head (gensym)))

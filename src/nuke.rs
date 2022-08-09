@@ -6,6 +6,7 @@ use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet};
+use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
 use std::any::TypeId;
@@ -218,6 +219,12 @@ impl Clone for Iter {
     fn clone(&self) -> Self {
         Self { root: self.root.clone(),
                it: self.it.clone_box() }
+    }
+}
+
+impl IntoLisp for Iter {
+    fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
+        Ok(mem.put(self))
     }
 }
 

@@ -393,7 +393,7 @@ macro_rules! subr {
     (fn $name:ident[$name_s:expr](&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
                     -> Result<PV, Error> $body:block) => {
         #[derive(Clone, Copy, Debug)]
-        struct $name {}
+        pub struct $name();
 
         unsafe impl Subr for $name {
             fn call(&mut $self, $vm: &mut R8VM, $args: &[PV]) -> Result<PV, Error> $body
@@ -460,11 +460,11 @@ macro_rules! std_subrs {
 // TODO: Replace the whole SYSCALL machinery with Subr
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, ptr};
+    use std::{fmt::Write, ptr, convert::Infallible};
 
     use spaik_proc_macros::spaiklib;
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::Error, nuke::NkAtom, fmt::{LispFmt, FmtWrap}, sym_db::SymDB};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::Error, nuke::NkAtom, fmt::{LispFmt, FmtWrap}, sym_db::SymDB, compile::Builtin};
     use super::{R8VM, tostring, ArgSpec};
 
     std_subrs! {
@@ -497,34 +497,24 @@ mod sysfns {
         fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             let mut out = String::new();
             for val in args.iter() {
-                write!(&mut out, "{}", FmtWrap { val, db: vm }).unwrap();
+                with_ref!(*val, String(s) => {
+                    write!(&mut out, "{s}").unwrap();
+                    Ok(())
+                }).or_else(|_| -> Result<(), Infallible> {
+                    write!(&mut out, "{}", FmtWrap { val, db: vm }).unwrap();
+                    Ok(())
+                }).unwrap();
             }
             out.into_pv(&mut vm.mem)
+        }
+
+        fn iter(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+            x.make_iter()?.into_pv(&mut vm.mem)
         }
     }
 }
 
 defsysfn! {
-    use vm fn println(x: Any) -> Any {
-        let s = tostring(vm, x);
-        vm.println(&s)?;
-        Ok(x)
-    }
-
-    use vm fn print(x: Any) -> Any {
-        let s = tostring(vm, x);
-        vm.print(&s)?;
-        Ok(x)
-    }
-
-    use vm fn string(x: Any) -> Any {
-        let cell = vm.mem.alloc::<String>();
-        unsafe {
-            ptr::write(cell, x.lisp_to_string(&vm.mem));
-        }
-        Ok(NkAtom::make_ref(cell))
-    }
-
     use _vm fn pow(x: Int, exp: Int) -> Int {
         Ok(x.pow(exp as u32))
     }
@@ -545,22 +535,8 @@ defsysfn! {
         Ok(id)
     }
 
-    use vm fn concat(a: Any, b: Any) -> Any {
-        let cell = vm.mem.alloc::<String>();
-        unsafe {
-            ptr::write(cell, format!("{}{}",
-                                     tostring(vm, a),
-                                     tostring(vm, b)))
-        }
-        Ok(NkAtom::make_ref(cell))
-    }
-
     use vm fn make_symbol(a: Any) -> Sym {
         Ok(vm.mem.symdb.put(tostring(vm, a)))
-    }
-
-    use vm fn eval(ast: Any) -> Any {
-        vm.eval_ast(ast)
     }
 
     use vm fn read(text: Any) -> Any {
@@ -964,6 +940,22 @@ impl R8VM {
             args: ArgSpec::none()
         });
 
+        macro_rules! addfn {
+            ($name:ident) => {
+                let sym = vm.mem.put_sym(stringify!($name));
+                vm.set(sym, sysfns::$name().into_subr()).unwrap();
+            };
+        }
+
+
+        addfn!(println);
+        addfn!(print);
+        addfn!(string);
+        addfn!(eval);
+        addfn!(read);
+        addfn!(concat);
+        addfn!(iter);
+
         vm
     }
 
@@ -985,8 +977,7 @@ impl R8VM {
         Ok(())
     }
 
-    pub fn set_subr(&mut self, name: SymID, obj: Box<dyn Subr>) -> Result<(), Error> {
-        Ok(())
+    pub fn set_subr(&mut self, name: SymID, obj: Box<dyn Subr>) {
     }
 
     pub fn set_debug_mode(&mut self, debug_mode: bool) {
