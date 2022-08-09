@@ -486,7 +486,10 @@ mod sysfns {
         }
 
         fn eval(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
-            vm.eval_ast(*x)
+            vm.mem.push(*x);
+            vm.mem.list(1);
+            let x = vm.mem.pop().unwrap();
+            vm.eval_ast(x)
         }
 
         fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {

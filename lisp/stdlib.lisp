@@ -196,10 +196,6 @@
 (fn-alias disassemble (x) sys::disassemble)
 (2-ary-to-n-ary sys::concat-symbols concat-symbols)
 
-
-(defun eval (expr)
-  (sys::eval `(,expr)))
-
 (defmacro load (lib)
   `(eval-when :compile
      (sys::load ,lib)))
