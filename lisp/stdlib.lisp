@@ -184,12 +184,6 @@
      (<ξ>::2-ary-to-n-ary/helper ',fn
                                  args)))
 
-;; Aliases
-(alias disall sys::disassemble-all)
-(alias read sys::read)
-(fn-alias macroexpand (x) sys::macroexpand)
-(fn-alias type-of (x) sys::type-of)
-
 (defun _load (lib)
   (load lib))
 
