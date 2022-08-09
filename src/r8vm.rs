@@ -905,7 +905,7 @@ impl R8VM {
         addfn!(exit);
         addfn!(iter);
         addfn!(macroexpand);
-        addfn!(modulo);
+        addfn!("%", modulo);
         addfn!(pow);
         addfn!("set-macro", set_macro);
         addfn!("dump-macro-tbl", dump_macro_tbl);
