@@ -856,7 +856,32 @@ impl<'a> R8Compiler<'a> {
         if code.nargs() == 0 {
             self.bt_loop_next(code)
         } else {
-            // self.asm_op(chasm!(NXIT 1));
+            let args = code.args().collect::<Vec<_>>();
+            use ValueKind::*;
+            match &args[..] {
+                [Value { kind: Symbol(var), src }] => {
+                    let bound = self.get_var_idx(*var, src)?;
+                    match bound {
+                        BoundVar::Local(idx) => self.asm_op(chasm!(NXIT idx)),
+                        BoundVar::Env(idx) => {
+                            self.asm_op(chasm!(GET idx));
+                            let idx = self.with_env(|env| env.anon())?;
+                            self.asm_op(chasm!(NXIT idx));
+                            self.env_pop(1)?;
+                        }
+                    }
+                }
+                [init] => {
+                    self.compile(true, init)?;
+                    let idx = self.with_env(|env| env.anon())?;
+                    self.asm_op(chasm!(NXIT idx));
+                    self.env_pop(1)?;
+                }
+                _ => return err_src!(code.src.clone(), ArgError,
+                                     expect: ArgSpec::opt(0, 1),
+                                     op: Builtin::Next.sym(),
+                                     got_num: args.len() as u32)
+            };
             Ok(())
         }
     }

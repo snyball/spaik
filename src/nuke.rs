@@ -5,7 +5,7 @@
 use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
-use crate::fmt::{LispFmt, VisitSet};
+use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
@@ -14,7 +14,7 @@ use std::mem::{self, size_of};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
-use std::fmt;
+use std::fmt::{self, write};
 use core::fmt::Debug;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
@@ -249,10 +249,10 @@ impl Traceable for Iter {
 
 impl LispFmt for Iter {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
+                db: &dyn SymDB,
                 _visited: &mut VisitSet,
-                _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(iter {})", FmtWrap { val: &self.root, db })
     }
 }
 

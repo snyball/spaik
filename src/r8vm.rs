@@ -1449,7 +1449,8 @@ impl R8VM {
                     let offset = (self.frame as isize) + (*var as isize);
                     let it = *self.mem.stack.as_ptr().offset(offset);
                     with_ref_mut!(it, Iter(it) => {
-                        let elem = it.next().unwrap_or(PV::Nil);
+                        let elem = it.next()
+                                     .unwrap_or(PV::Sym(Builtin::IterStop.sym()));
                         self.mem.push(elem);
                         Ok(())
                     }).map_err(|e| e.op(Builtin::Next.sym()))?;
