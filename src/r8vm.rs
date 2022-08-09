@@ -400,24 +400,12 @@ macro_rules! subr {
             fn name(&self) -> &'static str { $name_s }
             fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
         }
-
-        impl From<$name> for Box<dyn $crate::subrs::Subr> {
-            fn from(x: $name) -> Self {
-                Box::new(x)
-            }
-        }
     };
 
     (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
                     -> Result<PV, Error> $body:block) => {
         subr!(fn $name[stringify!($name)](&mut $self, $vm : &mut R8VM, $args : &[PV])
                                           -> Result<PV, Error> $body);
-    };
-
-    (fn $name:ident[$name_s:literal](&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
-                    -> Result<PV, Error> $body:block) => {
-        subr!(fn $name[$name_s](&mut $self, $vm : &mut R8VM, $args : &[PV])
-                                -> Result<PV, Error> $body);
     };
 
     (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, args: ($($arg:ident),*)) -> Result<PV, Error> $body:block) => {
@@ -427,14 +415,6 @@ macro_rules! subr {
             })
         });
     };
-
-    (fn $name:ident[$name_s:literal](&mut $self:ident, $vm:ident : &mut R8VM, args: ($($arg:ident),*)) -> Result<PV, Error> $body:block) => {
-        subr!(fn $name[$name_s](&mut $self, $vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-            subr_args!(($($arg),*) $self $vm args {
-                $body
-            })
-        });
-    }
 }
 
 macro_rules! subr_args {
@@ -462,7 +442,7 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, convert::Infallible};
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind}, fmt::{LispFmt, FmtWrap}, compile::Builtin};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
 
     std_subrs! {
@@ -546,7 +526,57 @@ mod sysfns {
             Ok(PV::Nil)
         }
 
-        fn sum(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn macroexpand(&mut self, vm: &mut R8VM, args: (ast)) -> Result<PV, Error> {
+            let mut ast = unsafe { pv_to_value(*ast, &Source::none()) };
+            let v = vm.macroexpand(&mut ast)?;
+            vm.push_ast(v);
+            vm.mem.pop()
+        }
+
+        fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV, Error> {
+            Ok(PV::Sym(vm.load((*lib).try_into()?)?))
+        }
+
+        fn pow(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV, Error> {
+            x.pow(y)
+        }
+
+        fn modulo(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV, Error> {
+            x.modulo(y)
+        }
+
+        fn set_macro(&mut self, vm: &mut R8VM, args: (macro_name, fn_name)) -> Result<PV, Error> {
+            vm.set_macro((*macro_name).try_into()?,
+                         (*fn_name).try_into()?);
+            Ok(PV::Nil)
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct make_symbol();
+
+    unsafe impl Subr for make_symbol {
+        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            match &args[..] {
+                [s @ PV::Sym(_)] => Ok(*s),
+                [r] => with_ref!(*r, String(s) => {
+                    Ok(PV::Sym(vm.mem.symdb.put_ref(s)))
+                }),
+                _ => err!(ArgError,
+                          expect: ArgSpec::normal(1),
+                          got_num: args.len() as u32,
+                          op: Builtin::MakeSymbol.sym())
+            }
+        }
+        fn name(&self) -> &'static str { "make-symbol" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct sum();
+
+    unsafe impl Subr for sum {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             let mut it = args.iter();
             let mut s = it.next().copied().unwrap_or(PV::Int(0));
             for i in it {
@@ -554,8 +584,26 @@ mod sysfns {
             }
             Ok(s)
         }
+        fn name(&self) -> &'static str { "+" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+    }
 
-        fn asum(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+    #[derive(Clone, Copy, Debug)]
+    pub struct type_of();
+
+    unsafe impl Subr for type_of {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            subr_args!((x) self _vm args { Ok(PV::Sym(x.type_of())) })
+        }
+        fn name(&self) -> &'static str { "type-of" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct asum();
+
+    unsafe impl Subr for asum {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             if args.len() == 1 {
                 return PV::Int(0).sub(&args[0])
             }
@@ -570,8 +618,15 @@ mod sysfns {
             }
             Ok(s)
         }
+        fn name(&self) -> &'static str { "-" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+    }
 
-        fn product(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+    #[derive(Clone, Copy, Debug)]
+    pub struct product();
+
+    unsafe impl Subr for product {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             let mut it = args.iter();
             let mut s = it.next().copied().unwrap_or(PV::Int(1));
             for i in it {
@@ -579,8 +634,15 @@ mod sysfns {
             }
             Ok(s)
         }
+        fn name(&self) -> &'static str { "*" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+    }
 
-        fn aproduct(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+    #[derive(Clone, Copy, Debug)]
+    pub struct aproduct();
+
+    unsafe impl Subr for aproduct {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             if args.len() == 1 {
                 return PV::Int(1).div(&args[0])
             }
@@ -595,69 +657,37 @@ mod sysfns {
             }
             Ok(s)
         }
+        fn name(&self) -> &'static str { "/" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct dump_gc_stats();
+
+    unsafe impl Subr for dump_gc_stats {
+        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            vm.print_fmt(format_args!("{:?}", vm.mem.stats()))?;
+            vm.println(&"")?;
+            Ok(PV::Nil)
+        }
+        fn name(&self) -> &'static str { "dump-gc-stats" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct dump_stack();
+
+    unsafe impl Subr for dump_stack {
+        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            vm.dump_stack()?;
+            Ok(PV::Nil)
+        }
+        fn name(&self) -> &'static str { "dump-stack" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 }
 
 defsysfn! {
-    use _vm fn pow(x: Int, exp: Int) -> Int {
-        Ok(x.pow(exp as u32))
-    }
-
-    use _vm fn modulo(a: Int, base: Int) -> Int {
-        Ok(a % base)
-    }
-
-    use vm fn set_macro(macro_name: Sym, fn_name: Sym) {
-        vm.set_macro(macro_name, fn_name);
-        Ok(())
-    }
-
-    use vm fn concat_symbols(a: Sym, b: Sym) -> Sym {
-        let id: SymID = vm.mem
-                          .symdb
-                          .put(format!("{}{}", vm.sym_name(a), vm.sym_name(b)));
-        Ok(id)
-    }
-
-    use vm fn make_symbol(a: Any) -> Sym {
-        Ok(vm.mem.symdb.put(tostring(vm, a)))
-    }
-
-    use vm fn read(text: Any) -> Any {
-        vm.read(&tostring(vm, text))?;
-        vm.mem.pop()
-    }
-
-    use vm fn load(lib: Sym) -> Sym {
-        vm.load(lib)
-    }
-
-    use vm fn trace_opcodes(enabled: Bool) {
-        vm.set_debug_mode(enabled);
-        Ok(())
-    }
-
-    use vm fn macroexpand(ast: Any) -> Any {
-        let mut ast = unsafe { pv_to_value(ast, &Source::none()) };
-        let v = vm.macroexpand(&mut ast)?;
-        vm.push_ast(v);
-        vm.mem.pop()
-    }
-
-    use vm fn type_of(obj: Any) -> Sym {
-        Ok(obj.type_of())
-    }
-
-    use vm fn dump_gc_stats() {
-        vm.print_fmt(format_args!("{:?}", vm.mem.stats()))?;
-        vm.println(&"")?;
-        Ok(())
-    }
-
-    use vm fn dump_stack() {
-        vm.dump_stack()?;
-        Ok(())
-    }
 }
 
 pub type ArgInt = u16;
@@ -1017,15 +1047,24 @@ impl R8VM {
         addfn!(concat);
         addfn!(exit);
         addfn!(iter);
+        addfn!(macroexpand);
+        addfn!(modulo);
+        addfn!(pow);
+        addfn!("set-macro", set_macro);
         addfn!("dump-macro-tbl", dump_macro_tbl);
         addfn!("dump-sym-tbl", dump_sym_tbl);
         addfn!("dump-env-tbl", dump_env_tbl);
         addfn!("dump-fn-tbl", dump_fn_tbl);
+        addfn!("type-of", type_of);
+        addfn!("make-symbol", make_symbol);
         addfn!("+", sum);
         addfn!("-", asum);
         addfn!("*", product);
         addfn!("/", aproduct);
         addfn!(disassemble);
+        addfn!(load);
+        addfn!(dump_gc_stats);
+        addfn!(dump_stack);
 
         vm
     }

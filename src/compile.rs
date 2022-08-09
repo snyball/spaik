@@ -182,6 +182,9 @@ builtins! {
     (Unknown, "?"),
     (If, "if"),
     (Compile, "compile"),
+    (MakeSymbol, "make-symbol"),
+    (Pow, "pow"),
+    (Modulo, "%"),
     (Let, "let"),
     (And, "and"),
     (Or, "or"),
@@ -1482,22 +1485,13 @@ impl<'a> R8Compiler<'a> {
         })
     }
 
-    fn compile_builtin_atom(&mut self, op: Builtin) -> Result<(), Error> {
-        use Builtin::*;
-        match op {
-            Nil => self.asm.op(chasm!(NIL)),
-            _ => self.asm.op(chasm!(SYM op.sym()))
-        };
-        Ok(())
-    }
-
     #[inline]
     pub fn compile_atom(&mut self, atom: &Value) -> Result<(), Error> {
         use ValueKind::*;
         match &atom.kind {
             Int(x) => { self.asm.op(chasm!(PUSH *x)); },
-            Symbol(v) => if let Some(op_bt) = Builtin::from_sym(*v) {
-                self.compile_builtin_atom(op_bt)?;
+            Symbol(v) => if let Some(Builtin::Nil) = Builtin::from_sym(*v) {
+                self.asm.op(chasm!(NIL));
             } else if self.vm.sym_name(*v).starts_with(':') {
                 self.asm_op(chasm!(SYM *v));
             } else if let Err(e) = self.asm_get_var(*v, &atom.src) {

@@ -1,17 +1,17 @@
 (define (<ξ>::defun name args &body body)
   `(define (,name ,@args) ,@body))
 (eval-when :compile
-  (sys::set-macro 'defun '<ξ>::defun))
+  (set-macro 'defun '<ξ>::defun))
 
 (defun <ξ>::defmacro (name args &body body)
-  (let ((mac-fn-name (sys::concat-symbols '<ξ>:: name)))
+  (let ((mac-fn-name (make-symbol (concat '<ξ>:: name))))
     `(progn
        (define (,mac-fn-name ,@args)
          ,@body)
        (eval-when :compile
-         (sys::set-macro ',name ',mac-fn-name)))))
+         (set-macro ',name ',mac-fn-name)))))
 (eval-when :compile
-  (sys::set-macro 'defmacro '<ξ>::defmacro))
+  (set-macro 'defmacro '<ξ>::defmacro))
 
 (defun head (x)
   (car x))
@@ -98,7 +98,7 @@
 
 (defun gensym ()
   (defvar num-syms 0)
-  (let ((sym (sys::make-symbol (concat "<β>::#" num-syms))))
+  (let ((sym (make-symbol (concat "<β>::#" num-syms))))
     (inc! num-syms)
     sym))
 
@@ -185,19 +185,17 @@
                                  args)))
 
 ;; Aliases
-(alias % sys::modulo)
-(alias ^ sys::pow)
 (alias disall sys::disassemble-all)
-(alias to-symbol sys::make-symbol)
 (alias read sys::read)
-(alias make-symbol sys::make-symbol)
 (fn-alias macroexpand (x) sys::macroexpand)
 (fn-alias type-of (x) sys::type-of)
-(2-ary-to-n-ary sys::concat-symbols concat-symbols)
+
+(defun _load (lib)
+  (load lib))
 
 (defmacro load (lib)
   `(eval-when :compile
-     (sys::load ,lib)))
+     (_load ,lib)))
 
 ;;; FIXME: (next)/(break) don't work inside dolist/range,
 ;;;        a compiler built-in is needed to fix it.
@@ -334,9 +332,9 @@
     `(progn ,@(reverse p))))
 
 (defmacro make-tcheck (type)
-  (let ((name (sys::concat-symbols type '?)))
+  (let ((name (make-symbol (concat type '?))))
     `(defun ,name (x)
-       (= (type-of x) ,type))))
+       (= (type-of x) ',type))))
 
 (m-map make-tcheck (integer symbol
                     unsigned-integer
@@ -374,7 +372,7 @@
                       node)))))
 
 (defun dot-node-name (idx)
-  (concat-symbols 'N_ (make-symbol idx)))
+  (make-symbol (concat 'N_ idx)))
 
 (defun print-ast-dot-rec (tree idx)
   (let ((root-idx (dot-node-name idx))

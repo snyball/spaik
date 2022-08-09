@@ -215,6 +215,11 @@ pub enum PV {
     Nil,
 }
 
+macro_rules! try_pv_kind {
+    () => {
+    };
+}
+
 impl TryFrom<PV> for SymID {
     type Error = crate::error::Error;
 
@@ -638,6 +643,34 @@ impl PV {
     num_op!(sub, Sub, -);
     num_op!(div, Div, /);
     num_op!(mul, Mul, *);
+
+    pub fn pow(&self, o: &PV) -> Result<PV, Error> {
+        use PV::*;
+        Ok(match (self, o) {
+            (Int(x), Real(y)) => Real((*x as f32).powf(*y)),
+            (Int(x), Int(y)) => Int(x.pow(*y as u32)),
+            (Real(x), Int(y)) => Real(x.powi(*y as i32)),
+            (Real(x), Real(y)) => Real(x.powf(*y)),
+            (x, y) => return err!(ArgTypeError,
+                                  op: Builtin::Pow.sym(),
+                                  expect: vec![Builtin::Number.sym(),
+                                               Builtin::Number.sym()],
+                                  got: vec![x.type_of(), y.type_of()])
+        })
+    }
+
+    pub fn modulo(&self, o: &PV) -> Result<PV, Error> {
+        use PV::*;
+        Ok(match (self, o) {
+            (Int(x), Int(y)) => Int(x % y),
+            (x, y) => return err!(ArgTypeError,
+                                  op: Builtin::Modulo.sym(),
+                                  expect: vec![Builtin::Integer.sym(),
+                                               Builtin::Integer.sym()],
+                                  got: vec![x.type_of(), y.type_of()])
+        })
+    }
+
 
     cmp_op!(lt, Lt, Less);
     cmp_op!(gt, Gt, Greater);

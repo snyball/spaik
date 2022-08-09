@@ -8,7 +8,7 @@
                         (vars (map head defs)))
                    `(let ,defs
                       (unless (,op ,@vars)
-                        (list :fail ',test (list ,op ,@vars))))))))
-    `(defun ,(concat-symbols 'tests/ name) ()
+                        (list :fail ',test (list ',op ,@vars))))))))
+    `(defun ,(make-symbol (concat 'tests/ name)) ()
        (or (or ,@(map check tests))
            '(:pass)))))
