@@ -54,6 +54,13 @@ impl Spaik {
         self.get_ref_mut(var).map(|rf| &*rf)
     }
 
+    /**
+     * Retrieve a variable as a mutable reference.
+     *
+     * # Arguments
+     *
+     * - `var` : Variable name
+     */
     pub fn get_ref_mut<'a, V, T>(&'a mut self, var: V) -> Result<&'a mut T, Error>
         where V: VMInto<SymID>, T: Fissile + 'static
     {
@@ -65,6 +72,13 @@ impl Spaik {
         Ok(x)
     }
 
+    /**
+     * Run an expression.
+     *
+     * # Arguments
+     *
+     * - `expr` : Lisp expression
+     */
     pub fn eval<E, R>(&mut self, expr: E) -> Result<R, Error>
         where E: AsRef<str>,
               R: TryFrom<PV, Error = Error>
@@ -73,6 +87,13 @@ impl Spaik {
                .and_then(|pv| pv.try_into())
     }
 
+    /**
+     * Run an expression and ignore the result (unless there was an error.)
+     *
+     * # Arguments
+     *
+     * - `expr` : Lisp expression
+     */
     pub fn exec<E>(&mut self, expr: E) -> Result<(), Error>
         where E: AsRef<str>
     {
@@ -80,6 +101,14 @@ impl Spaik {
         Ok(())
     }
 
+    /**
+     * Load library
+     *
+     * # Arguments
+     *
+     * - `lib` : If the library is stored at "name.lisp", then `lib` should be
+     *           "name" as either a string or symbol
+     */
     pub fn load<V>(&mut self, lib: V) -> Result<SymID, Error>
         where V: VMInto<SymID>
     {
@@ -97,6 +126,14 @@ impl Spaik {
             let r = pv.try_into()?;
             Ok(r)
         })
+    }
+
+    /**
+     * Perform a full GC collection, this may finish a currently ongoing collection
+     * and start a new one afterwards.
+     */
+    pub fn gc(&mut self) {
+        self.vm.mem.full_collection()
     }
 }
 
@@ -150,7 +187,7 @@ mod tests {
         }
 
         let mut vm = Spaik::new().unwrap();
-        vm.register(funky_function_obj::new());
+        vm.register(funky_function_obj().into_subr());
         let result: i32 = vm.eval("(funky-function 2 8)").unwrap();
         assert_eq!(result, 12);
 
@@ -186,9 +223,9 @@ mod tests {
         }
 
         let mut vm = Spaik::new().unwrap();
-        vm.register(my_function_obj::new());
-        vm.register(obj_x_obj::new());
-        vm.register(obj_y_obj::new());
+        vm.register(my_function_obj().into_subr());
+        vm.register(obj_x_obj().into_subr());
+        vm.register(obj_y_obj().into_subr());
         let src_obj = TestObj { x: 1.0, y: 3.0 };
         let dst_obj = TestObj { x: 1.0, y: 2.0 };
         vm.set("src-obj", src_obj.clone());
@@ -208,5 +245,7 @@ mod tests {
         let dst_obj_2: &TestObj = vm.get_ref_mut("dst-obj").unwrap();
         assert_eq!(*dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                          y: dst_obj.y + src_obj.y });
+        // (set (dst-obj :x) )
+        // (dst-obj :x)
     }
 }

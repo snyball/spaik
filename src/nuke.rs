@@ -63,7 +63,7 @@ macro_rules! fissile_types {
         pub enum NkSum { $($t($path)),+ }
 
         #[repr(u8)]
-        #[derive(Debug)]
+        #[derive(Debug, PartialEq, Eq)]
         pub enum NkT { $($t),+ }
 
         #[derive(Debug)]
@@ -190,6 +190,73 @@ macro_rules! fissile_types {
 trait Fuse: Fissile {
 }
 
+pub trait CloneIterator: Iterator {
+    fn clone_box(&self) -> Box<dyn CloneIterator<Item = Self::Item>>;
+}
+
+impl<T> CloneIterator for T
+where
+    T: 'static + Iterator + Clone,
+{
+    fn clone_box(&self) -> Box<dyn CloneIterator<Item = Self::Item>> {
+        Box::new(self.clone())
+    }
+}
+
+pub struct Iter {
+    root: PV,
+    it: Box<dyn CloneIterator<Item = PV>>
+}
+
+impl Iter {
+    pub fn new(root: PV, it: Box<dyn CloneIterator<Item = PV>>) -> Iter {
+        Iter { root, it }
+    }
+}
+
+impl Clone for Iter {
+    fn clone(&self) -> Self {
+        Self { root: self.root.clone(),
+               it: self.it.clone_box() }
+    }
+}
+
+impl fmt::Debug for Iter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Iter")
+         .field("root", &self.root)
+         .field("it", &"...")
+         .finish()
+    }
+}
+
+impl Traceable for Iter {
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+        self.root.trace(gray)
+    }
+
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
+        self.root.update_ptrs(reloc)
+    }
+}
+
+impl LispFmt for Iter {
+    fn lisp_fmt(&self,
+                db: &dyn SymDB,
+                visited: &mut VisitSet,
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Iterator for Iter {
+    type Item = PV;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.it.next()
+    }
+}
+
 #[derive(Clone)]
 pub struct Object {
     type_id: TypeId,
@@ -313,6 +380,7 @@ fissile_types! {
     (Vector, Builtin::Vector.sym(), Vec<PV>),
     (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),
     (Struct, Builtin::Struct.sym(), crate::nuke::Object),
+    (Iter, Builtin::Struct.sym(), crate::nuke::Iter),
     (Subroutine, Builtin::Subr.sym(), Box<dyn crate::subrs::Subr>)
 }
 
@@ -920,7 +988,7 @@ pub struct PtrMap(Vec<PtrPair>);
 impl PtrMap {
     pub fn get<T>(&self, orig: *const T) -> *const T {
         let srch = PtrPair { fst: orig as *mut u8,
-                                snd: ptr::null_mut::<u8>() };
+                             snd: ptr::null_mut::<u8>() };
         match self.0.binary_search(&srch) {
             Ok(idx) => self.0[idx].snd as *const T,
             Err(_) => orig
@@ -933,7 +1001,7 @@ impl PtrMap {
 
     pub fn push<A, B>(&mut self, from: *const A, to: *const B) {
         self.0.push(PtrPair { fst: from as *mut u8,
-                                 snd: to as *mut u8 })
+                              snd: to as *mut u8 })
     }
 
     pub fn is_empty(&self) -> bool {

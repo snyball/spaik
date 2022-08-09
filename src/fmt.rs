@@ -9,9 +9,9 @@ use std::slice::Iter;
 
 pub type VisitSet = FnvHashSet<*const NkAtom>;
 
-struct FmtWrap<'a, 'b, T> where T: ?Sized {
-    val: &'a T,
-    db: &'b dyn SymDB
+pub struct FmtWrap<'a, 'b, T> where T: ?Sized {
+    pub val: &'a T,
+    pub db: &'b dyn SymDB
 }
 
 impl<T> fmt::Display for FmtWrap<'_, '_, T> where T: LispFmt + ?Sized {

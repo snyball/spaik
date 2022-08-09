@@ -193,6 +193,8 @@ pub unsafe trait Subr: CloneSubr + Send {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
 
     fn name(&self) -> &'static str;
+
+    fn into_subr(self) -> Box<dyn Subr>;
 }
 
 impl fmt::Debug for Box<dyn Subr> {
@@ -242,45 +244,6 @@ impl IntoLisp for Box<dyn Subr> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TestObj {
-    x: f32,
-    y: f32,
-}
-
-impl Traceable for TestObj {
-    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
-}
-
-impl LispFmt for TestObj {
-    fn lisp_fmt(&self,
-                _db: &dyn SymDB,
-                _visited: &mut VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Fissile for TestObj {
-    fn type_of() -> NkT {
-        NkT::Struct
-    }
-}
-
-#[spaikfn]
-fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
-    println!("Inside my_function: {} {}", x, y);
-    let res = x + y.pow(2);
-    println!("obj1: {:?}", obj);
-    println!("mutating obj2: {:?} ...", obj2);
-    obj2.x += obj.x;
-    obj2.y += obj.y;
-    println!("obj2: {:?}", obj2);
-    println!("res: {}", res);
-    res
-}
-
 unsafe impl Subr for VLambda {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
         // FIXME: This works fine for lambdas that don't have an environment,
@@ -296,6 +259,17 @@ unsafe impl Subr for VLambda {
 
     fn name(&self) -> &'static str {
         "lambda"
+    }
+
+    fn into_subr(self) -> Box<dyn Subr> {
+        Box::new(self)
+    }
+}
+
+impl From<VLambda> for Box<dyn Subr>
+{
+    fn from(t: VLambda) -> Self {
+        Box::new(t)
     }
 }
 

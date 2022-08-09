@@ -3,15 +3,15 @@
 use crate::compile::{Builtin, BUILTIN_SYMBOLS};
 use crate::ast::{Value, ValueKind};
 use crate::r8vm::{RuntimeError, ArgSpec, ArgInt};
-use crate::nuke::*;
+use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
 use std::collections::HashMap;
 use fnv::FnvHashMap;
-use std::fmt;
-use std::str;
+use std::fmt::{self, format};
+use std::{str, char};
 use std::ptr;
 use std::time::Duration;
 use std::cmp::Ordering;
@@ -211,6 +211,7 @@ pub enum PV {
     UInt(usize),
     Real(f32),
     Bool(bool),
+    Char(char),
     Nil,
 }
 
@@ -317,6 +318,45 @@ fn find_cycle_pv(root: PV, vs: &mut VisitSet) -> bool {
     }
 }
 
+#[derive(Clone, Copy)]
+struct PVVecIter {
+    vec: *mut NkAtom,
+    idx: usize,
+}
+
+impl Traceable for PVVecIter {
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+        mark_atom(unsafe { &mut *self.vec }, gray)
+    }
+
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
+        self.vec = reloc.get(self.vec) as *mut NkAtom;
+    }
+}
+
+impl PVVecIter {
+    fn new(vec: PV) -> PVVecIter {
+        if let PV::Ref(ptr) = vec {
+            if unsafe { (*ptr).type_of() } != NkT::Vector {
+                panic!("Attempted to create PVVecIter from non-vector");
+            }
+            PVVecIter { vec: ptr, idx: 0 }
+        } else {
+            panic!("Attempted to create PVVecIter from non-vector");
+        }
+    }
+}
+
+impl Iterator for PVVecIter {
+    type Item = PV;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let idx = self.idx;
+        self.idx += 1;
+        unsafe { &*(*self.vec).fastcast::<Vec<PV>>() }.get(idx).copied()
+    }
+}
+
 impl PV {
     pub fn is_zero(&self) -> bool {
            *self == PV::Int(0)
@@ -341,6 +381,7 @@ impl PV {
             UInt(_) => Builtin::UnsignedInteger,
             Real(_) => Builtin::Float,
             Sym(_) => Builtin::Symbol,
+            Char(_) => Builtin::Char,
             Ref(p) => unsafe {
                 Builtin::from_sym((*p).type_of().into()).expect("
                     Builtin datatype does not have builtin symbol"
@@ -371,6 +412,37 @@ impl PV {
         gcell!(mut *self, {
             Cons(Cons { ref mut car, .. }) => { *car = PV::Sym(op.sym()) }
         }).unwrap();
+    }
+
+    pub fn make_iter(&self) -> Result<nuke::Iter, Error> {
+        type IT = Box<dyn CloneIterator<Item = PV>>;
+        let it: Box<dyn CloneIterator<Item = PV>> =
+            with_ref!(*self,
+                      Cons(_) => {
+                          let it: IT = Box::new(PVIter { item: *self });
+                          Ok(it)
+                      },
+                      // XXX: SAFETY: This is safe because strings are immutable,
+                      //              and std::slice::Iter maintains a pointer into
+                      //              the array that String refers to, not to the
+                      //              String struct itself, which may move.
+                      String(xs) => {
+                          let it = xs.chars().map(|c| PV::Char(c));
+                          let it: IT = Box::new(it);
+                          Ok(it)
+                      },
+                      // XXX: SAFETY: This is safe because PVVecIter implements
+                      //              Traceable and will update the pointer on GC
+                      //              compacting. It does *not* refer directly to
+                      //              the internal array because it may be mutated
+                      //              and reallocated.
+                      Vector(_) => {
+                          let it: IT = Box::new(PVVecIter::new(*self));
+                          Ok(it)
+                      }
+            ).map_err(|e| e.op(Builtin::Iter.sym()))?;
+
+        Ok(nuke::Iter::new(self.clone(), it))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = PV> {
@@ -589,6 +661,7 @@ impl Hash for PV {
             PV::Bool(x) => x.hash(state),
             PV::Nil => 0.hash(state),
             PV::Real(x) => x.to_ne_bytes().hash(state),
+            PV::Char(x) => x.hash(state),
         }
     }
 }
@@ -606,6 +679,7 @@ impl LispFmt for PV {
             PV::UInt(n) => write!(f, "{}u", n),
             PV::Real(a) => write!(f, "{}", a),
             PV::Sym(id) => write!(f, "{}", db.name(id)),
+            PV::Char(c) => write!(f, "(char {})", c),
             PV::Ref(p) => unsafe { (*p).lisp_fmt(db, visited, f) }
         }
     }

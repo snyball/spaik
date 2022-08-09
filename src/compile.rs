@@ -237,6 +237,7 @@ builtins! {
     (LispOk, "ok"),
     (Fail, "fail"),
     (Symbol, "symbol"),
+    (Char, "char"),
     (Integer, "integer"),
     (String, "string"),
     (Closure, "closure"),
@@ -255,8 +256,10 @@ builtins! {
     (Frame, "<ζ>::frame"),
     (DebugVarIdx, "dbg::var-idx"),
     (LambdaObject, "<ζ>::lambda-object"),
+    (IterStop, "<ζ>::iter-stop"),
     (Subr, "subr"),
     (Nil, "nil"),
+    (Iter, "iter"),
     (Epsilon, "")
 }
 
@@ -850,6 +853,15 @@ impl<'a> R8Compiler<'a> {
     }
 
     fn bt_next(&mut self, code: &Value) -> Result<(), Error> {
+        if code.nargs() == 0 {
+            self.bt_loop_next(code)
+        } else {
+            // self.asm_op(chasm!(NXIT 1));
+            Ok(())
+        }
+    }
+
+    fn bt_loop_next(&mut self, code: &Value) -> Result<(), Error> {
         let outer = self.loops
                         .last()
                         .copied()
@@ -1410,6 +1422,7 @@ impl<'a> R8Compiler<'a> {
                 self.compile_value(&res);
             }),
             Progn => self.compile_seq(ret, code.args()),
+            // Next => gen_call(r8c::OpName::NEXT, &[], ArgSpec::normal(1)),
             Lambda => may_ret!(self.bt_lambda(code)),
             Cons => may_ret!(gen_call(r8c::OpName::CONS, &[], ArgSpec::normal(2))),
             Car => may_ret!(gen_call(r8c::OpName::CAR, &[], ArgSpec::normal(1))),

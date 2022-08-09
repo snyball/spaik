@@ -6,7 +6,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, token::Struct, Data, DataStruct, FieldsNamed};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, token::Struct, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, AttributeArgs};
 
 fn crate_root() -> proc_macro2::TokenStream {
     let found_crate = crate_name("spaik")
@@ -45,14 +45,7 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
 
         #[allow(non_camel_case_types)]
         #[derive(Clone)]
-        struct #obj_ident {}
-
-        impl #obj_ident {
-            #[inline]
-            pub fn new() -> Box<dyn #spaik_root::subrs::Subr> {
-                Box::new(#obj_ident {})
-            }
-        }
+        struct #obj_ident();
 
         unsafe impl #spaik_root::subrs::Subr for #obj_ident {
             fn call(&mut self,
@@ -76,6 +69,16 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
             fn name(&self) -> &'static str {
                 #ident_str
             }
+
+            fn into_subr(self) -> Box<dyn #spaik_root::subrs::Subr> {
+                Box::new(self)
+            }
+        }
+
+        impl From<#obj_ident> for Box<dyn #spaik_root::subrs::Subr> {
+            fn from(x: #obj_ident) -> Self {
+                Box::new(x)
+            }
         }
     };
 
@@ -83,8 +86,33 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
 }
 
 #[proc_macro_attribute]
-pub fn spaikfn(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn spaikfn(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let meta = parse_macro_input!(attr as AttributeArgs);
     spaik_fn_impl(crate_root(), item)
+}
+
+#[proc_macro_attribute]
+pub fn spaikiface(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemImpl);
+    let items = input.items
+                     .clone()
+                     .into_iter()
+                     .filter_map(|i| match i {
+                         ImplItem::Method(m) => Some(m),
+                         _ => None,
+                     })
+                     .map(|m| {
+                     });
+
+    let out = quote! {
+        #input
+    };
+    out.into()
+}
+
+#[proc_macro_attribute]
+pub fn spaiklib(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    quote!().into()
 }
 
 #[proc_macro_derive(Fissile)]
@@ -99,12 +127,9 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream
             fields: syn::Fields::Named(FieldsNamed { named, .. }), ..
         }) => named,
         _ => unimplemented!()
-    }.into_iter().map(|f| {
-        let id = f.ident.clone().expect("Identifier");
-        (format!(":{id}"), id)
-    });
-    let field_names = fields.clone().map(|(_, id)| id);
-    let field_kws = fields.map(|(kw, _)| kw);
+    }.into_iter();
+    let field_names = fields.clone().map(|f| f.ident.clone().expect("Identifier"));
+    let field_kws = fields.map(|f| format!(":{}", f.ident.expect("Identifier")));
 
     let out = quote! {
         impl #root::nkgc::Traceable for #name {

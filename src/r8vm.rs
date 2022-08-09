@@ -18,7 +18,7 @@ use crate::{
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
-use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
+use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex, iter};
 
 chasm_def! {
     r8c:
@@ -32,6 +32,9 @@ chasm_def! {
     CDR(),
     SETCAR(),
     SETCDR(),
+
+    // Iterators
+    NXIT(var_idx: u16),
 
     // Vectors
     VEC(num: u32),
@@ -50,6 +53,8 @@ chasm_def! {
     JN(dip: i32),
     JZ(dip: i32),
     JNZ(dip: i32),
+    JSYM(sym: SymIDInt),
+    JNSYM(sym: SymIDInt),
     CALL(dip: i32, nargs: u16),
     VCALL(func: SymIDInt, nargs: u16),
     // TODO: APPLY()
@@ -390,14 +395,16 @@ macro_rules! subr {
         #[derive(Clone, Copy, Debug)]
         struct $name {}
 
-        #[allow(dead_code)]
-        impl $name {
-            pub fn new() -> Box<dyn Subr> { Box::new($name {}) }
-        }
-
         unsafe impl Subr for $name {
             fn call(&mut $self, $vm: &mut R8VM, $args: &[PV]) -> Result<PV, Error> $body
             fn name(&self) -> &'static str { $name_s }
+            fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+        }
+
+        impl From<$name> for Box<dyn $crate::subrs::Subr> {
+            fn from(x: $name) -> Self {
+                Box::new(x)
+            }
         }
     };
 
@@ -407,8 +414,22 @@ macro_rules! subr {
                                           -> Result<PV, Error> $body);
     };
 
+    (fn $name:ident[$name_s:literal](&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
+                    -> Result<PV, Error> $body:block) => {
+        subr!(fn $name[$name_s](&mut $self, $vm : &mut R8VM, $args : &[PV])
+                                -> Result<PV, Error> $body);
+    };
+
     (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, args: ($($arg:ident),*)) -> Result<PV, Error> $body:block) => {
         subr!(fn $name(&mut $self, $vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            subr_args!(($($arg),*) $self $vm args {
+                $body
+            })
+        });
+    };
+
+    (fn $name:ident[$name_s:literal](&mut $self:ident, $vm:ident : &mut R8VM, args: ($($arg:ident),*)) -> Result<PV, Error> $body:block) => {
+        subr!(fn $name[$name_s](&mut $self, $vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             subr_args!(($($arg),*) $self $vm args {
                 $body
             })
@@ -441,7 +462,9 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, ptr};
 
-    use crate::{subrs::Subr, nkgc::PV, error::Error, nuke::NkAtom, fmt::LispFmt};
+    use spaik_proc_macros::spaiklib;
+
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::Error, nuke::NkAtom, fmt::{LispFmt, FmtWrap}, sym_db::SymDB};
     use super::{R8VM, tostring, ArgSpec};
 
     std_subrs! {
@@ -458,11 +481,8 @@ mod sysfns {
         }
 
         fn string(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
-            let cell = vm.mem.alloc::<String>();
-            unsafe {
-                ptr::write(cell, x.lisp_to_string(&vm.mem));
-            }
-            Ok(NkAtom::make_ref(cell))
+            x.lisp_to_string(&vm.mem)
+             .into_pv(&mut vm.mem)
         }
 
         fn eval(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
@@ -476,12 +496,10 @@ mod sysfns {
 
         fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             let mut out = String::new();
-            for arg in args.iter() {
-                write!(&mut out, "{}", arg).unwrap();
+            for val in args.iter() {
+                write!(&mut out, "{}", FmtWrap { val, db: vm }).unwrap();
             }
-            let cell = vm.mem.alloc::<String>();
-            unsafe { ptr::write(cell, out) }
-            Ok(NkAtom::make_ref(cell))
+            out.into_pv(&mut vm.mem)
         }
     }
 }
@@ -967,6 +985,10 @@ impl R8VM {
         Ok(())
     }
 
+    pub fn set_subr(&mut self, name: SymID, obj: Box<dyn Subr>) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn set_debug_mode(&mut self, debug_mode: bool) {
         self.debug_mode = debug_mode;
     }
@@ -1164,6 +1186,7 @@ impl R8VM {
                 x => unimplemented!("inner: {:?}", x),
             }
             PV::UInt(x) => panic!("Stray UInt: {}", x),
+            PV::Char(x) => panic!("Stray char: {}", x),
         };
         Value { kind, src: src.clone() }
     }
@@ -1200,6 +1223,7 @@ impl R8VM {
                         }
                     }
                     PV::UInt(x) => panic!("Stray UInt: {}", x),
+                    PV::Char(x) => panic!("Stray char: {}", x),
                 },
                 Cons(cons_src) => {
                     let car = ostack.pop().unwrap();
@@ -1391,12 +1415,11 @@ impl R8VM {
                 let ptr = self.mem.stack.as_ptr().offset(delta);
                 slice::from_raw_parts(ptr, nargs as usize)
             };
-            // FIXME: If `Subr` is implemented manually it is possible to mutate
-            //        `pmem` in `.call`, which will invalidate `ip`.
-            let res = subr.call(self, args)?;
+            let dip = self.ip_delta(ip);
+            let res = subr.call(self, args);
             self.mem.stack.drain(idx..).for_each(drop);
-            self.mem.push(res);
-            Ok(ip)
+            self.mem.push(res?);
+            Ok(self.ret_to(dip))
         })
     }
 
@@ -1427,6 +1450,17 @@ impl R8VM {
                 }
                 CONS() => self.mem.cons_unchecked(),
                 APPEND(n) => self.mem.append(*n)?,
+
+                // Iterators
+                NXIT(var) => {
+                    let offset = (self.frame as isize) + (*var as isize);
+                    let it = *self.mem.stack.as_ptr().offset(offset);
+                    with_ref_mut!(it, Iter(it) => {
+                        let elem = it.next().unwrap_or(PV::Nil);
+                        self.mem.push(elem);
+                        Ok(())
+                    }).map_err(|e| e.op(Builtin::Next.sym()))?;
+                }
 
                 // Vectors
                 VEC(n) => {
@@ -1492,7 +1526,7 @@ impl R8VM {
                             // v[idx] = val;
                             Ok(())
                         }
-                    }).map_err(|e| e.op(Builtin::Get.sym()))?;
+                    }).map_err(|e| e.op(Builtin::Set.sym()))?;
                 }
                 LEN() => {
                     let li = self.mem.pop()?;
