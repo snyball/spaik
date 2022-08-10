@@ -203,36 +203,6 @@ macro_rules! stack_op {
     }
 }
 
-macro_rules! stack_ref_op {
-    ( [ $m:pat ] $type:ty => $action:block ) => {
-        |st: &mut Vec<$type>| -> Result<(), Error> {
-            let v = st.pop().expect(
-                "Empty stack when running op, likely code-gen failure"
-            );
-            if let PV::Ref(r) = v {
-                unsafe {
-                    if let $m = (*r).match_ref() {
-                        st.push($action);
-                    } else {
-                        return Err(RuntimeError::new(format!(
-                            "Expected {} but got {:?}",
-                            stringify!($m),
-                            (*r).type_of()
-                        )).into());
-                    }
-                }
-            } else {
-                return Err(RuntimeError::new(format!(
-                    "Expected PV::Ref({}) but got {:?}",
-                    stringify!($m),
-                    v
-                )).into());
-            }
-            Ok(())
-        }
-    };
-}
-
 fn tostring(vm: &R8VM, x: PV) -> String {
     match x {
         PV::Ref(y) => match unsafe { (*y).match_ref() } {
@@ -739,11 +709,6 @@ def_stack_op! {
     EQLP_OP("eq?"):  [x, y] => { Ok(Bool(x.equalp(*y))) };
 }
 
-const CAR_OP: StackOpFn<PV> =
-    stack_ref_op!([NkRef::Cons(Cons {car, ..})] PV => { *car });
-const CDR_OP: StackOpFn<PV> =
-    stack_ref_op!([NkRef::Cons(Cons {cdr, ..})] PV => { *cdr });
-
 #[derive(Default)]
 struct Regs {
     vals: [PV; 16],
@@ -912,8 +877,12 @@ impl R8VM {
         addfn!(exit);
         addfn!(iter);
         addfn!(macroexpand);
-        addfn!("%", modulo);
         addfn!(pow);
+        addfn!(disassemble);
+        addfn!(load);
+        addfn!(dump_gc_stats);
+        addfn!(dump_stack);
+        addfn!("%", modulo);
         addfn!("set-macro", set_macro);
         addfn!("dump-macro-tbl", dump_macro_tbl);
         addfn!("dump-sym-tbl", dump_sym_tbl);
@@ -925,10 +894,6 @@ impl R8VM {
         addfn!("-", asum);
         addfn!("*", product);
         addfn!("/", aproduct);
-        addfn!(disassemble);
-        addfn!(load);
-        addfn!(dump_gc_stats);
-        addfn!(dump_stack);
 
         vm
     }
@@ -1422,8 +1387,20 @@ impl R8VM {
             }
             match op {
                 // List processing
-                CAR() => CAR_OP(&mut self.mem.stack)?,
-                CDR() => CDR_OP(&mut self.mem.stack)?,
+                CAR() => {
+                    let it = self.mem.pop()?;
+                    with_ref_mut!(it, Cons(Cons { car, .. }) => {
+                        self.mem.push(*car);
+                        Ok(())
+                    }).map_err(|e| e.op(Builtin::Car.sym()))?
+                },
+                CDR() => {
+                    let it = self.mem.pop()?;
+                    with_ref_mut!(it, Cons(Cons { cdr, .. }) => {
+                        self.mem.push(*cdr);
+                        Ok(())
+                    }).map_err(|e| e.op(Builtin::Cdr.sym()))?
+                },
                 LIST(n) => self.mem.list(*n),
                 VLIST() => {
                     let len = self.mem.pop()?.force_int() as u32;
