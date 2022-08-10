@@ -181,6 +181,7 @@ builtins! {
     (Unknown, "?"),
     (If, "if"),
     (Compile, "compile"),
+    (Join, "join"),
     (MakeSymbol, "make-symbol"),
     (Pow, "pow"),
     (Modulo, "%"),

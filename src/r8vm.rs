@@ -279,10 +279,36 @@ macro_rules! std_subrs {
 
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, convert::Infallible};
+    use std::{fmt::Write, convert::Infallible, borrow::Cow};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
+
+    fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String
+        where IT: Iterator<Item = PV>, S: AsRef<str>
+    {
+        let mut out = String::new();
+        let mut had_out = false;
+        for val in args {
+            if had_out {
+                out.push_str(sep.as_ref());
+            } else {
+                had_out = true;
+            }
+            with_ref!(val, String(s) => {
+                write!(&mut out, "{s}").unwrap();
+                Ok(())
+            }).or_else(|_| -> Result<(), Infallible> {
+                match val {
+                    PV::Char(c) => write!(&mut out, "{c}").unwrap(),
+                    _ => write!(&mut out, "{}", FmtWrap { val: &val,
+                                                          db: vm }).unwrap(),
+                }
+                Ok(())
+            }).unwrap();
+        }
+        out
+    }
 
     std_subrs! {
         fn println(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
@@ -315,20 +341,23 @@ mod sysfns {
         }
 
         fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-            let mut out = String::new();
-            for val in args.iter() {
-                with_ref!(*val, String(s) => {
-                    write!(&mut out, "{s}").unwrap();
-                    Ok(())
-                }).or_else(|_| -> Result<(), Infallible> {
-                    match val {
-                        PV::Char(c) => write!(&mut out, "{c}").unwrap(),
-                        _ => write!(&mut out, "{}", FmtWrap { val, db: vm }).unwrap(),
-                    }
-                    Ok(())
-                }).unwrap();
-            }
-            out.into_pv(&mut vm.mem)
+            join_str(vm, args.iter().copied(), "").into_pv(&mut vm.mem)
+        }
+
+        fn join(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            let (it, sep) = match &args[..] {
+                [xs, PV::Char(s)] => (xs.make_iter()?, Cow::from(s.to_string())),
+                [xs, PV::Sym(s)] => (xs.make_iter()?, Cow::from(vm.sym_name(*s))),
+                [xs, o] => (xs.make_iter()?, with_ref!(*o, String(s) => {
+                    Ok(Cow::from(s))
+                }).map_err(|e| e.op(Builtin::Join.sym()).argn(2))?),
+                [xs] => (xs.make_iter()?, Cow::from("")),
+                _ => return err!(ArgError,
+                                 expect: ArgSpec::opt(1, 1),
+                                 got_num: args.len() as u32,
+                                 op: Builtin::Join.sym())
+            };
+            join_str(vm, it, sep).into_pv(&mut vm.mem)
         }
 
         fn iter(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
@@ -874,6 +903,7 @@ impl R8VM {
         addfn!(eval);
         addfn!(read);
         addfn!(concat);
+        addfn!(join);
         addfn!(exit);
         addfn!(iter);
         addfn!(macroexpand);
