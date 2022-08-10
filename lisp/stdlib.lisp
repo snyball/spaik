@@ -197,17 +197,6 @@
 (defmacro dolist (cnd &body body)
   (let ((name (car cnd))
         (init (car (cdr cnd)))
-        (xs (gensym)))
-    `(let ((,name nil)
-           (,xs ,init))
-       (while ,xs
-         (set ,name (car ,xs))
-         ,@body
-         (set ,xs (cdr ,xs))))))
-
-(defmacro for (cnd &body body)
-  (let ((name (car cnd))
-        (init (car (cdr cnd)))
         (sentinel '<ζ>::iter-stop)
         (it (gensym)))
     `(let ((,name nil)
