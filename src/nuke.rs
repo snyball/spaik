@@ -14,7 +14,7 @@ use std::mem::{self, size_of};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
-use std::fmt::{self, write};
+use std::fmt;
 use core::fmt::Debug;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;

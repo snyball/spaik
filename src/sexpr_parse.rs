@@ -533,7 +533,7 @@ mod tests {
     fn a_test() {
         let text = "(progn `(loop (if (= x y) (break)) ((set x (+ x 1)))) (map #'print '(1e2 2e-2 3)))";
         let mut vm = R8VM::new();
-        let res = Parser::parse(&mut vm, text).unwrap();
+        let res = Parser::parse(&mut vm, text, None).unwrap();
         println!("{}", res.to_string(&vm.mem));
     }
 

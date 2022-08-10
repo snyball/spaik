@@ -20,7 +20,6 @@ type StringID = SymIDInt;
  * A bijection between String IDs and Strings, avoids storing more than one copy
  * of the strings.
 */
-// #[derive(Debug)]
 pub struct SIntern<T>
     where T: Into<StringID> + From<StringID> + Default + Copy
 {

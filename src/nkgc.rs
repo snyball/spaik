@@ -10,6 +10,7 @@ use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
 use std::collections::HashMap;
 use fnv::FnvHashMap;
+use serde::{Serialize, Deserialize};
 use std::fmt;
 use std::{str, char};
 use std::ptr;
@@ -162,7 +163,7 @@ impl LispFmt for String {
 
 pub type SymIDInt = i32;
 
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 pub struct SymID {
     pub id: SymIDInt,
 }

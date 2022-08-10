@@ -7,8 +7,6 @@ extern crate lazy_static;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-extern crate binwrite;
-extern crate binread;
 #[macro_use]
 pub mod error;
 #[macro_use]
