@@ -313,6 +313,9 @@
       (- x)
     x))
 
+(defun sqrt (x)
+  (pow x 0.5))
+
 (defun mean (xs)
   (/ (sum xs) (len xs)))
 
