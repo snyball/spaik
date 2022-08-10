@@ -434,7 +434,9 @@ impl PV {
 
     pub fn make_iter(&self) -> Result<nuke::Iter, Error> {
         type IT = Box<dyn CloneIterator<Item = PV>>;
-        let it: Box<dyn CloneIterator<Item = PV>> =
+        let it: Box<dyn CloneIterator<Item = PV>> = if *self == PV::Nil {
+            Box::new(PVIter { item: *self })
+        } else {
             with_ref!(*self,
                       Cons(_) => {
                           let it: IT = Box::new(PVIter { item: *self });
@@ -458,7 +460,8 @@ impl PV {
                           let it: IT = Box::new(PVVecIter::new(*self));
                           Ok(it)
                       }
-            ).map_err(|e| e.op(Builtin::Iter.sym()))?;
+            ).map_err(|e| e.op(Builtin::Iter.sym()))?
+        };
 
         Ok(nuke::Iter::new(*self, it))
     }
