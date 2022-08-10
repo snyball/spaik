@@ -391,3 +391,47 @@
                       (break ,@(cdr x)))))
            is)
     (break nil)))
+
+(defmacro fmt (w &rest in)
+  (let* ((begin (next (iter "{")))
+         (end (next (iter "}")))
+         (in-sub false)
+         (span (vec))
+         (out '(concat)))
+    (dolist (c w)
+      (when (= c begin)
+        (set out (cons (join span) out))
+        (set span (vec))
+        (set in-sub true)
+        (next))
+      (when (= c end)
+        (unless in-sub
+          (error 'TrailingDelimiter))
+        (set out (cons (make-symbol (join span)) out))
+        (set span (vec))
+        (set in-sub false)
+        (next))
+      (push span c))
+    (when in-sub
+      (error 'UnclosedDelimiter))
+    (set out (cons (join span) out))
+    (reverse out)))
+
+(defun _println (x)
+  (println x))
+
+(defmacro println (w &rest in)
+  (if (string? w)
+      `(_println (fmt ,w ,@in))
+      `(_println ,w ,@in)))
+
+(defun _print (x)
+  (println x))
+
+(defmacro println (w &rest in)
+  (if (string? w)
+      `(_print (fmt ,w ,@in))
+      `(_print ,w ,@in)))
+
+(defmacro dbg (obj)
+  `(_println (concat ',obj ": " ,obj)))

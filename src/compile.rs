@@ -182,6 +182,7 @@ builtins! {
     (If, "if"),
     (Compile, "compile"),
     (Join, "join"),
+    (Error, "error"),
     (MakeSymbol, "make-symbol"),
     (Pow, "pow"),
     (Modulo, "%"),
