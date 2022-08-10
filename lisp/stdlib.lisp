@@ -302,12 +302,6 @@
       (inc! s x))
     s))
 
-(define (pow a b)
-  (let ((s 1))
-    (range (_ (0 b))
-      (set s (* s a)))
-    s))
-
 (defun abs (x)
   (if (< x 0)
       (- x)
