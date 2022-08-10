@@ -1,5 +1,6 @@
 //! S-Expression Parser
 
+use crate::error::SourceFileName;
 use crate::perr::*;
 use crate::tok::*;
 use crate::ast::*;
@@ -106,10 +107,11 @@ pub struct Parser<'b, 'c> {
     pairs: FnvHashMap<u32, u32>,
     toks: Vec<Token<'b>>,
     vm: &'c mut R8VM,
+    file: SourceFileName,
 }
 
 impl Parser<'_, '_> {
-    pub fn parse(vm: &mut R8VM, text: &str) -> PResult<Value> {
+    pub fn parse(vm: &mut R8VM, text: &str, file: SourceFileName) -> PResult<Value> {
         lazy_static! {
             static ref TREE: Fragment = standard_lisp_tok_tree();
         }
@@ -121,7 +123,8 @@ impl Parser<'_, '_> {
         let mut parser = Parser {
             pairs: pairs_lookup,
             toks,
-            vm
+            vm,
+            file
         };
         parser.parse_rec((0, len))
     }
@@ -163,16 +166,15 @@ impl Parser<'_, '_> {
                     let range = inner();
                     push(self.parse_rec(range)?, &mut mods)
                 },
-                _ => {
-                    if let Some(m) = sexpr_modifier(text) {
-                        let symdb: &mut dyn SymDB = &mut self.vm.mem;
-                        let sym = Value::from_sym(symdb.put_sym(m),
-                                                  Source::new(line, col));
-                        let tail = Value::new_tail(Box::new(sym));
-                        modifier!(src.clone(), tail);
-                    } else {
-                        push(Value::from_token(self.vm, &self.toks[i])?, &mut mods);
-                    }
+                _ => if let Some(m) = sexpr_modifier(text) {
+                    let symdb: &mut dyn SymDB = &mut self.vm.mem;
+                    let sym = Value::from_sym(symdb.put_sym(m),
+                                              Source::new(line, col, self.file.clone()));
+                    let tail = Value::new_tail(Box::new(sym));
+                    modifier!(src.clone(), tail);
+                } else {
+                    push(Value::from_token(self.vm, &self.toks[i], self.file.clone())?,
+                         &mut mods);
                 }
             }
         }
@@ -360,10 +362,17 @@ enum TokState {
     Done,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct LineTracker {
     line: u32,
     col: u32
+}
+
+impl Default for LineTracker {
+    fn default() -> Self {
+        Self { line: 1,
+               col: Default::default() }
+    }
 }
 
 impl LineTracker {

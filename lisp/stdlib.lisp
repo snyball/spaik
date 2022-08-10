@@ -188,8 +188,8 @@
   (load lib))
 
 (defmacro load (lib)
-  `(eval-when :compile
-     (_load ,lib)))
+  `((eval (eval-when :compile
+            (_load ,lib)))))
 
 ;;; FIXME: (next)/(break) don't work inside dolist/range,
 ;;;        a compiler built-in is needed to fix it.

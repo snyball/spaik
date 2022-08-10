@@ -7,21 +7,24 @@ use crate::nkgc::SymID;
 use crate::ast::Value;
 use crate::fmt::LispFmt;
 use crate::sym_db::{SymDB, SYM_DB};
+use std::borrow::Cow;
 use std::result;
 use std::error;
 use std::fmt;
 use std::num::TryFromIntError;
 
+pub type SourceFileName = Option<Cow<'static, str>>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Source {
-    pub file: Option<String>,
+    pub file: SourceFileName,
     pub line: u32,
     pub col: u32,
 }
 
 impl Source {
-    pub fn new(line: u32, col: u32) -> Source {
-        Source { file: None, line, col }
+    pub fn new(line: u32, col: u32, file: SourceFileName) -> Source {
+        Source { file, line, col }
     }
 
     pub fn none() -> Source {
@@ -29,7 +32,7 @@ impl Source {
     }
 
     pub fn with_file(mut self, file: String) -> Source {
-        self.file = Some(file);
+        self.file = Some(Cow::from(file));
         self
     }
 
@@ -143,6 +146,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
     use ErrorKind::*;
     let nameof = |sym| db.name(sym);
     let tostring = |v: &Value| v.to_string(db);
+
     match &err.ty {
         IllegalInstruction { inst } =>
             write!(f, "Illegal instruction: <{}>", inst)?,
@@ -224,7 +228,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                 write!(f, ")")?;
                 writeln!(f, " {}", src)?;
             }
-            fmt_error(&tb.err, f, db)?;
+            return fmt_error(&tb.err, f, db)
         },
         ErrorKind::IndexError { idx } =>
             write!(f, "Index Error: No such index {}", idx)?,
@@ -241,12 +245,11 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                    nameof(*spec))?,
         x => unimplemented!("{:?}", x),
     }
+
     if let Some(src) = &err.src {
         if !src.is_none() {
             write!(f, " {}", src)?;
         }
-    } else {
-        // write!(f, " [@unknown]")?;
     }
     Ok(())
 }
@@ -321,12 +324,12 @@ impl fmt::Display for ErrorKind {
 
 impl fmt::Display for Source {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
-        write!(f, "[@")?;
+        write!(f, "[")?;
         if self.line == 0 {
             write!(f, "unknown")?;
         } else {
             if let Some(file) = &self.file {
-                write!(f, "{}-", file)?;
+                write!(f, "{} ", file)?;
             }
             write!(f, "{}:{}", self.line, self.col)?;
         }

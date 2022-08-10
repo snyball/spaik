@@ -303,7 +303,7 @@ impl Value {
                 src }
     }
 
-    pub fn from_token(vm: &mut R8VM, tok: &Token) -> PResult<Value> {
+    pub fn from_token(vm: &mut R8VM, tok: &Token, file: SourceFileName) -> PResult<Value> {
         let kind = if let Ok(int) = tok.text.parse::<i64>() {
             ValueKind::Int(int)
         } else if let Ok(num) = tok.text.parse::<f32>() { 
@@ -317,7 +317,8 @@ impl Value {
         } else {
             ValueKind::Symbol(vm.mem.symdb.put_ref(tok.text))
         };
-        Ok(Value { kind, src: Source::new(tok.line, tok.col) })
+        Ok(Value { kind,
+                   src: Source::new(tok.line, tok.col, file) })
     }
 
     pub fn new_tail(val: Box<Value>) -> Value {

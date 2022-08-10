@@ -268,9 +268,12 @@ builtins! {
 
 pub type LblLookup = FnvHashMap<u32, Lbl>;
 
+pub type SourceList = Vec<(usize, Source)>;
+
 pub type Linked = (Vec<R8C>,
                    LblLookup,
-                   Vec<NkSum>);
+                   Vec<NkSum>,
+                   SourceList);
 
 pub fn arg_parse(args: &Value) -> Result<(Vec<SymID>, ArgSpec), Error> {
     let mut syms = Vec::new();
@@ -516,6 +519,7 @@ pub struct R8Compiler<'a> {
     // FIXME: This can probably be removed
     symtbl: HashMap<SymID, isize>,
     vm: &'a mut R8VM,
+    source_tbl: SourceList,
 }
 
 #[derive(Clone, Copy)]
@@ -534,7 +538,18 @@ impl<'a> R8Compiler<'a> {
             consts: Default::default(),
             symtbl: Default::default(),
             loops: Default::default(),
+            source_tbl: Default::default(),
             vm
+        }
+    }
+
+    pub fn set_source(&mut self, src: Source) {
+        match self.source_tbl.last() {
+            Some((_, last_src)) if *last_src == src => (),
+            _ => {
+                let idx = self.asm.len();
+                self.source_tbl.push((idx, src));
+            }
         }
     }
 
@@ -1188,7 +1203,7 @@ impl<'a> R8Compiler<'a> {
     pub fn link(self) -> Result<Linked, Error> {
         let len = self.asm.len() as isize;
         let (asm, labels) = self.asm.link::<R8C>(&self.symtbl, len)?;
-        Ok((asm, labels, self.consts))
+        Ok((asm, labels, self.consts, self.source_tbl))
     }
 
     fn define_static(&mut self,
@@ -1198,9 +1213,9 @@ impl<'a> R8Compiler<'a> {
         let mut cc = R8Compiler::new(self.vm);
         cc.estack.push(Env::empty());
         cc.compile(true, init)?;
-        let (asm, _, consts) = cc.link()?;
+        let (asm, _, consts, srcs) = cc.link()?;
         let pv = unsafe {
-            self.vm.add_and_run(asm, Some(consts))?
+            self.vm.add_and_run(asm, Some(consts), Some(srcs))?
         };
         let idx = self.vm.mem.push_env(pv);
         if ret {
@@ -1277,9 +1292,9 @@ impl<'a> R8Compiler<'a> {
         let mut cc = R8Compiler::new(self.vm);
         cc.estack.push(Env::empty());
         cc.compile_seq(true, seq)?;
-        let (asm, _, consts) = cc.link()?;
+        let (asm, _, consts, srcs) = cc.link()?;
         let res = unsafe {
-            self.vm.add_and_run(asm, Some(consts))?
+            self.vm.add_and_run(asm, Some(consts), Some(srcs))?
         };
         Ok(unsafe { pv_to_value(res, &Source::none()) })
     }
@@ -1565,6 +1580,8 @@ impl<'a> R8Compiler<'a> {
     }
 
     fn compile(&mut self, ret: bool, code: &Value) -> Result<(), Error> {
+        self.set_source(code.src.clone());
+
         if let Some(op) = code.op() {
             self.compile_app(ret, op, code)?;
         } else if code.is_atom() {

@@ -6,7 +6,7 @@ use comfy_table::Table;
 use crate::{
     ast::{Value, ValueKind},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
-    compile::{pv_to_value, Builtin, Linked, R8Compiler},
+    compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
     error::{Error, ErrorKind, Source},
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
@@ -537,7 +537,7 @@ mod sysfns {
     pub struct dump_gc_stats();
 
     unsafe impl Subr for dump_gc_stats {
-        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV, Error> {
             vm.print_fmt(format_args!("{:?}", vm.mem.stats()))?;
             vm.println(&"")?;
             Ok(PV::Nil)
@@ -550,7 +550,7 @@ mod sysfns {
     pub struct dump_stack();
 
     unsafe impl Subr for dump_stack {
-        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV, Error> {
             vm.dump_stack()?;
             Ok(PV::Nil)
         }
@@ -690,6 +690,7 @@ pub struct R8VM {
     macros: FnvHashMap<SymIDInt, SymID>,
     funcs: FnvHashMap<SymIDInt, Func>,
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
+    srctbl: SourceList,
 
     stdout: Mutex<Box<dyn OutStream>>,
     stdin: Mutex<Box<dyn InStream>>,
@@ -714,6 +715,7 @@ impl Default for R8VM {
             stdin: Mutex::new(Box::new(io::stdin())),
             debug_mode: false,
             frame: Default::default(),
+            srctbl: Default::default(),
         }
     }
 }
@@ -967,30 +969,30 @@ impl R8VM {
     }
 
     pub fn add_func(&mut self, name: SymID, code: Linked, args: ArgSpec) {
-        let (asm, labels, consts) = code;
+        let (asm, labels, consts, srcs) = code;
         self.funcs.insert(name.id, Func {
             pos: self.pmem.len(),
             sz: asm.len(),
             args
         });
         self.func_labels.insert(name, labels);
-        self.add_code(asm, Some(consts));
+        self.add_code(asm, Some(consts), Some(srcs));
     }
 
     pub fn load(&mut self, lib: SymID) -> Result<SymID, Error> {
         let sym_name = self.sym_name(lib).to_string();
         let err = ErrorKind::ModuleLoadError { lib };
-        let mut file = File::open(format!("lisp/{}.lisp", &sym_name))
-            .map_err(|_| err.clone())?;
+        let src_path = format!("lisp/{}.lisp", &sym_name);
+        let mut file = File::open(&src_path).map_err(|_| err.clone())?;
         let mut src = String::new();
         file.read_to_string(&mut src).map_err(|_| err)?;
-        let ast = Parser::parse(self, &src)?;
+        let ast = Parser::parse(self, &src, Some(Cow::from(src_path)))?;
         let mut cc = R8Compiler::new(self);
         cc.compile_top(true, &ast)?;
-        let (mut asm, lbls, consts) = cc.link()?;
+        let (mut asm, lbls, consts, srcs) = cc.link()?;
         asm.push(r8c::Op::RET());
         let fn_sym = self.mem.symdb.put(format!("<Σ>::{}", sym_name));
-        self.add_func(fn_sym, (asm, lbls, consts), ArgSpec::none());
+        self.add_func(fn_sym, (asm, lbls, consts, srcs), ArgSpec::none());
         Ok(fn_sym)
     }
 
@@ -1004,7 +1006,7 @@ impl R8VM {
 
     /// Reads LISP code into an AST.
     pub fn read(&mut self, lisp: &str) -> PResult<()> {
-        let ast = Parser::parse(self, lisp)?;
+        let ast = Parser::parse(self, lisp, None)?;
         self.push_ast(&ast);
         Ok(())
     }
@@ -1057,17 +1059,33 @@ impl R8VM {
      */
     pub fn add_code(&mut self,
                     mut code: Vec<r8c::Op>,
-                    consts: Option<Vec<NkSum>>) {
+                    consts: Option<Vec<NkSum>>,
+                    srcs: Option<SourceList>)
+    {
         let const_rel = self.consts.len() as u32;
         for op in code.iter_mut() {
             if let r8c::Op::CONSTREF(ref mut i) = *op {
                 *i += const_rel;
             }
         }
+        let offset = self.pmem.len();
+        if let Some(srcs) = srcs {
+            for (idx, v) in srcs.into_iter() {
+                self.srctbl.push((idx + offset, v));
+            }
+        }
         self.pmem.extend(code);
         if let Some(consts) = consts {
             self.consts.extend(consts);
         }
+    }
+
+    pub fn get_source(&self, idx: usize) -> Source {
+        let src_idx = match self.srctbl.binary_search_by(|(u, _)| u.cmp(&idx)) {
+            Ok(i) => i,
+            Err(i) => i-1
+        };
+        self.srctbl[src_idx].1.clone()
     }
 
     /**
@@ -1077,10 +1095,13 @@ impl R8VM {
      */
     pub unsafe fn add_and_run(&mut self,
                               code: Vec<r8c::Op>,
-                              consts: Option<Vec<NkSum>>) -> Result<PV, Error> {
+                              consts: Option<Vec<NkSum>>,
+                              srcs: Option<SourceList>)
+                              -> Result<PV, Error>
+    {
         let c_start = self.pmem.len();
         let prev_top = self.mem.stack.len();
-        self.add_code(code, consts);
+        self.add_code(code, consts, srcs);
         self.pmem.push(r8c::Op::RET());
         self.set_frame(0);
         self.run_from_unwind(c_start)?;
@@ -1098,28 +1119,28 @@ impl R8VM {
         let ast = unsafe { pv_to_value(root, &Source::none()) };
         let mut cc = R8Compiler::new(self);
         cc.compile_top(true, &ast)?;
-        let (asm, _, consts) = cc.link()?;
+        let (asm, _, consts, srcs) = cc.link()?;
         unsafe {
-            self.add_and_run(asm, Some(consts))
+            self.add_and_run(asm, Some(consts), Some(srcs))
         }
     }
 
     pub fn eval(&mut self, expr: &str) -> Result<PV, Error> {
-        let ast = Parser::parse(self, expr)?;
+        let ast = Parser::parse(self, expr, None)?;
         let mut cc = R8Compiler::new(self);
         // cc.estack.push(Env::empty());
         cc.compile_top(true, &ast)?;
         let globs = cc.globals()
                       .map(|v| v.map(|(u, v)| (*u, *v))
                                 .collect::<Vec<_>>());
-        let (asm, _, consts) = cc.link()?;
+        let (asm, _, consts, srcs) = cc.link()?;
         if let Some(globs) = globs {
             for (name, idx) in globs {
                 self.globals.insert(name, idx);
             }
         }
         unsafe {
-            self.add_and_run(asm, Some(consts))
+            self.add_and_run(asm, Some(consts), Some(srcs))
         }
     }
 
@@ -1304,9 +1325,10 @@ impl R8VM {
 
             let frame = self.frame;
             let args = self.mem.stack.drain(frame..frame+nargs).collect();
+            let src = self.get_source(ip);
             frames.push(TraceFrame { args,
                                      func: name.into(),
-                                     src: Source::none() });
+                                     src });
 
             self.mem.stack.drain(frame..frame+nenv).for_each(drop);
             ip = match self.mem.stack[frame] {
@@ -1669,7 +1691,10 @@ impl R8VM {
         let dip = self.ip_delta(ip);
         match res {
             Ok(_) => Ok(dip),
-            Err(e) => Err((dip, e))
+            Err(e) => {
+                let er: Error = e;
+                Err((dip, er.with_src(self.get_source(dip))))
+            }
         }
     }
 
