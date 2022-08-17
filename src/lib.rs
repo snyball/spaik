@@ -34,5 +34,7 @@ pub(crate) mod module;
 pub mod spaik;
 #[cfg(feature = "repl")]
 pub mod repl;
+pub mod msg;
+pub mod deserialize;
 //pub mod asm_parse;
 //pub mod arg_parse_tests;

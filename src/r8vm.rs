@@ -344,6 +344,18 @@ mod sysfns {
             join_str(vm, args.iter().copied(), "").into_pv(&mut vm.mem)
         }
 
+        fn error(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+            if let PV::Sym(name) = *x {
+                err!(LibError, name)
+            } else {
+                err!(TypeError,
+                     expect: Builtin::Symbol.sym(),
+                     got: x.type_of(),
+                     argn: 1,
+                     op: Builtin::Error.sym())
+            }
+        }
+
         fn join(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             let (it, sep) = match &args[..] {
                 [xs, PV::Char(s)] => (xs.make_iter()?, Cow::from(s.to_string())),
@@ -904,6 +916,7 @@ impl R8VM {
         addfn!(read);
         addfn!(concat);
         addfn!(join);
+        addfn!(error);
         addfn!(exit);
         addfn!(iter);
         addfn!(macroexpand);

@@ -84,6 +84,9 @@ pv_convert!(Int,
 pv_convert!(Real,
             f32);
 
+pv_convert!(Char,
+            char);
+
 impl IntoLisp for () {
     fn into_pv(self, _: &mut Arena) -> Result<PV, Error> {
         Ok(PV::Nil)

@@ -80,6 +80,7 @@ pub enum ErrorKind {
     IOError { kind: std::io::ErrorKind },
     MissingFeature { flag: &'static str },
     CharSpecError { spec: SymID },
+    LibError { name: SymID },
 }
 
 impl From<std::io::Error> for Error {
@@ -243,6 +244,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         CharSpecError { spec } =>
             write!(f, "Invalid char spec `{}', use exactly one character in the symbol",
                    nameof(*spec))?,
+        LibError { name } =>
+            write!(f, "Error: {}", nameof(*name))?,
         x => unimplemented!("{:?}", x),
     }
 
@@ -313,6 +316,24 @@ impl Error {
 
             PVFmtWrap { val: self, db }
         })
+    }
+}
+
+impl serde::ser::Error for Error {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        Error {
+            ty: ErrorKind::SomeError { msg: msg.to_string() },
+            src: None,
+        }
+    }
+}
+
+impl serde::de::Error for Error {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        Error {
+            ty: ErrorKind::SomeError { msg: msg.to_string() },
+            src: None,
+        }
     }
 }
 

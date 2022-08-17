@@ -218,6 +218,22 @@ pub enum PV {
 
 impl Eq for PV {}
 
+impl TryFrom<PV> for f64 {
+    type Error = crate::error::Error;
+
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        if let PV::Real(v) = value {
+            Ok(v as f64)
+        } else {
+            err!(TypeError,
+                 expect: Builtin::Float.sym(),
+                 got: value.type_of(),
+                 op: Builtin::Unknown.sym(),
+                 argn: 0)
+        }
+    }
+}
+
 impl TryFrom<PV> for SymID {
     type Error = crate::error::Error;
 
@@ -228,7 +244,7 @@ impl TryFrom<PV> for SymID {
             err!(TypeError,
                  expect: Builtin::Symbol.sym(),
                  got: value.type_of(),
-                 op: Builtin::Nil.sym(),
+                 op: Builtin::Unknown.sym(),
                  argn: 0)
         }
     }
