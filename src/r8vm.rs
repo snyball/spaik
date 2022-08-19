@@ -18,7 +18,7 @@ use crate::{
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
-use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
+use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex, ops::Range};
 
 chasm_def! {
     r8c:
@@ -411,6 +411,11 @@ mod sysfns {
 
         fn disassemble(&mut self, vm: &mut R8VM, args: (func)) -> Result<PV, Error> {
             featurefn!("repl", vm.dump_fn_code((*func).try_into()?)?)?;
+            Ok(PV::Nil)
+        }
+
+        fn disassemble_all(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+            featurefn!("repl", vm.dump_all_code()?)?;
             Ok(PV::Nil)
         }
 
@@ -949,6 +954,7 @@ impl R8VM {
         addfn!(disassemble);
         addfn!(load);
         addfn!(instant);
+        addfn!("disassemble-all", disassemble_all);
         addfn!("dump-gc-stats", dump_gc_stats);
         addfn!("dump-stack", dump_stack);
         addfn!("%", modulo);
@@ -1843,6 +1849,16 @@ impl R8VM {
 
     pub fn set_stdin(&mut self, inp: Box<dyn InStream>) {
         *self.stdin.lock().unwrap() = inp;
+    }
+
+    #[cfg(feature = "repl")]
+    pub fn dump_all_code(&self) -> Result<(), Error> {
+        let mut funks = self.funcs.iter().map(|(k, v)| (SymID { id: *k }, v.pos)).collect::<Vec<_>>();
+        funks.sort_by_key(|(_, v)| *v);
+        for funk in funks.into_iter().map(|(u, _)| u) {
+            self.dump_fn_code(funk)?
+        }
+        Ok(())
     }
 
     #[cfg(feature = "repl")]
