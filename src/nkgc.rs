@@ -1670,7 +1670,10 @@ impl Clone for SPV {
 
 impl Drop for SPV {
     fn drop(&mut self) {
-        self.ar.send(ExtRefMsg { id: self.id, d: -1 }).unwrap();
+        // AFAIK sending only fails when the receiver is dropped, which only
+        // happens when R8VM/Arena is dropped. And then the memory has been
+        // freed anyway.
+        self.ar.send(ExtRefMsg { id: self.id, d: -1 }).ok();
     }
 }
 
