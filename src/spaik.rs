@@ -1,11 +1,17 @@
 //! SPAIK public API
 
-use crate::nuke::Fissile;
+use std::sync::Mutex;
+use std::sync::mpsc::{Receiver, channel, Sender};
+
+use fnv::FnvHashMap;
+use serde::Deserialize;
+
+use crate::nuke::{Fissile, Continuation};
 use crate::r8vm::{R8VM, Args};
 use crate::sym_db::SymDB;
 use crate::error::Error;
-use crate::nkgc::{SymID, PV, ObjRef};
-use crate::subrs::{Subr, IntoLisp, Ignore};
+use crate::nkgc::{SymID, PV, ObjRef, SPV};
+use crate::subrs::{Subr, IntoLisp, Ignore, RefIntoLisp};
 
 /// A Spaik Context
 pub struct Spaik {
@@ -133,6 +139,40 @@ impl Spaik {
      */
     pub fn gc(&mut self) {
         self.vm.mem.full_collection()
+    }
+
+    // TODO
+    pub fn fork<'de, T: Deserialize<'de>>(self) -> Receiver<T> {
+        todo!()
+    }
+}
+
+pub struct ContID(u32);
+
+struct SpaikPromise {
+    cont: SPV,
+}
+
+struct SpaikPlug {
+    conts: FnvHashMap<ContID, SPV>,
+    event_sender: Sender<Box<dyn RefIntoLisp>>,
+    cont_sender: Sender<(SPV, Box<dyn RefIntoLisp>)>,
+}
+
+impl SpaikPlug {
+    #[must_use = "Must fulfil promise, call fulfil with ContID"]
+    pub fn recv<'de, T>(&mut self) -> Option<(ContID, T)>
+        where T: Deserialize<'de>
+    {
+        todo!()
+    }
+
+    pub fn send<T>(&mut self, ev: T) where T: IntoLisp {
+        todo!()
+    }
+
+    pub fn fulfil<T>(&mut self, id: ContID, ev: T) where T: IntoLisp {
+        todo!()
     }
 }
 

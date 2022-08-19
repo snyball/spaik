@@ -602,10 +602,11 @@ mod tests {
         assert_eq!(u, U::B("lmao".to_string(), 12));
 
         let s = vm.eval(r#" '(c :key "lmao" :key-2 12) "#).unwrap();
-        let u = from_pv::<U>(s, &vm);
-        if let Err(e) = u {
-            panic!("{}", e.to_string(&vm));
-        }
-        // assert_eq!(u, U::B("lmao".to_string(), 12));
+        let u = from_pv::<U>(s, &vm).unwrap();
+        assert_eq!(u, U::C { key: "lmao".to_string(), key_2: 12 });
+
+        let s = vm.eval(r#" (let ((x 123) (y "ayy lmao")) `(c :key ,y :key-2 ,x)) "#).unwrap();
+        let u = from_pv::<U>(s, &vm).unwrap();
+        assert_eq!(u, U::C { key: "ayy lmao".to_string(), key_2: 123 });
     }
 }

@@ -2,13 +2,16 @@
 
 use crate::compile::{Builtin, BUILTIN_SYMBOLS};
 use crate::ast::{Value, ValueKind};
-use crate::r8vm::{RuntimeError, ArgSpec, ArgInt};
+use crate::r8vm::{RuntimeError, ArgSpec, ArgInt, R8VM};
 use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::sync::Mutex;
+use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
 use std::fmt;
@@ -464,8 +467,23 @@ impl PV {
                       //              the array that String refers to, not to the
                       //              String struct itself, which may move.
                       String(xs) => {
+                          #[derive(Clone)]
+                          struct Wrapper<T> where T: Iterator + Clone {
+                              it: T,
+                          }
+                          impl<T> Traceable for Wrapper<T> where T: Iterator + Clone {
+                              fn trace(&self, gray: &mut Vec<*mut NkAtom>) {}
+                              fn update_ptrs(&mut self, reloc: &PtrMap) {}
+                          }
+                          impl<T, V> Iterator for Wrapper<T> where T: Iterator<Item = V>  + Clone{
+                              type Item = V;
+
+                              fn next(&mut self) -> Option<Self::Item> {
+                                  self.it.next()
+                              }
+                          }
                           let it = xs.chars().map(PV::Char);
-                          let it: IT = Box::new(it);
+                          let it: IT = Box::new(Wrapper{it});
                           Ok(it)
                       },
                       // XXX: SAFETY: This is safe because PVVecIter implements
@@ -517,15 +535,18 @@ impl PV {
         }).ok()
     }
 
+    #[inline]
     pub fn car(&self) -> Option<PV> {
         self.with_cell(|car, _| car)
     }
 
+    #[inline]
     pub fn cdr(&self) -> Option<PV> {
         self.with_cell(|_, cdr| cdr)
     }
 
     /// Returns Some(sym) if the PV is an application of `sym`.
+    #[inline]
     pub fn op(&self) -> Option<SymID> {
         if self.is_atom() {
             return None;
@@ -536,10 +557,12 @@ impl PV {
         }
     }
 
+    #[inline]
     pub fn bt_op(&self) -> Option<Builtin> {
         self.op().and_then(Builtin::from_sym)
     }
 
+    #[inline]
     pub fn sym(&self) -> Option<SymID> {
         Some(match *self {
             PV::Sym(sym) => sym,
@@ -547,10 +570,12 @@ impl PV {
         })
     }
 
+    #[inline]
     pub fn args(&self) -> impl Iterator<Item = PV> {
         self.iter().skip(1)
     }
 
+    #[inline]
     pub fn args_ref(&self) -> impl Iterator<Item = &PV> {
         self.iter_ref().skip(1)
     }
@@ -905,6 +930,16 @@ pub struct PVIter {
     item: PV,
 }
 
+impl Traceable for PVIter {
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+        self.item.trace(gray)
+    }
+
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
+        self.item.update_ptrs(reloc)
+    }
+}
+
 impl Iterator for PVIter {
     type Item = PV;
     fn next(&mut self) -> Option<Self::Item> {
@@ -1059,6 +1094,15 @@ impl LispFmt for VLambda {
     }
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct ExtRefID(u32);
+
+#[derive(Debug)]
+struct ExtRefMsg {
+    pub id: ExtRefID,
+    pub d: i8
+}
+
 /// Come and fight in the arena!
 #[derive(Debug)]
 pub struct Arena {
@@ -1068,7 +1112,9 @@ pub struct Arena {
     pub(crate) symdb: SIntern<SymID>,
     env: Vec<PV>,
     gray: Vec<*mut NkAtom>,
-    extref: FnvHashMap<u32, PV>,
+    extref: FnvHashMap<ExtRefID, (i32, PV)>,
+    extdrop_recv: Receiver<ExtRefMsg>,
+    extdrop_send: Sender<ExtRefMsg>,
     state: GCState,
     extref_id_cnt: u32,
     no_reorder: bool,
@@ -1135,12 +1181,15 @@ impl SymDB for Arena {
 
 impl Arena {
     pub fn new(memsz: usize) -> Arena {
+        let (rx, tx) = channel();
         let mut ar = Arena {
             mem: Nuke::new(memsz),
             gray: Vec::with_capacity(DEFAULT_GRAYSZ),
             stack: Vec::with_capacity(DEFAULT_STACKSZ),
             env: Vec::with_capacity(DEFAULT_ENVSZ),
             symdb: Default::default(),
+            extdrop_recv: tx,
+            extdrop_send: rx,
             state: GCState::Sleep(GC_SLEEP_MEM_BYTES),
             extref: FnvHashMap::default(),
             tags: FnvHashMap::default(),
@@ -1238,7 +1287,7 @@ impl Arena {
     }
 
     pub fn push_spv(&mut self, v: SPV) {
-        self.push(unsafe { v.pv() });
+        self.push(self.extref[&v.id].1);
     }
 
     pub fn popn(&mut self, n: usize) {
@@ -1276,29 +1325,11 @@ impl Arena {
     }
 
     pub fn make_extref(&mut self, v: PV) -> SPV {
-        let id = self.extref_id_cnt;
+        let id = ExtRefID(self.extref_id_cnt);
         self.extref_id_cnt += 1;
-        self.extref.insert(id, v);
-        SPV { id, ar: self as *mut Arena }
-    }
-
-    pub fn get_ext(&self, id: u32) -> PV {
-        self.extref[&id]
-    }
-
-    /**
-     * Drop an external reference
-     *
-     * # Arguments
-     *
-     * - `id` : Reference ID
-     *
-     * # Safety
-     *
-     * Using the reference after it has been dropped is UB.
-     */
-    pub unsafe fn drop_ext(&mut self, id: u32) {
-        self.extref.remove(&id);
+        self.extref.insert(id, (1, v));
+        SPV { id,
+              ar: self.extdrop_send.clone() }
     }
 
     pub fn pop_spv(&mut self) -> Result<SPV, Error> {
@@ -1446,7 +1477,7 @@ impl Arena {
             self.tags.insert(new as *mut NkAtom, src);
         }
 
-        for (_id, pv) in self.extref.iter_mut() {
+        for (_id, (_, pv)) in self.extref.iter_mut() {
             pv.update_ptrs(self.mem.reloc());
         }
         for ptr in self.gray.iter_mut() {
@@ -1521,7 +1552,7 @@ impl Arena {
         self.state = GCState::Mark(1 + (self.mem.num_atoms() / 150) as u32);
         let it = self.stack.iter()
                            .chain(self.env.iter())
-                           .chain(self.extref.values());
+                           .chain(self.extref.values().map(|(_, pv)| pv));
         for obj in it {
             if let PV::Ref(cell) = *obj {
                 unsafe {
@@ -1532,8 +1563,23 @@ impl Arena {
         }
     }
 
+    fn clear_extrefs(&mut self) {
+        while let Ok(ExtRefMsg{id, d}) = self.extdrop_recv.try_recv() {
+            match self.extref.entry(id) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().0 += d as i32;
+                    if entry.get().0 <= 0 {
+                        entry.remove();
+                    }
+                },
+                Entry::Vacant(_) => unreachable!()
+            }
+        }
+    }
+
     #[inline]
     pub fn collect(&mut self) {
+        self.clear_extrefs();
         match self.state {
             GCState::Sleep(x) if x <= 0 =>
                 self.mark_begin(),
@@ -1585,108 +1631,46 @@ impl Arena {
 
 impl Drop for Arena {
     fn drop(&mut self) {
-        if !self.extref.is_empty() {
-            panic!("Dangling references to Arena objects");
-        }
         self.ignore_and_sweep();
-        // unsafe {
-        //     nk_destroy(self.mem as *mut Nuke);
-        // }
     }
 }
 
 #[derive(Debug)]
 pub struct SPV {
-    ar: *mut Arena,
-    id: u32,
+    ar: Sender<ExtRefMsg>,
+    id: ExtRefID,
 }
 
 impl SPV {
-    pub unsafe fn pv(&self) -> PV {
-        (*self.ar).get_ext(self.id)
+    pub(crate) fn pv(&self, ar: &R8VM) -> PV {
+        ar.mem.extref[&self.id].1
     }
 
-    pub unsafe fn ar(&self) -> *mut Arena {
-        self.ar
+    pub fn to_string(&self, ar: &R8VM) -> String {
+        let pv = self.pv(&ar);
+        pv.lisp_to_string(ar)
     }
 
-    pub fn op(&self) -> Option<SymID> {
-        unsafe { self.pv() }.op()
+    pub fn bt_op(&self, ar: &R8VM) -> Option<Builtin> {
+        self.pv(&ar).bt_op()
     }
 
-    pub fn bt_op(&self) -> Option<Builtin> {
-        unsafe { self.pv().bt_op() }
-    }
-
-    pub fn args(self) -> impl Iterator<Item = SPV> {
-        self.into_iter().skip(1)
-    }
-
-    pub fn sym(&self) -> Option<SymID> {
-        if let PV::Sym(sym) = unsafe { self.pv() } {
-            Some(sym)
-        } else {
-            None
-        }
-    }
-
-    pub fn is_atom(&self) -> bool {
-        unsafe { self.pv() }.is_atom()
-    }
-
-    pub unsafe fn pairs(self) -> impl Iterator<Item = Option<(PV, PV)>> {
-        self.pv().pairs()
-    }
-}
-
-impl fmt::Display for SPV {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        unsafe {
-            write!(f, "{}", self.pv().lisp_to_string(&*self.ar))
-        }
-    }
-}
-
-impl IntoIterator for SPV {
-    type Item = SPV;
-    type IntoIter = SPVIter;
-    fn into_iter(self) -> Self::IntoIter {
-        SPVIter { item: self }
-    }
-}
-
-pub struct SPVIter {
-    item: SPV
-}
-
-impl Iterator for SPVIter {
-    type Item = SPV;
-    fn next(&mut self) -> Option<Self::Item> {
-        let ar = unsafe { &mut *self.item.ar() };
-        let item = unsafe { self.item.pv() };
-        match item.force_pair() {
-            Some((car, cdr)) => {
-                self.item = ar.make_extref(cdr);
-                Some(ar.make_extref(car))
-            }
-            None => None
-        }
+    pub fn args_vec(&self, ar: &mut R8VM) -> Vec<SPV> {
+        self.pv(ar).args().map(|v| ar.mem.make_extref(v)).collect()
     }
 }
 
 impl Clone for SPV {
     fn clone(&self) -> Self {
-        unsafe {
-            (*self.ar).make_extref(self.pv())
-        }
+        self.ar.send(ExtRefMsg { id: self.id, d: 1 }).unwrap();
+        SPV { id: self.id,
+              ar: self.ar.clone() }
     }
 }
 
 impl Drop for SPV {
     fn drop(&mut self) {
-        unsafe {
-            (*self.ar).drop_ext(self.id)
-        }
+        self.ar.send(ExtRefMsg { id: self.id, d: -1 }).unwrap();
     }
 }
 
@@ -1703,8 +1687,5 @@ mod tests {
         }
         gc.list(len);
         let li = gc.pop_spv().unwrap();
-        for (i, spv) in li.into_iter().enumerate() {
-            assert_eq!(i as i64, unsafe{spv.pv()}.force_int());
-        }
     }
 }

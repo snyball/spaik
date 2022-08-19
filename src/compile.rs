@@ -181,6 +181,7 @@ builtins! {
     (Unknown, "?"),
     (If, "if"),
     (Compile, "compile"),
+    (Continuation, "continuation"),
     (Keyword, "keyword"),
     (Join, "join"),
     (Error, "error"),

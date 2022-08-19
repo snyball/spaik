@@ -191,13 +191,13 @@ macro_rules! fissile_types {
 trait Fuse: Fissile {
 }
 
-pub trait CloneIterator: Iterator {
+pub trait CloneIterator: Iterator + Traceable {
     fn clone_box(&self) -> Box<dyn CloneIterator<Item = Self::Item>>;
 }
 
 impl<T> CloneIterator for T
 where
-    T: 'static + Iterator + Clone,
+    T: 'static + Iterator + Clone + Traceable,
 {
     fn clone_box(&self) -> Box<dyn CloneIterator<Item = Self::Item>> {
         Box::new(self.clone())
@@ -239,10 +239,12 @@ impl fmt::Debug for Iter {
 
 impl Traceable for Iter {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+        self.it.trace(gray);
         self.root.trace(gray)
     }
 
     fn update_ptrs(&mut self, reloc: &PtrMap) {
+        self.it.update_ptrs(reloc);
         self.root.update_ptrs(reloc)
     }
 }
@@ -378,6 +380,53 @@ impl Drop for Object {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Continuation {
+    stack: Vec<PV>,
+    frame: usize,
+    dip: usize,
+}
+
+impl Continuation {
+    pub fn new(stack: Vec<PV>, frame: usize, dip: usize) -> Continuation {
+        Continuation { stack, frame, dip }
+    }
+}
+
+impl Traceable for Continuation {
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+        for pv in self.stack.iter() {
+            pv.trace(gray)
+        }
+    }
+
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
+        for pv in self.stack.iter_mut() {
+            pv.update_ptrs(reloc)
+        }
+    }
+}
+
+impl LispFmt for Continuation {
+    fn lisp_fmt(&self,
+                db: &dyn SymDB,
+                visited: &mut VisitSet,
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "stack:")?;
+        if self.stack.is_empty() {
+            writeln!(f, "    (empty)")?;
+        }
+        for (idx, val) in self.stack.iter().enumerate().rev() {
+            let (idx, frame) = (idx as i64, self.frame as i64);
+            write!(f, "{}", if idx == frame { " -> " } else { "    " })?;
+            write!(f, "{}: ", idx - frame)?;
+            val.lisp_fmt(db, visited, f)?;
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
 fissile_types! {
     (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
     (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
@@ -388,6 +437,7 @@ fissile_types! {
     (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),
     (Struct, Builtin::Struct.sym(), crate::nuke::Object),
     (Iter, Builtin::Struct.sym(), crate::nuke::Iter),
+    (Continuation, Builtin::Continuation.sym(), crate::nuke::Continuation),
     (Subroutine, Builtin::Subr.sym(), Box<dyn crate::subrs::Subr>)
 }
 

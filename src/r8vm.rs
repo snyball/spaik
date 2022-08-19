@@ -30,8 +30,8 @@ chasm_def! {
     VLIST(),
     CAR(),
     CDR(),
-    SETCAR(),
-    SETCDR(),
+    // SETCAR(),
+    // SETCDR(),
 
     // Iterators
     NXIT(var_idx: u16),
@@ -53,13 +53,14 @@ chasm_def! {
     JN(dip: i32),
     JZ(dip: i32),
     JNZ(dip: i32),
-    JSYM(sym: SymIDInt),
-    JNSYM(sym: SymIDInt),
-    CALL(dip: i32, nargs: u16),
+    // JSYM(dip: i32, sym: SymIDInt),
+    // JNSYM(dip: i32, sym: SymIDInt),
+    // CALL(dip: i32, nargs: u16),
     VCALL(func: SymIDInt, nargs: u16),
     // TODO: APPLY()
     CLZCALL(nargs: u16),
     RET(),
+    // YIELD(),
     HCF(),
 
     // Stack operations
@@ -279,7 +280,7 @@ macro_rules! std_subrs {
 
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, convert::Infallible, borrow::Cow};
+    use std::{fmt::Write, convert::Infallible, borrow::Cow, time::Instant};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
@@ -382,6 +383,10 @@ mod sysfns {
                 status: status.try_into().map_err(|e: Error|
                                                   e.argn(1).op(Builtin::Exit.sym()))?
             }, src: None })
+        }
+
+        fn instant(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+            Ok(PV::Real(vm.mem.stats().time.as_secs_f32()))
         }
 
         fn dump_macro_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
@@ -923,8 +928,9 @@ impl R8VM {
         addfn!(pow);
         addfn!(disassemble);
         addfn!(load);
-        addfn!(dump_gc_stats);
-        addfn!(dump_stack);
+        addfn!(instant);
+        addfn!("dump-gc-stats", dump_gc_stats);
+        addfn!("dump-stack", dump_stack);
         addfn!("%", modulo);
         addfn!("set-macro", set_macro);
         addfn!("dump-macro-tbl", dump_macro_tbl);
@@ -1242,7 +1248,8 @@ impl R8VM {
                // FIXME: vm_call_with can error out, meaning this code won't
                //        run:
                for ast in asts.into_iter() {
-                   self.mem.untag_ast(unsafe { ast.pv() });
+                   let pv = ast.pv(&self);
+                   self.mem.untag_ast(pv);
                }
 
                Ok(out)
@@ -1696,8 +1703,6 @@ impl R8VM {
                 }
 
                 HCF() => return Ok(()),
-
-                x => { unimplemented!("{}", x) }
             }
             self.mem.collect();
 
@@ -1718,6 +1723,7 @@ impl R8VM {
         }
     }
 
+    #[deprecated = "Use Continuation::lisp_fmt instead"]
     pub fn dump_stack(&mut self) -> Result<(), Error> {
         let mut stdout = self.stdout.lock().unwrap();
         writeln!(stdout, "stack:")?;

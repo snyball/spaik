@@ -17,11 +17,11 @@ enum TestResult {
 }
 
 impl TestResult {
-    pub fn new(res: SPV) -> Option<TestResult> {
-        Some(match res.bt_op() {
+    pub fn new(res: SPV, vm: &mut R8VM) -> Option<TestResult> {
+        Some(match res.bt_op(vm) {
             Some(Builtin::KwPass) => TestResult::Pass,
             Some(Builtin::KwFail) => {
-                let args = res.args().collect::<Vec<_>>();
+                let args = res.args_vec(vm);
                 match &args[..] {
                     [expect, got] => TestResult::Fail { expect: expect.clone(),
                                                         got: got.clone() },
@@ -111,12 +111,12 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                      .skip(test_fn_prefix.len())
                      .collect::<String>();
         match vm.call_spv(*func, ()) {
-            Ok(res) => match TestResult::new(res) {
+            Ok(res) => match TestResult::new(res, &mut vm) {
                 Some(TestResult::Pass) =>
                     println!("  - {} [{}]", name.bold(), "✓".green().bold()),
                 Some(TestResult::Fail { expect, got }) => {
-                    let expect = expect.to_string();
-                    let got = got.to_string();
+                    let expect = expect.to_string(&vm);
+                    let got = got.to_string(&vm);
 
                     println!("  - {} [{}]", name.red().bold(), "✘".red().bold());
                     println!("    Expected:");
