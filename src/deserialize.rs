@@ -549,7 +549,7 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
 mod tests {
     use serde::Serialize;
 
-    use crate::{r8vm::R8VM, spaik::Spaik};
+    use crate::{r8vm::R8VM, spaik::Spaik, nkgc::SymID};
 
     use super::*;
 
@@ -590,7 +590,8 @@ mod tests {
             B(String, u32),
             #[serde(rename_all = "kebab-case")]
             C { key: String,
-                key_2: u32 }
+                key_2: u32 },
+            D { sym: SymID },
         }
 
         let s = vm.eval(r#" '(a 10 12) "#).unwrap();
@@ -608,5 +609,13 @@ mod tests {
         let s = vm.eval(r#" (let ((x 123) (y "ayy lmao")) `(c :key ,y :key-2 ,x)) "#).unwrap();
         let u = from_pv::<U>(s, &vm).unwrap();
         assert_eq!(u, U::C { key: "ayy lmao".to_string(), key_2: 123 });
+
+        let s = vm.eval(r#" '(d :sym (:id 1)) "#).unwrap();
+        let u = from_pv::<U>(s, &vm).unwrap();
+        assert_eq!(u, U::D { sym: SymID { id: 1 } });
+
+        let s = vm.eval(r#" `(d :sym (:id ,(sym-id 'ayy-lmao))) "#).unwrap();
+        let u = from_pv::<U>(s, &vm).unwrap();
+        assert_eq!(u, U::D { sym: vm.sym_id("ayy-lmao") });
     }
 }

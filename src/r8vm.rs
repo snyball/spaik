@@ -282,7 +282,7 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, convert::Infallible, borrow::Cow, time::Instant};
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, SymID}, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String
@@ -473,6 +473,26 @@ mod sysfns {
             Ok(s)
         }
         fn name(&self) -> &'static str { "+" }
+        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct sym_id();
+
+    unsafe impl Subr for sym_id {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            match &args[..] {
+                [PV::Sym(SymID { id })] => Ok(PV::Int((*id).try_into()?)),
+                [x] => err!(TypeError,
+                            expect: Builtin::Symbol.sym(),
+                            got: x.type_of(),
+                            op: Builtin::SymID.sym(),
+                            argn: 1),
+                _ => ArgSpec::normal(1).check(Builtin::SymID.sym(), args.len() as u16)
+                                       .map(|_| unreachable!())
+            }
+        }
+        fn name(&self) -> &'static str { "sym-id" }
         fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
@@ -938,6 +958,7 @@ impl R8VM {
         addfn!("dump-env-tbl", dump_env_tbl);
         addfn!("dump-fn-tbl", dump_fn_tbl);
         addfn!("type-of", type_of);
+        addfn!("sym-id", sym_id);
         addfn!("make-symbol", make_symbol);
         addfn!("+", sum);
         addfn!("-", asum);
