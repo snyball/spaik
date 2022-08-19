@@ -1549,6 +1549,7 @@ impl Arena {
 
     #[inline]
     fn mark_begin(&mut self) {
+        self.clear_extrefs();
         self.state = GCState::Mark(1 + (self.mem.num_atoms() / 150) as u32);
         let it = self.stack.iter()
                            .chain(self.env.iter())
@@ -1563,6 +1564,7 @@ impl Arena {
         }
     }
 
+    #[inline]
     fn clear_extrefs(&mut self) {
         while let Ok(ExtRefMsg{id, d}) = self.extdrop_recv.try_recv() {
             match self.extref.entry(id) {
@@ -1579,7 +1581,6 @@ impl Arena {
 
     #[inline]
     pub fn collect(&mut self) {
-        self.clear_extrefs();
         match self.state {
             GCState::Sleep(x) if x <= 0 =>
                 self.mark_begin(),
@@ -1615,7 +1616,6 @@ impl Arena {
             }
         }
     }
-
 
     /// Remove all allocated objects
     pub fn ignore_and_sweep(&mut self) {
