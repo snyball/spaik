@@ -194,6 +194,9 @@
 ;;; FIXME: (next)/(break) don't work inside dolist/range,
 ;;;        a compiler built-in is needed to fix it.
 
+(defmacro iter-end? (res)
+  `(= ,res '<ζ>::iter-stop))
+
 (defmacro dolist (cnd &body body)
   (let ((name (car cnd))
         (init (car (cdr cnd)))
@@ -201,8 +204,8 @@
         (it (gensym)))
     `(let ((,name nil)
            (,it (iter ,init)))
-       (loop (set ,name (next ,it))
-             (if (= ,name ',sentinel) (break))
+       (loop (if (iter-end? (set ,name (next ,it)))
+               (break))
              ,@body))))
 
 (defmacro range (cnd &body body)
@@ -440,3 +443,11 @@
   (let ((fname (gensym)))
     `(progn (defun ,fname () ,@expr)
             (disassemble ',fname))))
+
+(defun collect (it)
+  (let ((elem nil)
+        (out (vec)))
+    (loop (if (iter-end? (set elem (next it)))
+            (break))
+          (push out elem))
+    out))
