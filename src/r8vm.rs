@@ -1568,6 +1568,7 @@ impl R8VM {
                     let li = self.mem.pop()?;
                     let len = with_ref!(li,
                                         Vector(v) => { Ok(v.len()) },
+                                        String(s) => { Ok(s.len()) },
                                         Cons(_) => { Ok(li.iter().count()) })
                         .map_err(|e| e.op(Builtin::Len.sym()))?;
                     self.mem.push(PV::Int(len as i64));
