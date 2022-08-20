@@ -10,8 +10,9 @@ use crate::sym_db::{SymDB, SYM_DB};
 use std::borrow::Cow;
 use std::result;
 use std::error;
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::num::TryFromIntError;
+use std::sync::mpsc::SendError;
 
 pub type SourceFileName = Option<Cow<'static, str>>;
 
@@ -50,6 +51,7 @@ pub struct SourceRef<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
+    SendError { obj_dbg: String },
     IllegalInstruction { inst: R8C },
     TypeError { expect: SymID, got: SymID, op: SymID, argn: u32 },
     TypeNError { expect: Vec<SymID>, got: SymID, op: SymID, argn: u32 },
@@ -369,6 +371,17 @@ impl error::Error for ErrorKind {}
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         Some(&self.ty)
+    }
+}
+
+impl<T> From<SendError<T>> for Error where T: Debug {
+    fn from(err: SendError<T>) -> Self {
+        Error {
+            src: None,
+            ty: ErrorKind::SendError {
+                obj_dbg: format!("{:?}", err.0)
+            }
+        }
     }
 }
 
