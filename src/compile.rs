@@ -181,6 +181,7 @@ builtins! {
     (Unknown, "?"),
     (If, "if"),
     (Compile, "compile"),
+    (Send, "send"),
     (SymID, "sym-id"),
     (Continuation, "continuation"),
     (Keyword, "keyword"),
