@@ -6,6 +6,7 @@ use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
+use crate::r8vm::R8VM;
 use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
@@ -382,9 +383,9 @@ impl Drop for Object {
 
 #[derive(Debug, Clone)]
 pub struct Continuation {
-    stack: Vec<PV>,
-    frame: usize,
-    dip: usize,
+    pub stack: Vec<PV>,
+    pub frame: usize,
+    pub dip: usize,
 }
 
 impl Continuation {

@@ -734,6 +734,7 @@ pub struct R8VM {
     funcs: FnvHashMap<SymIDInt, Func>,
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
     srctbl: SourceList,
+    catch: Vec<usize>,
 
     stdout: Mutex<Box<dyn OutStream>>,
     stdin: Mutex<Box<dyn InStream>>,
@@ -748,6 +749,7 @@ impl Default for R8VM {
         R8VM {
             pmem: Default::default(),
             consts: Default::default(),
+            catch: Default::default(),
             mem: Default::default(),
             globals: Default::default(),
             breaks: Default::default(),
@@ -1005,6 +1007,26 @@ impl R8VM {
         let top = self.consts.len();
         self.consts.push(v.into());
         top
+    }
+
+    pub fn catch(&mut self) {
+        let top = self.mem.stack.len();
+        self.catch.push(top)
+    }
+
+    pub fn catch_pop(&mut self) {
+        self.catch.pop();
+    }
+
+    pub fn unwind(&mut self) {
+        let top_v = self.mem.stack.last().copied();
+        let catchp = self.catch.pop().unwrap_or(0);
+        unsafe {
+            self.mem.stack.set_len(catchp);
+        }
+        if let Some(pv) = top_v {
+            self.mem.stack.push(pv);
+        }
     }
 
     pub fn get_func(&self, name: SymID) -> Option<&Func> {
@@ -1336,7 +1358,7 @@ impl R8VM {
      * - `ip` : The instruction IP from which to unwind.
      * - `err` : The error to initialize the Traceback with
      */
-    pub fn stack_unwind(&mut self, mut ip: usize, err: Error) -> Traceback {
+    pub fn unwind_traceback(&mut self, mut ip: usize, err: Error) -> Traceback {
         let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
         for (name, func) in self.funcs.iter() {
             pos_to_fn.push((func.pos, *name));
@@ -1397,10 +1419,13 @@ impl R8VM {
 
     unsafe fn run_from_unwind(&mut self, offs: usize) -> Result<usize,
                                                                 Traceback> {
-        match self.run_from(offs) {
+        self.catch();
+        let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
-            Err((ip, e)) => Err(self.stack_unwind(ip, e)),
-        }
+            Err((ip, e)) => Err(self.unwind_traceback(ip, e)),
+        };
+        self.catch_pop();
+        res
     }
 
     #[inline]
@@ -1444,6 +1469,25 @@ impl R8VM {
             let res = subr.call(self, args);
             self.mem.stack.drain(idx..).for_each(drop);
             self.mem.push(res?);
+            Ok(self.ret_to(dip))
+        }, Continuation(cont) => {
+            ArgSpec::normal(1).check(Builtin::Continuation.sym(), nargs)?;
+            let dip = self.ip_delta(ip);
+            let pv = self.mem.pop()?;
+            let frame = self.frame;
+            // FIXME: This is not particularly efficient
+            let ostack = mem::replace(&mut self.mem.stack, cont.stack.clone());
+            self.mem.stack.push(pv);
+            self.frame = cont.frame;
+            unsafe {
+                self.run_from(cont.dip).map_err(|(_, e)| e)?;
+            }
+            let res = self.mem.pop()?;
+            // FIXME: This is not particularly efficient
+            drop(mem::replace(&mut self.mem.stack, ostack));
+            self.mem.stack.drain(idx..).for_each(drop);
+            self.frame = frame;
+            self.mem.push(res);
             Ok(self.ret_to(dip))
         })
     }
@@ -1686,17 +1730,15 @@ impl R8VM {
                 CLZCALL(nargs) => ip = self.op_clzcall(ip, *nargs)?,
                 CALLCC(dip) => {
                     let dip = self.ip_delta(ip) as isize + *dip as isize;
+                    let mut stack_dup = self.mem.stack.clone();
+                    stack_dup.pop();
                     let cnt = self.mem.put(
-                        Continuation::new(self.mem.stack.clone(), self.frame, dip as usize));
+                        Continuation::new(stack_dup, self.frame, dip as usize));
                     self.mem.push(cnt);
                     ip = self.op_clzcall(ip, 1)?;
                 }
                 UNWIND() => {
-                    let top = self.mem.stack.last().copied();
-                    self.mem.stack.clear();
-                    if let Some(pv) = top {
-                        self.mem.stack.push(pv);
-                    }
+                    self.unwind();
                     return Ok(())
                 }
 

@@ -1,0 +1,5 @@
+(defmacro timeit (&body it)
+  `(let ((s (instant)))
+     (progn ,@it)
+     (let ((el (- (instant) s)))
+       (println "elapsed: {el}"))))

@@ -233,6 +233,8 @@ builtins! {
     (DefineStatic, "intr::define-static"),
     (Define, "define"),
     (Progn, "progn"),
+    (Catch, "catch"),
+    (Throw, "throw"),
     (ArgOptional, "&?"),
     (ArgBody, "&body"),
     (ArgRest, "&rest"),
@@ -1442,19 +1444,17 @@ impl<'a> R8Compiler<'a> {
 
     fn bt_callcc(&mut self, ret: bool, code: &Value) -> Result<(), Error> {
         let args: Vec<_> = code.args().collect();
-        let (funk, do_unwind) = match args[..] {
-            [x, y] => (x, y.bt_sym() == Some(Builtin::KwUnwind)),
-            [x] => (x, false),
+        match args[..] {
+            [funk] => {
+                self.compile(true, funk)?;
+                self.asm_op(chasm!(CALLCC 0));
+                if !ret {
+                    self.asm_op(chasm!(POP 1));
+                }
+            }
             _ => return ArgSpec::opt(1, 1).check(Builtin::CallCC.sym(),
                                                  args.len() as u16)
         };
-        self.compile(true, funk)?;
-        if do_unwind {
-            self.asm_op(chasm!(CALLCC 2));
-            self.asm_op(chasm!(UNWIND));
-        } else {
-            self.asm_op(chasm!(CALLCC 1));
-        }
         Ok(())
     }
 
@@ -1479,6 +1479,15 @@ impl<'a> R8Compiler<'a> {
                  op: Builtin::Char.sym(),
                  argn: 1)
         }
+    }
+
+    fn bt_throw(&mut self, code: &Value) -> Result<(), Error> {
+        let args: Vec<_> = code.args().collect();
+        ArgSpec::normal(1).check(Builtin::Throw.sym(), args.len() as u16)?;
+        let v = args[0];
+        self.compile(true, v)?;
+        self.asm_op(chasm!(UNWIND));
+        Ok(())
     }
 
     fn compile_builtin(&mut self,
@@ -1514,6 +1523,7 @@ impl<'a> R8Compiler<'a> {
             EvalWhen => self.bt_eval_when(code).map(|res| if ret {
                 self.compile_value(&res);
             }),
+            Throw => self.bt_throw(code),
             Progn => self.compile_seq(ret, code.args()),
             // Next => gen_call(r8c::OpName::NEXT, &[], ArgSpec::normal(1)),
             Lambda => may_ret!(self.bt_lambda(code)),
