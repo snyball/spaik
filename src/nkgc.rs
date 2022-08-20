@@ -10,7 +10,6 @@ use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
@@ -429,19 +428,6 @@ impl PV {
         }
     }
 
-    /// Works like pair(), but only returns None if self == Nil,
-    /// otherwise coerces atomic types into (x, Nil)
-    fn force_pair(self) -> Option<(PV, PV)> {
-        match self {
-            PV::Nil => None,
-            PV::Ref(r) => match_gcell!(r, {
-                Cons(Cons { car, cdr }) => { Some((*car, *cdr)) },
-                String(_) => { Some((PV::Ref(r), PV::Nil)) }
-            }).unwrap(),
-            x => Some((x, PV::Nil))
-        }
-    }
-
     pub fn is_ref(&self) -> bool {
         matches!(self, PV::Ref(_))
     }
@@ -472,8 +458,8 @@ impl PV {
                               it: T,
                           }
                           impl<T> Traceable for Wrapper<T> where T: Iterator + Clone {
-                              fn trace(&self, gray: &mut Vec<*mut NkAtom>) {}
-                              fn update_ptrs(&mut self, reloc: &PtrMap) {}
+                              fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
+                              fn update_ptrs(&mut self, _reloc: &PtrMap) {}
                           }
                           impl<T, V> Iterator for Wrapper<T> where T: Iterator<Item = V>  + Clone{
                               type Item = V;
@@ -1689,6 +1675,6 @@ mod tests {
             gc.push(PV::Int(i as i64));
         }
         gc.list(len);
-        let li = gc.pop_spv().unwrap();
+        let _li = gc.pop_spv().unwrap();
     }
 }

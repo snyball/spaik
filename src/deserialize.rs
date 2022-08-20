@@ -1,8 +1,6 @@
-use std::ops::{AddAssign, MulAssign, Neg};
-
 use serde::Deserialize;
 use serde::de::{
-    self, DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
+    self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess,
     VariantAccess, Visitor,
 };
 
@@ -11,7 +9,6 @@ use crate::error::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 use crate::nkgc::PV;
-use crate::r8vm::R8VM;
 use crate::sym_db::SymDB;
 
 pub struct Deserializer<'de> {
@@ -36,7 +33,7 @@ impl<'de> Deserializer<'de> {
 // depending on what Rust types the deserializer is able to consume as input.
 //
 // This basic deserializer supports only `from_str`.
-pub fn from_pv<'a, 'de: 'a, T>(s: PV, vm: &'de R8VM) -> Result<T>
+pub fn from_pv<'a, 'de: 'a, T>(s: PV, vm: &'de dyn SymDB) -> Result<T>
 where
     T: Deserialize<'a>,
 {
@@ -230,7 +227,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     }
 
     // In Serde, unit means an anonymous value containing no data.
-    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
+    fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
@@ -241,7 +238,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_unit_struct<V>(
         self,
         _name: &'static str,
-        visitor: V,
+        _visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -255,7 +252,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_newtype_struct<V>(
         self,
         _name: &'static str,
-        visitor: V,
+        _visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -291,7 +288,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         self,
         _name: &'static str,
         _len: usize,
-        visitor: V,
+        _visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -549,7 +546,7 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
 mod tests {
     use serde::Serialize;
 
-    use crate::{r8vm::R8VM, spaik::Spaik, nkgc::SymID};
+    use crate::{r8vm::R8VM, nkgc::SymID};
 
     use super::*;
 
@@ -598,13 +595,13 @@ mod tests {
         let u = from_pv::<U>(s, &vm).unwrap();
         assert_eq!(u, U::A(10, 12));
 
-        let s = vm.eval(r#" '(b "lmao" 12) "#).unwrap();
+        let s = vm.eval(r#" '(b "brittany was here" 12) "#).unwrap();
         let u = from_pv::<U>(s, &vm).unwrap();
-        assert_eq!(u, U::B("lmao".to_string(), 12));
+        assert_eq!(u, U::B("brittany was here".to_string(), 12));
 
-        let s = vm.eval(r#" '(c :key "lmao" :key-2 12) "#).unwrap();
+        let s = vm.eval(r#" '(c :key "brittany was here" :key-2 12) "#).unwrap();
         let u = from_pv::<U>(s, &vm).unwrap();
-        assert_eq!(u, U::C { key: "lmao".to_string(), key_2: 12 });
+        assert_eq!(u, U::C { key: "brittany was here".to_string(), key_2: 12 });
 
         let s = vm.eval(r#" (let ((x 123) (y "ayy lmao")) `(c :key ,y :key-2 ,x)) "#).unwrap();
         let u = from_pv::<U>(s, &vm).unwrap();

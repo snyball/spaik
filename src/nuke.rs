@@ -6,7 +6,6 @@ use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
-use crate::r8vm::R8VM;
 use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;

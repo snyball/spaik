@@ -170,20 +170,6 @@
   `(defun ,alias-name ,args
      (,name ,@args)))
 
-;; Turn (f a b c d) into (f a (f b (f c d)))
-(defun <ξ>::2-ary-to-n-ary/helper (fn args)
-  (if (and args (cdr args))
-      `(,fn ,(car args)
-            ,(<ξ>::2-ary-to-n-ary/helper
-              fn
-              (cdr args)))
-      (car args)))
-
-(defmacro 2-ary-to-n-ary (fn alias)
-  `(defmacro ,alias (&rest args)
-     (<ξ>::2-ary-to-n-ary/helper ',fn
-                                 args)))
-
 (defun _load (lib)
   (load lib))
 

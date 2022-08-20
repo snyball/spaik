@@ -18,7 +18,7 @@ use crate::{
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
-use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex, ops::Range};
+use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
 
 chasm_def! {
     r8c:
@@ -282,7 +282,7 @@ macro_rules! std_subrs {
 
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, convert::Infallible, borrow::Cow, time::Instant};
+    use std::{fmt::Write, convert::Infallible, borrow::Cow};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, SymID}, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
