@@ -435,3 +435,8 @@
 
 (defmacro dbg (obj)
   `(_println (concat ',obj ": " ,obj)))
+
+(defmacro dis (&body expr)
+  (let ((fname (gensym)))
+    `(progn (defun ,fname () ,@expr)
+            (disassemble ',fname))))
