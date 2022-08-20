@@ -61,6 +61,8 @@ chasm_def! {
     CLZCALL(nargs: u16),
     RET(),
     // YIELD(),
+    CALLCC(dip: i32),
+    UNWIND(),
     HCF(),
 
     // Stack operations
@@ -1459,9 +1461,6 @@ impl R8VM {
         let mut run = || loop {
             let op = &*ip;
             ip = ip.offset(1);
-            if self.debug_mode {
-                vmprintln!(self, "{}", op);
-            }
             match op {
                 // List processing
                 CAR() => {
@@ -1685,6 +1684,21 @@ impl R8VM {
                     self.mem.push(rv);
                 }
                 CLZCALL(nargs) => ip = self.op_clzcall(ip, *nargs)?,
+                CALLCC(dip) => {
+                    let dip = self.ip_delta(ip) as isize + *dip as isize;
+                    let cnt = self.mem.put(
+                        Continuation::new(self.mem.stack.clone(), self.frame, dip as usize));
+                    self.mem.push(cnt);
+                    ip = self.op_clzcall(ip, 1)?;
+                }
+                UNWIND() => {
+                    let top = self.mem.stack.last().copied();
+                    self.mem.stack.clear();
+                    if let Some(pv) = top {
+                        self.mem.stack.push(pv);
+                    }
+                    return Ok(())
+                }
 
                 // Stack manipulation
                 MOV(var) => {
@@ -1733,11 +1747,6 @@ impl R8VM {
                 HCF() => return Ok(()),
             }
             self.mem.collect();
-
-            if self.debug_mode {
-                self.dump_stack()?;
-                vmprintln!(self, "");
-            }
         };
 
         let res = run();

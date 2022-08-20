@@ -179,6 +179,8 @@ macro_rules! builtins {
 
 builtins! {
     (Unknown, "?"),
+    (Unwind, "unwind"),
+    (KwUnwind, ":unwind"),
     (If, "if"),
     (Compile, "compile"),
     (Send, "send"),
@@ -247,6 +249,7 @@ builtins! {
     (Fail, "fail"),
     (Symbol, "symbol"),
     (Char, "char"),
+    (CallCC, "call/cc"),
     (Integer, "integer"),
     (String, "string"),
     (Closure, "closure"),
@@ -1437,6 +1440,24 @@ impl<'a> R8Compiler<'a> {
         self.env_pop(nargs as usize)
     }
 
+    fn bt_callcc(&mut self, ret: bool, code: &Value) -> Result<(), Error> {
+        let args: Vec<_> = code.args().collect();
+        let (funk, do_unwind) = match args[..] {
+            [x, y] => (x, y.bt_sym() == Some(Builtin::KwUnwind)),
+            [x] => (x, false),
+            _ => return ArgSpec::opt(1, 1).check(Builtin::CallCC.sym(),
+                                                 args.len() as u16)
+        };
+        self.compile(true, funk)?;
+        if do_unwind {
+            self.asm_op(chasm!(CALLCC 2));
+            self.asm_op(chasm!(UNWIND));
+        } else {
+            self.asm_op(chasm!(CALLCC 1));
+        }
+        Ok(())
+    }
+
     fn bt_char(&mut self, code: &Value) -> Result<(), Error> {
         let v = code.args().next().ok_or(error!(ArgError,
                                                 expect: ArgSpec::normal(1),
@@ -1525,6 +1546,7 @@ impl<'a> R8Compiler<'a> {
             Eqp => may_ret!(self.cmp_binop(code, (EQLP, &[]))),
             DebugVarIdx => may_ret!(self.bt_var_idx(code)),
             Char => may_ret!(self.bt_char(code)),
+            CallCC => self.bt_callcc(ret, code),
             _ => return None
         })
     }
