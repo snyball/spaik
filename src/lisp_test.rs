@@ -110,7 +110,7 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                      .chars()
                      .skip(test_fn_prefix.len())
                      .collect::<String>();
-        match vm.call_spv(*func, ()) {
+        match vm.call_spv(*func, &()) {
             Ok(res) => match TestResult::new(res, &mut vm) {
                 Some(TestResult::Pass) =>
                     println!("  - {} [{}]", name.bold(), "✓".green().bold()),

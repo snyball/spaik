@@ -6,6 +6,3 @@
 
 (defmacro send (expr)
   `(<ζ>::send-message ,expr))
-
-(defun <ζ>::send-message (msg cb)
-  (error 'not-in-async-context))

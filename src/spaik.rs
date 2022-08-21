@@ -1,13 +1,17 @@
 //! SPAIK public API
 
-use std::sync::Mutex;
-use std::sync::mpsc::{Receiver, channel, Sender};
+use std::fmt::Debug;
+use std::sync::mpsc::{Sender, channel, Receiver, TryRecvError, RecvTimeoutError};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
-use fnv::FnvHashMap;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
-use crate::nuke::{Fissile, Continuation};
-use crate::r8vm::{R8VM, Args};
+use crate::compile::Builtin;
+use crate::deserialize;
+use crate::nuke::Fissile;
+use crate::r8vm::{R8VM, Args, ArgSpec};
 use crate::sym_db::SymDB;
 use crate::error::Error;
 use crate::nkgc::{SymID, PV, ObjRef, SPV};
@@ -28,6 +32,28 @@ impl VMInto<SymID> for &str {
     }
 }
 
+impl VMInto<SymID> for SymID {
+    fn vm_into(self, vm: &mut R8VM) -> SymID {
+        self
+    }
+}
+
+pub trait VMRefInto<T> {
+    fn vm_into(&self, vm: &mut R8VM) -> T;
+}
+
+impl VMRefInto<SymID> for &str {
+    fn vm_into(&self, vm: &mut R8VM) -> SymID {
+        vm.mem.put_sym(self)
+    }
+}
+
+impl VMRefInto<SymID> for SymID {
+    fn vm_into(&self, vm: &mut R8VM) -> SymID {
+        *self
+    }
+}
+
 impl Spaik {
     pub fn new() -> Result<Spaik, Error> {
         let mut vm = Spaik {
@@ -37,25 +63,25 @@ impl Spaik {
         Ok(vm)
     }
 
-    pub fn register(&mut self, func: Box<dyn Subr>) {
-        self.set(func.name(), func);
+    pub fn register(&mut self, func: impl Subr) {
+        self.set(func.name(), func.into_subr());
     }
 
     pub fn set<V, T>(&mut self, var: V, obj: T)
-        where V: VMInto<SymID>, T: IntoLisp
+        where V: VMRefInto<SymID>, T: IntoLisp
     {
         let var = var.vm_into(&mut self.vm);
         self.vm.set(var, obj).unwrap();
     }
 
     pub fn get_clone<V, T>(&mut self, var: V) -> Result<T, Error>
-        where V: VMInto<SymID>, T: Fissile + 'static + Clone
+        where V: VMRefInto<SymID>, T: Fissile + 'static + Clone
     {
         self.get_ref_mut(var).map(|rf: &mut T| (*rf).clone())
     }
 
     pub fn get_ref<V, T>(&mut self, var: V) -> Result<&T, Error>
-        where V: VMInto<SymID>, T: Fissile + 'static
+        where V: VMRefInto<SymID>, T: Fissile + 'static
     {
         self.get_ref_mut(var).map(|rf| &*rf)
     }
@@ -68,7 +94,7 @@ impl Spaik {
      * - `var` : Variable name
      */
     pub fn get_ref_mut<V, T>(&mut self, var: V) -> Result<&mut T, Error>
-        where V: VMInto<SymID>, T: Fissile + 'static
+        where V: VMRefInto<SymID>, T: Fissile + 'static
     {
         let name = var.vm_into(&mut self.vm);
         let idx = self.vm.get_env_global(name)
@@ -115,22 +141,30 @@ impl Spaik {
      *           "name" as either a string or symbol
      */
     pub fn load<V>(&mut self, lib: V) -> Result<SymID, Error>
-        where V: VMInto<SymID>
+        where V: VMRefInto<SymID>
     {
         let lib = lib.vm_into(&mut self.vm);
         self.vm.load(lib)
     }
 
     pub fn call<V, A, R>(&mut self, sym: V, args: A) -> Result<R, Error>
-        where V: VMInto<SymID>,
+        where V: VMRefInto<SymID>,
               A: Args,
               R: TryFrom<PV, Error = Error>,
     {
         let sym = sym.vm_into(&mut self.vm);
-        self.vm.call(sym, args).and_then(|pv| {
+        self.vm.call(sym, &args).and_then(|pv| {
             let r = pv.try_into()?;
             Ok(r)
         })
+    }
+
+    pub fn run<V, A>(&mut self, sym: V, args: A) -> Result<(), Error>
+        where V: VMRefInto<SymID>,
+              A: Args,
+    {
+        let _r: Ignore = self.call(sym, args)?;
+        Ok(())
     }
 
     /**
@@ -142,37 +176,152 @@ impl Spaik {
     }
 
     // TODO
-    pub fn fork<'de, T: Deserialize<'de>>(self) -> Receiver<T> {
-        todo!()
+    pub fn fork<T: DeserializeOwned + Send + Debug + Clone + 'static>(mut self) -> SpaikPlug<T> {
+        let (rx_send, tx_send) = channel::<Promise<T>>();
+        let (rx_run, tx_run) = channel();
+        let handle = thread::spawn(move || {
+            self.register(send_message { sender: rx_send });
+            self.run("init", ()).unwrap();
+            loop {
+                let ev: Event = tx_run.recv().unwrap();
+                match ev {
+                    Event::Stop => break,
+                    Event::Promise { res, cont } => {
+                        let res = self.vm.apply_spv(cont, &*res);
+                        if let Err(e) = res {
+                            log::error!("{}", e.to_string(&self.vm));
+                        }
+                    }
+                    Event::Event { name, args } => {
+                        let sym = name.vm_into(&mut self.vm);
+                        let res = self.vm.call(sym, &*args).and_then(|pv| {
+                            let r: Ignore = pv.try_into()?;
+                            Ok(r)
+                        });
+                        if let Err(e) = res {
+                            log::error!("{}", e.to_string(&self.vm));
+                        }
+                    }
+                }
+            }
+            self
+        });
+        SpaikPlug {
+            promises: tx_send,
+            events: rx_run,
+            handle
+        }
     }
 }
 
-pub struct ContID(u32);
+pub enum Event {
+    Promise { res: Box<dyn Args>, cont: SPV },
+    Event { name: Box<dyn VMRefInto<SymID>>, args: Box<dyn Args> },
+    Stop,
+}
+unsafe impl Send for Event {}
 
-struct SpaikPromise {
-    cont: SPV,
+#[derive(Debug)]
+#[must_use = "A promise made should be a promise kept"]
+pub struct Promise<T> {
+    msg: Box<T>,
+    cont: Option<SPV>,
 }
 
-struct SpaikPlug {
-    conts: FnvHashMap<ContID, SPV>,
-    event_sender: Sender<Box<dyn RefIntoLisp>>,
-    cont_sender: Sender<(SPV, Box<dyn RefIntoLisp>)>,
+impl<T> Promise<T> {
+    pub fn get(&self) -> &T {
+        &self.msg
+    }
+
+    pub fn get_mut(&mut self) -> &mut T {
+        &mut self.msg
+    }
 }
 
-impl SpaikPlug {
-    #[must_use = "Must fulfil promise, call fulfil with ContID"]
-    pub fn recv<'de, T>(&mut self) -> Option<(ContID, T)>
-        where T: Deserialize<'de>
+pub struct SpaikPlug<T> {
+    promises: Receiver<Promise<T>>,
+    events: Sender<Event>,
+    handle: JoinHandle<Spaik>,
+}
+
+#[derive(Clone, Debug)]
+#[allow(non_camel_case_types)]
+pub struct send_message<T>
+    where T: DeserializeOwned + Clone + Send
+{
+    sender: Sender<Promise<T>>,
+}
+
+unsafe impl<'de, T> Subr for send_message<T>
+    where T: DeserializeOwned + Clone + Send + 'static + Debug
+{
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        let (msg, r, cont) = match &args[..] {
+            [x, y] => (deserialize::from_pv(*x, &vm.mem)
+                       .map_err(|e| e.argn(1).op(Builtin::ZSendMessage.sym()))?,
+                       *x,
+                       Some(vm.mem.make_extref(*y))),
+            [x] => (deserialize::from_pv(*x, &vm.mem)
+                    .map_err(|e| e.argn(1).op(Builtin::ZSendMessage.sym()))?,
+                    *x,
+                    None),
+            _ => ArgSpec::opt(1, 1).check(Builtin::ZSendMessage.sym(),
+                                          args.len() as u16)
+                                   .map(|_| -> ! { unreachable!() })?
+
+        };
+        self.sender.send(Promise { msg, cont })?;
+        Ok(r)
+    }
+    fn name(&self) -> &'static str { "<ζ>::send-message" }
+    fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
+}
+
+impl<T> SpaikPlug<T> {
+    pub fn recv(&mut self) -> Option<Promise<T>>
+        where T: DeserializeOwned
     {
-        todo!()
+        match self.promises.try_recv() {
+            Ok(e) => Some(e),
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => {
+                panic!("Spaik VM disconnected");
+            }
+        }
     }
 
-    pub fn send<T>(&mut self, ev: T) where T: IntoLisp {
-        todo!()
+    pub fn recv_timeout(&mut self, timeout: Duration) -> Option<Promise<T>>
+        where T: DeserializeOwned
+    {
+        match self.promises.recv_timeout(timeout) {
+            Ok(e) => Some(e),
+            Err(RecvTimeoutError::Timeout) => None,
+            Err(RecvTimeoutError::Disconnected) => {
+                panic!("Spaik VM disconnected");
+            }
+        }
     }
 
-    pub fn fulfil<T>(&mut self, id: ContID, ev: T) where T: IntoLisp {
-        todo!()
+    pub fn send<V, A>(&mut self, name: V, args: A)
+        where V: VMRefInto<SymID> + 'static,
+              A: Args + 'static
+    {
+        self.events.send(Event::Event { name: Box::new(name),
+                                        args: Box::new(args) }).unwrap();
+    }
+
+    pub fn fulfil<R>(&mut self, promise: Promise<T>, ans: R)
+        where R: IntoLisp + Clone + 'static
+    {
+        if let Some(cont) = promise.cont {
+            self.events.send(Event::Promise { res: Box::new((ans,)),
+                                              cont }).unwrap();
+        }
+    }
+
+    pub fn join(self) -> Spaik {
+        self.events.send(Event::Stop).unwrap();
+        self.handle.join().unwrap()
     }
 }
 
@@ -186,8 +335,55 @@ macro_rules! args {
 #[cfg(test)]
 mod tests {
     use spaik_proc_macros::{spaikfn, Fissile};
+    use std::sync::Once;
+
+    fn setup() {
+        static INIT: Once = Once::new();
+        INIT.call_once(pretty_env_logger::init);
+    }
 
     use super::*;
+
+    #[test]
+    fn spaik_fork_send_from_rust_to_lisp() {
+        setup();
+        let mut vm = Spaik::new().unwrap();
+        vm.exec("(defvar init-var nil)").unwrap();
+        vm.exec("(defun init () (set init-var 'init))").unwrap();
+        vm.exec("(defun event-0 (x) (set init-var (+ x 1)))").unwrap();
+        let mut vm = vm.fork::<i32>();
+        vm.send("event-0", (123,));
+        let mut vm = vm.join();
+        let init_var: i32 = vm.eval("init-var").unwrap();
+        assert_eq!(init_var, 124);
+    }
+
+    #[test]
+    fn spaik_fork_send_from_lisp_to_rust() {
+        setup();
+        #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+        #[serde(rename_all = "kebab-case")]
+        enum Msg {
+            Test { id: i32 },
+        }
+        let mut vm = Spaik::new().unwrap();
+        vm.exec("(load 'async)").unwrap();
+        vm.exec("(defvar init-var nil)").unwrap();
+        vm.exec("(defun init () (set init-var 'init))").unwrap();
+        vm.exec(r#"(defun event-0 (x)
+                     (let ((res (await '(test :id 1337))))
+                       (set init-var (+ res x 1))))"#).unwrap();
+        let mut vm = vm.fork::<Msg>();
+        let ev0_arg = 123;
+        vm.send("event-0", (ev0_arg,));
+        let p = vm.recv_timeout(Duration::from_secs(1)).expect("timeout");
+        assert_eq!(p.get(), &Msg::Test { id: 1337 });
+        let fulfil_res = 31337;
+        vm.fulfil(p, fulfil_res);
+        let mut vm = vm.join();
+        let init_var: i32 = vm.eval("init-var").unwrap();
+        assert_eq!(init_var, fulfil_res + ev0_arg + 1);
+    }
 
     #[test]
     fn api_eval_add_numbers() {
@@ -222,7 +418,7 @@ mod tests {
         }
 
         let mut vm = Spaik::new().unwrap();
-        vm.register(funky_function_obj().into_subr());
+        vm.register(funky_function_obj());
         let result: i32 = vm.eval("(funky-function 2 8)").unwrap();
         assert_eq!(result, 12);
 
@@ -258,9 +454,9 @@ mod tests {
         }
 
         let mut vm = Spaik::new().unwrap();
-        vm.register(my_function_obj().into_subr());
-        vm.register(obj_x_obj().into_subr());
-        vm.register(obj_y_obj().into_subr());
+        vm.register(my_function_obj());
+        vm.register(obj_x_obj());
+        vm.register(obj_y_obj());
         let src_obj = TestObj { x: 1.0, y: 3.0 };
         let dst_obj = TestObj { x: 1.0, y: 2.0 };
         vm.set("src-obj", src_obj.clone());

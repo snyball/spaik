@@ -184,6 +184,7 @@ builtins! {
     (If, "if"),
     (Compile, "compile"),
     (Send, "send"),
+    (ZSendMessage, "<ζ>::send-message"),
     (SymID, "sym-id"),
     (Continuation, "continuation"),
     (Keyword, "keyword"),

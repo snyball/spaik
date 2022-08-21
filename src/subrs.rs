@@ -133,6 +133,12 @@ impl IntoLisp for bool {
     }
 }
 
+impl IntoLisp for &str {
+    fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
+        Ok(mem.put(self.to_string()))
+    }
+}
+
 impl IntoLisp for String {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
         Ok(mem.put(self))

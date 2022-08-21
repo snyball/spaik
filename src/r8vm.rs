@@ -284,7 +284,7 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, convert::Infallible, borrow::Cow};
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, SymID}, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
+    use crate::{subrs::{Subr, RefIntoLisp, IntoLisp}, nkgc::{PV, SymID}, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String
@@ -845,12 +845,12 @@ impl SymDB for R8VM {
 }
 
 pub trait Args {
-    fn push(self, mem: &mut Arena) -> Result<(), Error>;
+    fn push(&self, mem: &mut Arena) -> Result<(), Error>;
     fn nargs(&self) -> usize;
 }
 
 impl Args for &[PV] {
-    fn push(self, mem: &mut Arena) -> Result<(), Error> {
+    fn push(&self, mem: &mut Arena) -> Result<(), Error> {
         for arg in self.iter().copied() {
             mem.push(arg);
         }
@@ -863,7 +863,7 @@ impl Args for &[PV] {
 }
 
 impl<const N: usize> Args for &[PV; N] {
-    fn push(self, mem: &mut Arena) -> Result<(), Error> {
+    fn push(&self, mem: &mut Arena) -> Result<(), Error> {
         for arg in self.iter().copied() {
             mem.push(arg);
         }
@@ -878,14 +878,14 @@ impl<const N: usize> Args for &[PV; N] {
 macro_rules! impl_args_tuple {
     ($($arg:ident),*) => {
         impl<$($arg),*> Args for ($($arg),*,)
-            where $($arg: IntoLisp),*
+            where $($arg: crate::subrs::RefIntoLisp),*
         {
-            fn push(self, mem: &mut Arena) -> Result<(), Error> {
+            fn push(&self, mem: &mut Arena) -> Result<(), Error> {
                 #[allow(non_snake_case)]
                 let ($($arg),*,) = self;
                 $(
                     #[allow(non_snake_case)]
-                    let $arg = $arg.into_pv(mem)?;
+                    let $arg = $arg.ref_into_pv(mem)?;
                     mem.push($arg);
                 )*
                 Ok(())
@@ -899,7 +899,7 @@ macro_rules! impl_args_tuple {
 }
 
 impl Args for () {
-    fn push(self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
+    fn push(&self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
     fn nargs(&self) -> usize { 0 }
 }
 
@@ -918,12 +918,36 @@ impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G, H);
 
 unsafe impl Send for R8VM {}
 
+// NOTE: This only applies to calls made with apply_spv, calls internally in the
+// VM bytecode are unbounded.
+const MAX_CLZCALL_ARGS: u16 = 12;
+
+#[inline]
+fn clzcall_pad_dip(nargs: u16) -> usize {
+    debug_assert!(nargs <= MAX_CLZCALL_ARGS);
+    // NOTE: See R8VM::new, it creates a MAX_CLZCALL_ARGS number of
+    // CLZCALL(n)/RET bytecodes after the first HCF bytecode.
+    1 | (nargs as usize) << 1
+}
+
 impl R8VM {
     pub fn new() -> R8VM {
         let mut vm = R8VM {
             pmem: vec![r8c::Op::HCF()],
             ..Default::default()
         };
+
+        for i in 0..=MAX_CLZCALL_ARGS {
+            let pos = vm.pmem.len();
+            vm.pmem.push(r8c::Op::CLZCALL(i));
+            vm.pmem.push(r8c::Op::RET());
+            let sym = vm.mem.symdb.put(format!("<ζ>::clz-entrypoint-{i}"));
+            vm.funcs.insert(sym.id, Func {
+                pos,
+                sz: 2,
+                args: ArgSpec::normal(0)
+            });
+        }
 
         vm.funcs.insert(Builtin::HaltFunc.sym().into(), Func {
             pos: 0,
@@ -993,6 +1017,12 @@ impl R8VM {
         let idx = self.mem.push_env(pv);
         self.globals.insert(var, idx);
         Ok(())
+    }
+
+    pub fn add_subr(&mut self, subr: impl Subr) {
+        let name = self.put_sym(subr.name());
+        self.set(name, subr.into_subr())
+            .expect("Can't allocate Subr");
     }
 
     pub fn set_subr(&mut self, _name: SymID, _obj: Box<dyn Subr>) {
@@ -1148,7 +1178,7 @@ impl R8VM {
     pub fn get_source(&self, idx: usize) -> Source {
         let src_idx = match self.srctbl.binary_search_by(|(u, _)| u.cmp(&idx)) {
             Ok(i) => i,
-            Err(i) => i-1
+            Err(i) => (i as isize - 1).max(0) as usize
         };
         self.srctbl[src_idx].1.clone()
     }
@@ -1699,20 +1729,27 @@ impl R8VM {
                     ip = ip.offset(d);
                 }
                 VCALL(sym, nargs) => {
-                    let pos = match self.funcs.get(sym) {
+                    match self.funcs.get(sym) {
                         Some(func) => {
                             func.args.check((*sym).into(), *nargs)?;
-                            func.pos
+                            let pos = func.pos.clone();
+                            self.call_pre(ip);
+                            self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
+                            ip = self.ret_to(pos);
                         },
-                        // TODO: Add source information when this becomes available
-                        //       during run-time.
-                        None => return Err(ErrorKind::UndefinedFunction {
-                            name: SymID { id: *sym }
-                        }.into())
+                        None => if let Some(idx) = self.get_env_global((*sym).into()) {
+                            let var = self.mem.get_env(idx);
+                            let sidx = self.mem.stack.len() - *nargs as usize;
+                            // FIXME: This can be made less clunky by modifying
+                            // op_clzcall so that it takes the callable as a parameter.
+                            self.mem.stack.insert(sidx, var);
+                            ip = self.op_clzcall(ip, *nargs)?;
+                        } else {
+                            return Err(ErrorKind::UndefinedFunction {
+                                name: SymID { id: *sym }
+                            }.into())
+                        }
                     };
-                    self.call_pre(ip);
-                    self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
-                    ip = self.ret_to(pos);
                 }
                 RET() => {
                     let rv = self.mem.pop()?;
@@ -1851,17 +1888,34 @@ impl R8VM {
      * - `sym` : Symbol mapped to the function, see Arena::sym.
      * - `args` : Arguments that should be passed.
      */
-    pub fn call<A>(&mut self, sym: SymID, args: A) -> Result<PV, Error>
-        where A: Args
+    pub fn call<A>(&mut self, sym: SymID, args: &A) -> Result<PV, Error>
+        where A: Args + ?Sized
     {
         Ok(vm_call_with!(self, sym, args.nargs(), { args.push(&mut self.mem)? }))
     }
 
-    pub fn call_spv<A>(&mut self, sym: SymID, args: A) -> Result<SPV, Error>
-        where A: Args
+    pub fn call_spv<A>(&mut self, sym: SymID, args: &A) -> Result<SPV, Error>
+        where A: Args + ?Sized
     {
         let res = self.call(sym, args)?;
         Ok(self.mem.make_extref(res))
+    }
+
+    pub fn apply_spv<A>(&mut self, f: SPV, args: &A) -> Result<(), Error>
+        where A: Args + ?Sized
+    {
+        let frame = self.frame;
+        self.frame = self.mem.stack.len();
+        self.mem.push(PV::UInt(0));
+        self.mem.push(PV::UInt(frame));
+        self.mem.push(f.pv(&self));
+        args.push(&mut self.mem)?;
+        let pos = clzcall_pad_dip(args.nargs() as u16);
+        unsafe {
+            self.run_from_unwind(pos)?;
+        }
+        self.mem.pop()?;
+        Ok(())
     }
 
     pub fn raw_call(&mut self, sym: SymID, args: &[PV]) -> Result<PV, Error> {
