@@ -5,7 +5,6 @@ use std::sync::mpsc::{Sender, channel, Receiver, TryRecvError, RecvTimeoutError}
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::compile::Builtin;
@@ -15,7 +14,7 @@ use crate::r8vm::{R8VM, Args, ArgSpec};
 use crate::sym_db::SymDB;
 use crate::error::Error;
 use crate::nkgc::{SymID, PV, ObjRef, SPV};
-use crate::subrs::{Subr, IntoLisp, Ignore, RefIntoLisp};
+use crate::subrs::{Subr, IntoLisp, Ignore};
 
 /// A Spaik Context
 pub struct Spaik {
@@ -33,7 +32,7 @@ impl VMInto<SymID> for &str {
 }
 
 impl VMInto<SymID> for SymID {
-    fn vm_into(self, vm: &mut R8VM) -> SymID {
+    fn vm_into(self, _vm: &mut R8VM) -> SymID {
         self
     }
 }
@@ -49,7 +48,7 @@ impl VMRefInto<SymID> for &str {
 }
 
 impl VMRefInto<SymID> for SymID {
-    fn vm_into(&self, vm: &mut R8VM) -> SymID {
+    fn vm_into(&self, _vm: &mut R8VM) -> SymID {
         *self
     }
 }
@@ -59,7 +58,7 @@ impl Spaik {
         let mut vm = Spaik {
             vm: R8VM::new()
         };
-        vm.load("stdlib")?;
+        vm.vm.load_stdlib();
         Ok(vm)
     }
 
@@ -133,18 +132,38 @@ impl Spaik {
     }
 
     /**
-     * Load library
+     * Load library from the load-path, by default this is `./lisp/`.
      *
      * # Arguments
      *
-     * - `lib` : If the library is stored at "name.lisp", then `lib` should be
-     *           "name" as either a string or symbol
+     * - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
+     *           `<name>` as either a string or symbol
      */
     pub fn load<V>(&mut self, lib: V) -> Result<SymID, Error>
         where V: VMRefInto<SymID>
     {
         let lib = lib.vm_into(&mut self.vm);
         self.vm.load(lib)
+    }
+
+    /**
+     * Load a SPAIK library from a string, this is useful both for embedding code
+     * into your binary with e.g `load_with(x, y, include_str!(...))` or when
+     * loading from a virtual filesystem.
+     *
+     * # Arguments
+     *
+     * - `src_path` : File-system path to the `.lisp` file, needed for
+     *                source-file/line error messages.
+     * - `lib` : Library symbol name, i.e the argument to `(load ...)`
+     * - `code` : The source-code contents inside `src_path`
+     */
+    pub fn load_with<V, S>(&mut self, src_path: S, lib: SymID, code: S) -> Result<SymID, Error>
+        where V: VMRefInto<SymID>,
+              S: AsRef<str>
+    {
+        let lib = lib.vm_into(&mut self.vm);
+        self.vm.load_with(src_path, lib, code)
     }
 
     pub fn call<V, A, R>(&mut self, sym: V, args: A) -> Result<R, Error>
@@ -175,7 +194,6 @@ impl Spaik {
         self.vm.mem.full_collection()
     }
 
-    // TODO
     pub fn fork<T: DeserializeOwned + Send + Debug + Clone + 'static>(mut self) -> SpaikPlug<T> {
         let (rx_send, tx_send) = channel::<Promise<T>>();
         let (rx_run, tx_run) = channel();
@@ -217,6 +235,7 @@ impl Spaik {
 pub enum Event {
     Promise { res: Box<dyn Args>, cont: SPV },
     Event { name: Box<dyn VMRefInto<SymID>>, args: Box<dyn Args> },
+    // Ping(u64),
     Stop,
 }
 unsafe impl Send for Event {}
@@ -236,6 +255,17 @@ impl<T> Promise<T> {
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.msg
     }
+}
+
+pub enum Ctrl {
+    Pong(u64),
+}
+
+#[derive(Debug)]
+#[must_use = "A promise made should be a promise kept"]
+pub enum Response<T> {
+    Promise(Promise<T>),
+    Ctrl(),
 }
 
 pub struct SpaikPlug<T> {
@@ -334,6 +364,7 @@ macro_rules! args {
 
 #[cfg(test)]
 mod tests {
+    use serde::Deserialize;
     use spaik_proc_macros::{spaikfn, Fissile};
     use std::sync::Once;
 

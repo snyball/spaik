@@ -57,21 +57,7 @@ impl REPL {
         if let Some(out) = out_override {
             vm.set_stdout(out);
         }
-        let stdlib = vm.sym_id("stdlib");
-        vm.load(stdlib)
-          .map(|_| ())
-          .or_else(|e| -> Result<(), Error> {
-              #[cfg(not(target_arch = "wasm32"))] {
-                  vmprintln!(vm, "{}", e.to_string(&vm));
-                  vmprintln!(vm, "{}", "Warning: Using bundled stdlib".yellow().bold());
-              }
-              vm.eval(include_str!("../lisp/stdlib.lisp"))?;
-              Ok(())
-          })
-          .or_else(|e| -> Result<(), Error> {
-              vmprintln!(vm, "{}: {}", "Error: ".red().bold(), e.to_string(&vm).white().bold());
-              Ok(())
-          })?;
+        vm.load_stdlib();
         Ok(REPL {
             vm,
             exit_status: None,

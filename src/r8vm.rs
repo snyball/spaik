@@ -60,7 +60,6 @@ chasm_def! {
     // TODO: APPLY()
     CLZCALL(nargs: u16),
     RET(),
-    // YIELD(),
     CALLCC(dip: i32),
     UNWIND(),
     HCF(),
@@ -284,7 +283,7 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, convert::Infallible, borrow::Cow};
 
-    use crate::{subrs::{Subr, RefIntoLisp, IntoLisp}, nkgc::{PV, SymID}, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, SymID}, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String
@@ -1074,14 +1073,11 @@ impl R8VM {
         self.add_code(asm, Some(consts), Some(srcs));
     }
 
-    pub fn load(&mut self, lib: SymID) -> Result<SymID, Error> {
+    pub fn load_with<S: AsRef<str>>(&mut self, src_path: S, lib: SymID, code: S) -> Result<SymID, Error> {
         let sym_name = self.sym_name(lib).to_string();
-        let err = ErrorKind::ModuleLoadError { lib };
-        let src_path = format!("lisp/{}.lisp", &sym_name);
-        let mut file = File::open(&src_path).map_err(|_| err.clone())?;
-        let mut src = String::new();
-        file.read_to_string(&mut src).map_err(|_| err)?;
-        let ast = Parser::parse(self, &src, Some(Cow::from(src_path)))?;
+        let ast = Parser::parse(self,
+                                code.as_ref(),
+                                Some(Cow::from(src_path.as_ref().to_string())))?;
         let mut cc = R8Compiler::new(self);
         cc.compile_top(true, &ast)?;
         let (mut asm, lbls, consts, srcs) = cc.link()?;
@@ -1089,6 +1085,37 @@ impl R8VM {
         let fn_sym = self.mem.symdb.put(format!("<Σ>::{}", sym_name));
         self.add_func(fn_sym, (asm, lbls, consts, srcs), ArgSpec::none());
         Ok(fn_sym)
+    }
+
+    pub fn load(&mut self, lib: SymID) -> Result<SymID, Error> {
+        let sym_name = self.sym_name(lib).to_string();
+        let err = ErrorKind::ModuleLoadError { lib };
+        let src_path = format!("lisp/{}.lisp", &sym_name);
+        let mut file = File::open(&src_path).map_err(|_| err.clone())?;
+        let mut src = String::new();
+        file.read_to_string(&mut src).map_err(|_| err)?;
+        self.load_with(src_path, lib, src)
+    }
+
+    pub fn load_stdlib(&mut self) {
+        let stdlib = self.sym_id("stdlib");
+        self.load(stdlib)
+            .map(|_| ())
+            .or_else(|e| -> Result<(), Error> {
+                if matches!(e.ty, ErrorKind::ModuleLoadError { .. }) {
+                    #[cfg(not(target_arch = "wasm32"))] {
+                        log::info!("Using bundled stdlib");
+                    }
+                    self.eval(include_str!("../lisp/stdlib.lisp"))?;
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            })
+            .or_else(|e| -> Result<(), Error> {
+                log::error!("{}", e.to_string(self));
+                Err(e)
+            }).unwrap();
     }
 
     pub fn consts_top(&self) -> usize {
