@@ -783,13 +783,20 @@ def_stack_op! {
     EQLP_OP("eq?"):  [x, y] => { Ok(Bool(x.equalp(*y))) };
 }
 
-#[derive(Default)]
-struct Regs {
-    vals: [PV; 16],
+struct Regs<const N: usize> {
+    vals: [PV; N],
     idx: u8,
 }
 
-impl Regs {
+impl<const N: usize> Regs<N> {
+    fn new() -> Regs<N> {
+        Regs {
+            vals: [PV::Nil; N],
+            idx: 0
+        }
+    }
+
+    #[inline]
     fn save(&mut self, mem: &mut Arena, num: u8) -> Result<(), RuntimeError> {
         for i in 0..num {
             let v = mem.pop()?;
@@ -801,6 +808,7 @@ impl Regs {
         Ok(())
     }
 
+    #[inline]
     fn restore(&mut self, mem: &mut Arena) {
         for i in (0..self.idx).rev() {
             mem.push(self.vals[i as usize]);
@@ -1556,7 +1564,7 @@ impl R8VM {
      * then you've yee'd your last haw.
      */
     unsafe fn run_from(&mut self, offs: usize) -> Result<usize, (usize, Error)> {
-        let mut regs = Regs::default();
+        let mut regs: Regs<2> = Regs::new();
         let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
         use r8c::Op::*;
         let mut run = || loop {
