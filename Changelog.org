@@ -1,0 +1,28 @@
+#+title: Changelog
+
+* Unreleased
+- Added ~vm.fork()~ for using SPAIK in an asynchronous fashion, using a
+  message-api.
+- Added line-number reporting on runtime errors
+- Made ~(pow :number :number)~ a builtin
+- Added ~(join :intoiter)~ for joining strings inside collections
+- Added ~(sym-id :symbol)~
+- Added ~(instant)~ for timing
+- The ~(len)~ function now accepts strings
+- Re-added ~(disassemble-all)~
+- Added ~(dis)~ macro for easily disassembling expressions
+- Made it possible to pass ~+ - / *~ operations as functions
+- Removed the ~sys::~ cruft in favor of the new ~Subr~ trait.
+- Derive-macro for the ~Fissile~ trait
+- Use ~serde~/~bincode~ instead of ~binread~/~binwrite~ for dumping modules
+- Removed C code
+- Added continuations and an ~async~/~await~ API in ~async.lisp~
+- Added ~(throw :any)~, for control flow
+- Added ~(error :symbol)~, for error-reporting
+- Added generic iteration using ~(iter obj)~ and ~(next it)~ for ~vector~,
+  ~cons~, and ~string~.
+- Added ~sqrt~ function
+- Added the ~char~ type for ~string~ iteration.
+- Added public SPAIK API to make it easier to integrate SPAIK into other
+  projects.
+- Remove ~stack_ref_op~ cruft
