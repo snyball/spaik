@@ -387,7 +387,10 @@ mod sysfns {
         }
 
         fn instant(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
-            Ok(PV::Real(vm.mem.stats().time.as_secs_f32()))
+            #[cfg(not(target_arch = "wasm32"))]
+            return Ok(PV::Real(vm.mem.stats().time.as_secs_f32()));
+            #[cfg(target_arch = "wasm32")]
+            return Ok(PV::Nil);
         }
 
         fn dump_macro_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
