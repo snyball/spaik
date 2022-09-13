@@ -54,12 +54,12 @@ impl VMRefInto<SymID> for SymID {
 }
 
 impl Spaik {
-    pub fn new() -> Result<Spaik, Error> {
+    pub fn new() -> Spaik {
         let mut vm = Spaik {
             vm: R8VM::new()
         };
         vm.vm.load_stdlib();
-        Ok(vm)
+        vm
     }
 
     pub fn register(&mut self, func: impl Subr) {
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn spaik_fork_send_from_rust_to_lisp() {
         setup();
-        let mut vm = Spaik::new().unwrap();
+        let mut vm = Spaik::new();
         vm.exec("(defvar init-var nil)").unwrap();
         vm.exec("(defun init () (set init-var 'init))").unwrap();
         vm.exec("(defun event-0 (x) (set init-var (+ x 1)))").unwrap();
@@ -397,7 +397,7 @@ mod tests {
         enum Msg {
             Test { id: i32 },
         }
-        let mut vm = Spaik::new().unwrap();
+        let mut vm = Spaik::new();
         vm.exec("(load 'async)").unwrap();
         vm.exec("(defvar init-var nil)").unwrap();
         vm.exec("(defun init () (set init-var 'init))").unwrap();
@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn api_eval_add_numbers() {
-        let mut vm = Spaik::new().unwrap();
+        let mut vm = Spaik::new();
         let result: i32 = vm.eval("(+ 2 3)").unwrap();
         assert_eq!(result, 5);
         let result: i16 = vm.eval("(+ 2 3)").unwrap();
@@ -429,7 +429,7 @@ mod tests {
 
     #[test]
     fn api_func_call() {
-        let mut vm = Spaik::new().unwrap();
+        let mut vm = Spaik::new();
         vm.exec(
             "(defun plus (&rest xs) (let ((s 0)) (dolist (x xs) (set s (+ s x))) s))"
         ).unwrap();
@@ -448,7 +448,7 @@ mod tests {
             x + 2 + y
         }
 
-        let mut vm = Spaik::new().unwrap();
+        let mut vm = Spaik::new();
         vm.register(funky_function_obj());
         let result: i32 = vm.eval("(funky-function 2 8)").unwrap();
         assert_eq!(result, 12);
@@ -484,7 +484,7 @@ mod tests {
             obj.y
         }
 
-        let mut vm = Spaik::new().unwrap();
+        let mut vm = Spaik::new();
         vm.register(my_function_obj());
         vm.register(obj_x_obj());
         vm.register(obj_y_obj());
