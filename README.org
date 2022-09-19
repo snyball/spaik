@@ -1,8 +1,7 @@
 #+TITLE: SPAIK
 
-The *SPAIK* Lisp implementation, with a [[https://moesys.no/en/#spaik][live demo]]!
-
-plus.lisp
+The *SPAIK*-LISP programming language, with a [[https://moesys.no/en/#spaik][live webassembly demo]]! Here's some
+Rust code calling a *SPAIK* function:
 
 #+begin_src lisp
 (defun plus (&rest xs)
@@ -11,8 +10,6 @@ plus.lisp
       (set s (+ s x)))
     s))
 #+end_src
-
-call.rs
 
 #+begin_src rust
 use spaik::spaik::Spaik;
