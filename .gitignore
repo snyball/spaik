@@ -1,4 +1,6 @@
 /target
+/proc-macros/target
+/logs/
 **/*.rs.bk
 *.lock
 *.rmeta

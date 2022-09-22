@@ -2,7 +2,7 @@
 name = "spaik-proc-macros"
 version = "0.1.0"
 authors = ["Jonas Møller <jonas@nimda.no>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "spaik_proc_macros"

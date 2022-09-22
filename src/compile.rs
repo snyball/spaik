@@ -594,13 +594,13 @@ impl<'a> R8Compiler<'a> {
     }
 
     pub fn enter_fn(&mut self,
-                    args: Vec<SymID>,
+                    args: &[SymID],
                     spec: ArgSpec) -> Result<(), Error> {
         let mut env = Env::none();
         if spec.has_env() {
             env.defvar(Builtin::LambdaObject.sym());
         }
-        for arg in args.iter() {
+        for arg in args {
             env.defvar(*arg);
         }
         env.defvar(Builtin::IP.sym());
@@ -635,12 +635,12 @@ impl<'a> R8Compiler<'a> {
     //       This optimization should happen during a pre-processing
     //       step where terminals are replaced with:
     //         `(<ζ>::become terminal-fn args...)`
-    pub fn compile_fn(&mut self, _name: SymID, args: &Value, body: &Value) -> Result<ArgSpec, Error> {
+    pub fn compile_fn(&mut self, _name: SymID, args: &Value, body: &Value) -> Result<(ArgSpec, Vec<SymID>), Error> {
         let (args, spec) = arg_parse(args)?;
-        self.enter_fn(args, spec)?;
+        self.enter_fn(&args, spec)?;
         self.compile_seq(true, body.iter())?;
         self.leave_fn();
-        Ok(spec)
+        Ok((spec, args))
     }
 
     fn leave_fn(&mut self) {
@@ -827,11 +827,11 @@ impl<'a> R8Compiler<'a> {
                     .map_err(|op| op.op(Builtin::Define.sym())),
             ast::Define::Func(name, ast::ArgList(spec, args), code) => {
                 let mut cc = R8Compiler::new(self.vm);
-                cc.enter_fn(args, spec)?;
+                cc.enter_fn(&args, spec)?;
                 cc.compile_seq(true, code.iter())?;
                 cc.leave_fn();
                 let res = cc.link()?;
-                self.vm.add_func(name, res, spec);
+                self.vm.add_func(name, res, spec, args);
                 if ret {
                     self.asm_op(chasm!(CLZ name.id, 0));
                 }
@@ -1362,7 +1362,7 @@ impl<'a> R8Compiler<'a> {
         spec.env = num;
         self.asm_op(chasm!(CLZ name.id, num));
         let mut cc = R8Compiler::new(self.vm);
-        cc.enter_fn(args, spec)?;
+        cc.enter_fn(&args, spec)?;
         for (var, bound) in lowered.iter() {
             if let BoundVar::Env(idx) = bound {
                 cc.with_env(|env| env.defenv(*var, *idx as usize))?;
@@ -1374,7 +1374,7 @@ impl<'a> R8Compiler<'a> {
         }
         cc.leave_fn();
         let linked = cc.link()?;
-        self.vm.add_func(name, linked, spec);
+        self.vm.add_func(name, linked, spec, args);
         Ok(())
     }
 

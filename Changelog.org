@@ -3,6 +3,7 @@
 * Unreleased
 - Added ~vm.fork()~ for using SPAIK in an asynchronous fashion, using a
   message-api.
+- Added serde deserializer for arbitrary runtime SPAIK values
 - Added line-number reporting on runtime errors
 - Made ~(pow :number :number)~ a builtin
 - Added ~(join :intoiter)~ for joining strings inside collections
@@ -12,12 +13,17 @@
 - Re-added ~(disassemble-all)~
 - Added ~(dis)~ macro for easily disassembling expressions
 - Made it possible to pass ~+ - / *~ operations as functions
-- Removed the ~sys::~ cruft in favor of the new ~Subr~ trait.
+- Removed the ~sys::~ cruft in favor of the new ~Subr~ trait and functions
+  implemented using it.
+- ~EnumCall~ and associated proc-macro derivation to make it easier to implement
+  the command-pattern using *SPAIK*.
 - Derive-macro for the ~Fissile~ trait
+- The ~spaikfn~ macro, for making Rust functions callable from Lisp.
 - Use ~serde~/~bincode~ instead of ~binread~/~binwrite~ for dumping modules
 - Removed C code
 - Added continuations and an ~async~/~await~ API in ~async.lisp~
-- Added ~(throw :any)~, for control flow
+- Added ~(throw :any)~, for control flow. Currently exclusively used for control
+  flow that bubbles up to Rust.
 - Added ~(error :symbol)~, for error-reporting
 - Added generic iteration using ~(iter obj)~ and ~(next it)~ for ~vector~,
   ~cons~, and ~string~.

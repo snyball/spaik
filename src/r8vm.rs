@@ -14,7 +14,7 @@ use crate::{
     nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
     perr::PResult,
     sexpr_parse::Parser,
-    subrs::{IntoLisp, Subr},
+    subrs::{IntoLisp, Subr, EnumCall},
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
@@ -735,6 +735,7 @@ pub struct R8VM {
     macros: FnvHashMap<SymIDInt, SymID>,
     funcs: FnvHashMap<SymIDInt, Func>,
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
+    func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
     srctbl: SourceList,
     catch: Vec<usize>,
 
@@ -758,6 +759,7 @@ impl Default for R8VM {
             macros: Default::default(),
             funcs: Default::default(),
             func_labels: Default::default(),
+            func_arg_syms: Default::default(),
             stdout: Mutex::new(Box::new(io::stdout())),
             stdin: Mutex::new(Box::new(io::stdin())),
             debug_mode: false,
@@ -855,12 +857,12 @@ impl SymDB for R8VM {
 }
 
 pub trait Args {
-    fn push(&self, mem: &mut Arena) -> Result<(), Error>;
+    fn pusharg(&self, mem: &mut Arena) -> Result<(), Error>;
     fn nargs(&self) -> usize;
 }
 
 impl Args for &[PV] {
-    fn push(&self, mem: &mut Arena) -> Result<(), Error> {
+    fn pusharg(&self, mem: &mut Arena) -> Result<(), Error> {
         for arg in self.iter().copied() {
             mem.push(arg);
         }
@@ -873,7 +875,7 @@ impl Args for &[PV] {
 }
 
 impl<const N: usize> Args for &[PV; N] {
-    fn push(&self, mem: &mut Arena) -> Result<(), Error> {
+    fn pusharg(&self, mem: &mut Arena) -> Result<(), Error> {
         for arg in self.iter().copied() {
             mem.push(arg);
         }
@@ -890,7 +892,7 @@ macro_rules! impl_args_tuple {
         impl<$($arg),*> Args for ($($arg),*,)
             where $($arg: crate::subrs::RefIntoLisp),*
         {
-            fn push(&self, mem: &mut Arena) -> Result<(), Error> {
+            fn pusharg(&self, mem: &mut Arena) -> Result<(), Error> {
                 #[allow(non_snake_case)]
                 let ($($arg),*,) = self;
                 $(
@@ -909,7 +911,7 @@ macro_rules! impl_args_tuple {
 }
 
 impl Args for () {
-    fn push(&self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
+    fn pusharg(&self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
     fn nargs(&self) -> usize { 0 }
 }
 
@@ -1073,7 +1075,7 @@ impl R8VM {
         self.funcs.get(&name.id)
     }
 
-    pub fn add_func(&mut self, name: SymID, code: Linked, args: ArgSpec) {
+    pub fn add_func(&mut self, name: SymID, code: Linked, args: ArgSpec, arg_names: Vec<SymID>) {
         let (asm, labels, consts, srcs) = code;
         self.funcs.insert(name.id, Func {
             pos: self.pmem.len(),
@@ -1081,6 +1083,7 @@ impl R8VM {
             args
         });
         self.func_labels.insert(name, labels);
+        self.func_arg_syms.insert(name, arg_names);
         self.add_code(asm, Some(consts), Some(srcs));
     }
 
@@ -1094,7 +1097,7 @@ impl R8VM {
         let (mut asm, lbls, consts, srcs) = cc.link()?;
         asm.push(r8c::Op::RET());
         let fn_sym = self.mem.symdb.put(format!("<Σ>::{}", sym_name));
-        self.add_func(fn_sym, (asm, lbls, consts, srcs), ArgSpec::none());
+        self.add_func(fn_sym, (asm, lbls, consts, srcs), ArgSpec::none(), vec![]);
         Ok(fn_sym)
     }
 
@@ -1386,9 +1389,9 @@ impl R8VM {
         let mut cc = R8Compiler::new(self);
         let args = unsafe { pv_to_value(args, &Source::none()) };
         let ast = unsafe { pv_to_value(ast, &Source::none()) };
-        let spec = cc.compile_fn(sym, &args, &ast)?;
+        let (spec, args) = cc.compile_fn(sym, &args, &ast)?;
         let code = cc.link()?;
-        self.add_func(sym, code, spec);
+        self.add_func(sym, code, spec, args);
         Ok(())
     }
 
@@ -1929,7 +1932,7 @@ impl R8VM {
     pub fn call<A>(&mut self, sym: SymID, args: &A) -> Result<PV, Error>
         where A: Args + ?Sized
     {
-        Ok(vm_call_with!(self, sym, args.nargs(), { args.push(&mut self.mem)? }))
+        Ok(vm_call_with!(self, sym, args.nargs(), { args.pusharg(&mut self.mem)? }))
     }
 
     pub fn call_spv<A>(&mut self, sym: SymID, args: &A) -> Result<SPV, Error>
@@ -1947,7 +1950,7 @@ impl R8VM {
         self.mem.push(PV::UInt(0));
         self.mem.push(PV::UInt(frame));
         self.mem.push(f.pv(&self));
-        args.push(&mut self.mem)?;
+        args.pusharg(&mut self.mem)?;
         let pos = clzcall_pad_dip(args.nargs() as u16);
         unsafe {
             self.run_from_unwind(pos)?;

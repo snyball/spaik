@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, AttributeArgs};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, AttributeArgs, DataEnum};
 
 fn crate_root() -> proc_macro2::TokenStream {
     let found_crate = crate_name("spaik")
@@ -49,8 +49,8 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
             fn call(&mut self,
                     vm: &mut #spaik_root::r8vm::R8VM,
                     args: &[#spaik_root::nkgc::PV])
-                    -> Result<#spaik_root::nkgc::PV,
-                              #spaik_root::error::Error>
+                    -> core::result::Result<#spaik_root::nkgc::PV,
+                                            #spaik_root::error::Error>
             {
                 use #spaik_root::r8vm::ArgSpec;
                 use #spaik_root::error::Error;
@@ -113,9 +113,95 @@ pub fn spaiklib(_attr: TokenStream, _item: TokenStream) -> TokenStream {
     quote!().into()
 }
 
+#[proc_macro_derive(EnumCall)]
+pub fn derive_enum_call(item: TokenStream) -> TokenStream {
+    let root = crate_root();
+    let input = parse_macro_input!(item as DeriveInput);
+    let name = input.ident.clone();
+    let name_s = input.ident.to_string();
+    let data = input.data.clone();
+    let fields = match data {
+        Data::Enum(DataEnum {
+            variants, ..
+        }) => variants,
+        x => unimplemented!()
+    }.into_iter();
+
+    let variant = fields.clone().map(|f| f.ident.clone());
+    let variant_data = fields.clone().map(|f| {
+        let idents = f.fields.clone()
+                             .into_iter()
+                             .enumerate()
+                             .map(|(i, f)| f.ident.clone().unwrap_or_else(|| {
+                                 format_ident!("arg{i}")
+                             }));
+        let is_tuple = f.fields.iter()
+                               .next()
+                               .and_then(|f| f.ident.clone())
+                               .is_none();
+        (is_tuple, idents)
+    });
+    let query = variant_data.clone().map(|(is_tuple, idents)| {
+        if is_tuple {
+            quote!((#(#idents),*))
+        } else {
+            quote!({ #(#idents),* })
+        }
+    });
+    let body = variant_data.clone().map(|(is_tuple, idents)| {
+        if is_tuple {
+            quote!({#(
+                let pv = #idents .into_pv(mem).unwrap();
+                mem.push(pv);
+            )*})
+        } else {
+            let idents_lhs = idents.clone();
+            let idents_rhs = idents.clone();
+            let idents_str = idents.clone().map(|ident| ident.to_string());
+            let num_idents = idents.clone().count();
+            let count = idents.clone().enumerate().map(|(i, _)| i);
+            quote!({
+                static strs: &'static [&'static str; #num_idents] = &[#(#idents_str),*];
+                #(let mut #idents_lhs = Some(#idents_rhs));*;
+                for arg in args {
+                    let sym = &*mem.name(*arg);
+                    let pv = match strs.iter().copied().position(|x| x == sym) {
+                        #(Some(#count) => #idents
+                                          .take()
+                                          .expect("Duplicate argument should not be possible")
+                                          .into_pv(mem)
+                                          .unwrap()),*,
+                        Some(_) => unreachable!(),
+                        None => return err!(UndefinedVariable, var: *arg)
+                    };
+                    mem.push(pv)
+                }
+            })
+        }
+    });
+
+    let out = quote! {
+        impl #root::subrs::EnumCall for #name {
+            fn pushargs(self, args: &[#root::nkgc::SymID], mem: &mut #root::nkgc::Arena)
+                        -> core::result::Result<(), #root::error::Error>
+            {
+                match self {
+                    #(Self::#variant #query => #body),*
+                }
+                Ok(())
+            }
+
+            fn name(&self, mem: &mut #root::nkgc::Arena) -> #root::nkgc::SymID {
+                mem.put_sym(#name_s)
+            }
+        }
+    };
+
+    out.into()
+}
+
 #[proc_macro_derive(Fissile)]
-pub fn derive_fissile(item: TokenStream) -> TokenStream
-{
+pub fn derive_fissile(item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();

@@ -1,7 +1,9 @@
 //! Rust Subroutines for SPAIK LISP
 
+use spaik_proc_macros::EnumCall;
+
 use crate::r8vm::R8VM;
-use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena, ObjRef};
+use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena, ObjRef, SymID};
 use crate::error::{Error, ErrorKind};
 use crate::nuke::*;
 use crate::fmt::{LispFmt, VisitSet};
@@ -69,8 +71,7 @@ macro_rules! pv_convert {
             fn try_from(v: PV) -> Result<ObjRef<$from_t>, Self::Error> {
                 Ok(ObjRef(v.try_into()?))
             }
-        }
-        )*
+        })*
     };
 }
 
@@ -274,11 +275,28 @@ unsafe impl Subr for VLambda {
     }
 }
 
-impl From<VLambda> for Box<dyn Subr>
-{
+impl From<VLambda> for Box<dyn Subr> {
     fn from(t: VLambda) -> Self {
         Box::new(t)
     }
 }
 
-// unsafe impl Send for T where T: Subr {}
+pub trait EnumCall: Sized {
+    fn name(&self, mem: &mut Arena) -> SymID;
+    fn pushargs(self, args: &[SymID], mem: &mut Arena) -> Result<(), Error>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enum_call_test() {
+        #[derive(EnumCall)]
+        pub enum CallSome {
+            FuncA { arg0: u32, arg1: i64, arg2: String },
+            FuncB { arg0: u32, arg1: i16, arg2: &'static str },
+            FuncC(u32, i8, &'static str),
+        }
+    }
+}
