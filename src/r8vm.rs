@@ -14,7 +14,7 @@ use crate::{
     nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
     perr::PResult,
     sexpr_parse::Parser,
-    subrs::{IntoLisp, Subr},
+    subrs::{IntoLisp, Subr, IntoSubr},
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
@@ -235,12 +235,11 @@ macro_rules! subr {
     (fn $name:ident[$name_s:expr](&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
                     -> Result<PV, Error> $body:block) => {
         #[derive(Clone, Copy, Debug)]
-        pub struct $name();
+        pub struct $name;
 
         unsafe impl Subr for $name {
             fn call(&mut $self, $vm: &mut R8VM, $args: &[PV]) -> Result<PV, Error> $body
             fn name(&self) -> &'static str { $name_s }
-            fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
         }
     };
 
@@ -450,7 +449,7 @@ mod sysfns {
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct make_symbol();
+    pub struct make_symbol;
 
     unsafe impl Subr for make_symbol {
         fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
@@ -466,11 +465,10 @@ mod sysfns {
             }
         }
         fn name(&self) -> &'static str { "make-symbol" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct sum();
+    pub struct sum;
 
     unsafe impl Subr for sum {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
@@ -482,11 +480,10 @@ mod sysfns {
             Ok(s)
         }
         fn name(&self) -> &'static str { "+" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct sym_id();
+    pub struct sym_id;
 
     unsafe impl Subr for sym_id {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
@@ -502,22 +499,20 @@ mod sysfns {
             }
         }
         fn name(&self) -> &'static str { "sym-id" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct type_of();
+    pub struct type_of;
 
     unsafe impl Subr for type_of {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             subr_args!((x) self _vm args { Ok(PV::Sym(x.type_of())) })
         }
         fn name(&self) -> &'static str { "type-of" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct asum();
+    pub struct asum;
 
     unsafe impl Subr for asum {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
@@ -536,11 +531,10 @@ mod sysfns {
             Ok(s)
         }
         fn name(&self) -> &'static str { "-" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct product();
+    pub struct product;
 
     unsafe impl Subr for product {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
@@ -552,11 +546,10 @@ mod sysfns {
             Ok(s)
         }
         fn name(&self) -> &'static str { "*" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct aproduct();
+    pub struct aproduct;
 
     unsafe impl Subr for aproduct {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
@@ -575,11 +568,10 @@ mod sysfns {
             Ok(s)
         }
         fn name(&self) -> &'static str { "/" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct dump_gc_stats();
+    pub struct dump_gc_stats;
 
     unsafe impl Subr for dump_gc_stats {
         fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV, Error> {
@@ -588,11 +580,10 @@ mod sysfns {
             Ok(PV::Nil)
         }
         fn name(&self) -> &'static str { "dump-gc-stats" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct dump_stack();
+    pub struct dump_stack;
 
     unsafe impl Subr for dump_stack {
         fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV, Error> {
@@ -600,7 +591,6 @@ mod sysfns {
             Ok(PV::Nil)
         }
         fn name(&self) -> &'static str { "dump-stack" }
-        fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
     }
 }
 
@@ -979,7 +969,7 @@ impl R8VM {
 
             ($name:expr, $fn:ident) => {
                 let sym = vm.mem.put_sym($name);
-                vm.set(sym, sysfns::$fn().into_subr()).unwrap();
+                vm.set(sym, (sysfns::$fn).into_subr()).unwrap();
             };
         }
 
@@ -1885,7 +1875,6 @@ impl R8VM {
         }
     }
 
-    #[deprecated = "Use Continuation::lisp_fmt instead"]
     pub fn dump_stack(&mut self) -> Result<(), Error> {
         let mut stdout = self.stdout.lock().unwrap();
         writeln!(stdout, "stack:")?;

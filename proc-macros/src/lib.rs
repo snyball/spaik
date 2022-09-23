@@ -67,10 +67,6 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
             fn name(&self) -> &'static str {
                 #ident_str
             }
-
-            fn into_subr(self) -> Box<dyn #spaik_root::subrs::Subr> {
-                Box::new(self)
-            }
         }
 
         impl From<#obj_ident> for Box<dyn #spaik_root::subrs::Subr> {
@@ -124,7 +120,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
         Data::Enum(DataEnum {
             variants, ..
         }) => variants,
-        x => unimplemented!()
+        _ => unimplemented!()
     }.into_iter();
 
     let variant = fields.clone().map(|f| f.ident.clone());

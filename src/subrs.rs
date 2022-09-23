@@ -1,9 +1,7 @@
 //! Rust Subroutines for SPAIK LISP
 
-use spaik_proc_macros::EnumCall;
-
 use crate::r8vm::R8VM;
-use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena, ObjRef, SymID};
+use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::nuke::*;
 use crate::fmt::{LispFmt, VisitSet};
@@ -198,12 +196,20 @@ impl<T, E> IntoLisp for Result<T, E>
  *         This invariant is ensured by the lispy proc-macro, which you
  *         should use instead of implementing Subr yourself.
 */
-pub unsafe trait Subr: CloneSubr + Send {
+pub unsafe trait Subr: CloneSubr + Send + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
 
     fn name(&self) -> &'static str;
+}
 
+pub trait IntoSubr: Subr {
     fn into_subr(self) -> Box<dyn Subr>;
+}
+
+impl<T> IntoSubr for T where T: Subr + Sized + 'static {
+    fn into_subr(self) -> Box<dyn Subr> {
+        Box::new(self)
+    }
 }
 
 impl fmt::Debug for Box<dyn Subr> {
@@ -268,10 +274,6 @@ unsafe impl Subr for VLambda {
 
     fn name(&self) -> &'static str {
         "lambda"
-    }
-
-    fn into_subr(self) -> Box<dyn Subr> {
-        Box::new(self)
     }
 }
 

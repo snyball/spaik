@@ -14,7 +14,7 @@ use crate::r8vm::{R8VM, Args, ArgSpec};
 use crate::sym_db::SymDB;
 use crate::error::Error;
 use crate::nkgc::{SymID, PV, ObjRef, SPV};
-use crate::subrs::{Subr, IntoLisp, Ignore};
+use crate::subrs::{Subr, IntoLisp, Ignore, IntoSubr};
 
 /// A Spaik Context
 pub struct Spaik {
@@ -283,7 +283,7 @@ pub struct send_message<T>
 }
 
 unsafe impl<'de, T> Subr for send_message<T>
-    where T: DeserializeOwned + Clone + Send + 'static + Debug
+    where T: DeserializeOwned + Clone + Send + 'static + Debug + Sized
 {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
         let (msg, r, cont) = match &args[..] {
@@ -304,7 +304,6 @@ unsafe impl<'de, T> Subr for send_message<T>
         Ok(r)
     }
     fn name(&self) -> &'static str { "<ζ>::send-message" }
-    fn into_subr(self) -> Box<dyn Subr> { Box::new(self) }
 }
 
 impl<T> SpaikPlug<T> {
@@ -372,8 +371,6 @@ mod tests {
         static INIT: Once = Once::new();
         INIT.call_once(pretty_env_logger::init);
     }
-
-    use crate::r8vm::EnumCall;
 
     use super::*;
 
