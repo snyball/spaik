@@ -10,6 +10,7 @@ use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
 use std::any::{TypeId, Any};
+use std::borrow::Cow;
 use std::mem::{self, size_of};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
@@ -298,6 +299,22 @@ impl LispFmt for Object {
     }
 }
 
+/// Simpliy types `ta` and `tb`, so that they are as short as possible while
+/// being both distinct from each other and complete.
+/// Essentially (x::y::abc, x::b::rac) becomes (abc, rac) while
+///             (x::y::abc, x::b::abc) becomes (y::abc, b::abc)
+fn simplify_types<'a, 'b>(ta: &'a str, tb: &'b str) -> (&'a str, &'b str) {
+    let it = ta.bytes().enumerate().rev().zip(
+             tb.bytes().enumerate().rev());
+    for ((ia, ca), (ib, cb)) in it {
+        if ca != cb {
+            return (&ta[ta[..ia].rfind(":").map(|i| i + 1).unwrap_or(0)..],
+                    &tb[tb[..ib].rfind(":").map(|i| i + 1).unwrap_or(0)..])
+        }
+    }
+    (ta, tb)
+}
+
 impl Object {
     pub fn new<T: Fissile + 'static>(obj: T) -> Object {
         let mut mem: Vec<u8> = Vec::with_capacity(size_of::<T>());
@@ -338,6 +355,7 @@ impl Object {
         if TypeId::of::<T>() != self.type_id {
             let expect_t = std::any::type_name::<T>();
             let actual_t = self.type_name;
+            let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
             return err!(STypeError,
                         expect: format!("(object {expect_t})"),
                         got: format!("(object {actual_t})"),
@@ -1070,5 +1088,36 @@ impl PtrMap {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simplify_types_test() {
+        let ta = "crate::sum::shit::XYZ";
+        let tb = "crate::sum::shit::XYZ";
+        assert_eq!(simplify_types(ta, tb), (ta, tb));
+
+        let ta = "crate::sum::shit::ABC";
+        let tb = "crate::sum::shit::XYZ";
+        assert_eq!(simplify_types(ta, tb), ("ABC", "XYZ"));
+
+        let ta = "crate::hmm::shit::ABC";
+        let tb = "crate::sum::shit::ABC";
+        assert_eq!(simplify_types(ta, tb),
+                   ("hmm::shit::ABC", "sum::shit::ABC"));
+
+        let ta = "crate::hmm::sit::ABC";
+        let tb = "crate::sum::shit::ABC";
+        assert_eq!(simplify_types(ta, tb),
+                   ("sit::ABC", "shit::ABC"));
+
+        let ta = "crate::hmm::si::ABC";
+        let tb = "crate::sum::shit::ABC";
+        assert_eq!(simplify_types(ta, tb),
+                   ("si::ABC", "shit::ABC"));
     }
 }
