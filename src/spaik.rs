@@ -512,6 +512,7 @@ mod tests {
 
     #[test]
     fn enum_call_test() {
+        #[allow(dead_code)]
         #[derive(EnumCall)]
         pub enum CallSome {
             FuncA { arg0: u32, arg1: i64, arg2: String },
