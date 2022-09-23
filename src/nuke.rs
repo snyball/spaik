@@ -9,7 +9,7 @@ use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
-use std::any::TypeId;
+use std::any::{TypeId, Any};
 use std::mem::{self, size_of};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
@@ -58,6 +58,11 @@ macro_rules! with_atom_inst {
     }
 }
 
+
+pub trait Fissile: LispFmt + Debug + Clone + Traceable + Any {
+    fn type_of() -> NkT;
+}
+
 macro_rules! fissile_types {
     ($(($t:ident, $sym_type_of:expr, $path:path)),+) => {
         #[derive(Debug)]
@@ -72,10 +77,6 @@ macro_rules! fissile_types {
 
         #[derive(Debug)]
         pub enum NkRef<'a> { $($t(&'a $path)),+ }
-
-        pub trait Fissile: LispFmt + Debug + Clone + Traceable {
-            fn type_of() -> NkT;
-        }
 
         impl From<NkT> for SymID {
             fn from(src: NkT) -> SymID {
@@ -269,6 +270,7 @@ impl Iterator for Iter {
 #[derive(Clone)]
 pub struct Object {
     type_id: TypeId,
+    type_name: &'static str,
     trace_fnp: unsafe fn(*const u8, gray: &mut Vec<*mut NkAtom>),
     update_ptrs_fnp: unsafe fn(*mut u8, reloc: &PtrMap),
     destructor_fnp: unsafe fn(*mut u8),
@@ -306,6 +308,7 @@ impl Object {
         }
         Object {
             type_id: TypeId::of::<T>(),
+            type_name: std::any::type_name::<T>(),
             trace_fnp: |obj, gray| {
                 let obj = unsafe { &*( obj as *const T ) };
                 obj.trace(gray)
@@ -332,10 +335,14 @@ impl Object {
     }
 
     pub fn cast<T: Fissile + 'static>(&self) -> Result<&T, Error> {
-        let id = TypeId::of::<T>();
-        if id != self.type_id {
-            // FIXME: Better error
-            return err!(SomeError, msg: String::from("Object cast error"))
+        if TypeId::of::<T>() != self.type_id {
+            let expect_t = std::any::type_name::<T>();
+            let actual_t = self.type_name;
+            return err!(STypeError,
+                        expect: format!("(object {expect_t})"),
+                        got: format!("(object {actual_t})"),
+                        op: Builtin::Nil.sym(),
+                        argn: 0)
         }
         let ptr = self.mem.as_ptr();
         Ok(unsafe {

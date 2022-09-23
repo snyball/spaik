@@ -1,5 +1,6 @@
 //! SPAIK public API
 
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::mpsc::{Sender, channel, Receiver, TryRecvError, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
@@ -232,6 +233,16 @@ impl Spaik {
     }
 }
 
+impl SymDB for Spaik {
+    fn name(&self, sym: SymID) -> std::borrow::Cow<str> {
+        Cow::Borrowed(self.vm.mem.symdb.name(sym).unwrap())
+    }
+
+    fn put_sym(&mut self, name: &str) -> SymID {
+        self.vm.mem.symdb.put_sym(name)
+    }
+}
+
 pub enum Event {
     Promise { res: Box<dyn Args>, cont: SPV },
     Event { name: Box<dyn VMRefInto<SymID>>, args: Box<dyn Args> },
@@ -365,12 +376,14 @@ macro_rules! args {
 mod tests {
     use serde::Deserialize;
     use spaik_proc_macros::{spaikfn, Fissile, EnumCall};
-    use std::sync::Once;
+    use std::{sync::Once};
 
     fn setup() {
         static INIT: Once = Once::new();
         INIT.call_once(pretty_env_logger::init);
     }
+
+    use crate::{error::{Source, ErrorKind}, r8vm::Traceback};
 
     use super::*;
 
@@ -465,6 +478,11 @@ mod tests {
             y: f32,
         }
 
+        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Fissile)]
+        pub struct TestObj2 {
+            x: f32,
+        }
+
         #[spaikfn]
         fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
             let res = x + y.pow(2);
@@ -489,6 +507,8 @@ mod tests {
         vm.register(obj_y_obj());
         let src_obj = TestObj { x: 1.0, y: 3.0 };
         let dst_obj = TestObj { x: 1.0, y: 2.0 };
+        let wrong_obj = TestObj2 { x: 10.0 };
+        vm.set("wrong-obj", wrong_obj);
         vm.set("src-obj", src_obj.clone());
         vm.set("dst-obj", dst_obj.clone());
         vm.exec("(my-function 1 1 src-obj dst-obj)").unwrap();
@@ -506,8 +526,14 @@ mod tests {
         let dst_obj_2: &TestObj = vm.get_ref_mut("dst-obj").unwrap();
         assert_eq!(*dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                          y: dst_obj.y + src_obj.y });
-        // (set (dst-obj :x) )
-        // (dst-obj :x)
+        let expr = "(obj-y wrong-obj)";
+        let e = match vm.exec(expr) {
+            Ok(_) => panic!("Expression should fail: {expr}"),
+            Err(Error {ty: ErrorKind::Traceback { tb }, .. }) => tb.err.ty,
+            Err(e) => panic!("Unexpected error for {expr}: {}", e.to_string(&vm)),
+        };
+        dbg!(&e);
+        assert!(matches!(e, ErrorKind::STypeError { .. }))
     }
 
     #[test]

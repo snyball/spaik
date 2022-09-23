@@ -53,6 +53,7 @@ pub struct SourceRef<'a> {
 pub enum ErrorKind {
     SendError { obj_dbg: String },
     IllegalInstruction { inst: R8C },
+    STypeError { expect: String, got: String, op: SymID, argn: u32 },
     TypeError { expect: SymID, got: SymID, op: SymID, argn: u32 },
     TypeNError { expect: Vec<SymID>, got: SymID, op: SymID, argn: u32 },
     ArgTypeError { expect: Vec<SymID>, got: Vec<SymID>, op: SymID },
@@ -156,6 +157,9 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         TypeError { expect, got, op, argn } =>
             write!(f, "Type Error: Expected {} for argument {} of ({} ...), but got {}",
                    nameof(*expect), argn, nameof(*op), nameof(*got))?,
+        STypeError { expect, got, op, argn } =>
+            write!(f, "Type Error: Expected {} for argument {} of ({} ...), but got {}",
+                   expect, argn, nameof(*op), got)?,
         TypeNError { expect, got, op, argn } =>
             write!(f, "Type Error: Expected one of {} for argument {} of ({} ...), but got {}",
                    {
@@ -268,6 +272,7 @@ impl Error {
     pub fn op(mut self, new_op: SymID) -> Error {
         match &mut self.ty {
             ErrorKind::TypeError { ref mut op, .. } => *op = new_op,
+            ErrorKind::STypeError { ref mut op, .. } => *op = new_op,
             ErrorKind::TypeNError { ref mut op, .. } => *op = new_op,
             ErrorKind::ArgTypeError { ref mut op, .. } => *op = new_op,
             ErrorKind::EnumError { ref mut op, .. } => *op = new_op,
@@ -281,6 +286,7 @@ impl Error {
     pub fn argn(mut self, n: u32) -> Error {
         match &mut self.ty {
             ErrorKind::TypeError { ref mut argn, .. } => *argn = n,
+            ErrorKind::STypeError { ref mut argn, .. } => *argn = n,
             ErrorKind::TypeNError { ref mut argn, .. } => *argn = n,
             _ => ()
         }
