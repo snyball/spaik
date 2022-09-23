@@ -181,7 +181,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
     });
 
     let out = quote! {
-        impl #root::subrs::EnumCall for #name {
+        impl #root::r8vm::EnumCall for #name {
             fn pushargs(self, args: &[#root::nkgc::SymID], mem: &mut #root::nkgc::Arena)
                         -> core::result::Result<(), #root::error::Error>
             {

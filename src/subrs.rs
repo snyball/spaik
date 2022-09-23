@@ -280,23 +280,3 @@ impl From<VLambda> for Box<dyn Subr> {
         Box::new(t)
     }
 }
-
-pub trait EnumCall: Sized {
-    fn name(&self, mem: &mut Arena) -> SymID;
-    fn pushargs(self, args: &[SymID], mem: &mut Arena) -> Result<(), Error>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn enum_call_test() {
-        #[derive(EnumCall)]
-        pub enum CallSome {
-            FuncA { arg0: u32, arg1: i64, arg2: String },
-            FuncB { arg0: u32, arg1: i16, arg2: &'static str },
-            FuncC(u32, i8, &'static str),
-        }
-    }
-}

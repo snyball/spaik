@@ -365,13 +365,15 @@ macro_rules! args {
 #[cfg(test)]
 mod tests {
     use serde::Deserialize;
-    use spaik_proc_macros::{spaikfn, Fissile};
+    use spaik_proc_macros::{spaikfn, Fissile, EnumCall};
     use std::sync::Once;
 
     fn setup() {
         static INIT: Once = Once::new();
         INIT.call_once(pretty_env_logger::init);
     }
+
+    use crate::r8vm::EnumCall;
 
     use super::*;
 
@@ -509,5 +511,15 @@ mod tests {
                                          y: dst_obj.y + src_obj.y });
         // (set (dst-obj :x) )
         // (dst-obj :x)
+    }
+
+    #[test]
+    fn enum_call_test() {
+        #[derive(EnumCall)]
+        pub enum CallSome {
+            FuncA { arg0: u32, arg1: i64, arg2: String },
+            FuncB { arg0: u32, arg1: i16, arg2: &'static str },
+            FuncC(u32, i8, &'static str),
+        }
     }
 }

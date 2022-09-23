@@ -14,7 +14,7 @@ use crate::{
     nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
     perr::PResult,
     sexpr_parse::Parser,
-    subrs::{IntoLisp, Subr, EnumCall},
+    subrs::{IntoLisp, Subr},
     sym_db::SymDB,
 };
 use fnv::FnvHashMap;
@@ -854,6 +854,11 @@ impl SymDB for R8VM {
     fn put_sym(&mut self, name: &str) -> SymID {
         self.mem.symdb.put_ref(name)
     }
+}
+
+pub trait EnumCall: Sized {
+    fn name(&self, mem: &mut Arena) -> SymID;
+    fn pushargs(self, args: &[SymID], mem: &mut Arena) -> Result<(), Error>;
 }
 
 pub trait Args {
