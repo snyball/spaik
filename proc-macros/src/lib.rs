@@ -111,10 +111,11 @@ pub fn spaiklib(_attr: TokenStream, _item: TokenStream) -> TokenStream {
 
 #[proc_macro_derive(EnumCall)]
 pub fn derive_enum_call(item: TokenStream) -> TokenStream {
+    use convert_case::{Case, Casing};
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
-    let name_s = input.ident.to_string();
+    let name_s = input.ident.to_string().to_case(Case::Kebab);
     let data = input.data.clone();
     let fields = match data {
         Data::Enum(DataEnum {
@@ -124,6 +125,9 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
     }.into_iter();
 
     let variant = fields.clone().map(|f| f.ident.clone());
+    let variant_2 = variant.clone();
+    let variant_name_s = variant.clone()
+                                .map(|id| id.clone().to_string().to_case(Case::Kebab));
     let variant_data = fields.clone().map(|f| {
         let idents = f.fields.clone()
                              .into_iter()
@@ -136,6 +140,13 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
                                .and_then(|f| f.ident.clone())
                                .is_none();
         (is_tuple, idents)
+    });
+    let query_nil = variant_data.clone().map(|(is_tuple, idents)| {
+        if is_tuple {
+            quote!(( .. ))
+        } else {
+            quote!({ .. })
+        }
     });
     let query = variant_data.clone().map(|(is_tuple, idents)| {
         if is_tuple {
@@ -153,7 +164,8 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
         } else {
             let idents_lhs = idents.clone();
             let idents_rhs = idents.clone();
-            let idents_str = idents.clone().map(|ident| ident.to_string());
+            let idents_str = idents.clone()
+                                   .map(|ident| ident.to_string().to_case(Case::Kebab));
             let num_idents = idents.clone().count();
             let count = idents.clone().enumerate().map(|(i, _)| i);
             quote!({
@@ -188,7 +200,9 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
             }
 
             fn name(&self, mem: &mut #root::nkgc::Arena) -> #root::nkgc::SymID {
-                mem.put_sym(#name_s)
+                match self {
+                    #(Self::#variant_2 #query_nil => mem.put_sym(#variant_name_s)),*
+                }
             }
         }
     };

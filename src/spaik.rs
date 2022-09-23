@@ -11,7 +11,7 @@ use serde::de::DeserializeOwned;
 use crate::compile::Builtin;
 use crate::deserialize;
 use crate::nuke::Fissile;
-use crate::r8vm::{R8VM, Args, ArgSpec};
+use crate::r8vm::{R8VM, Args, ArgSpec, EnumCall};
 use crate::sym_db::SymDB;
 use crate::error::Error;
 use crate::nkgc::{SymID, PV, ObjRef, SPV};
@@ -74,14 +74,17 @@ impl Spaik {
         self.vm.set(var, obj).unwrap();
     }
 
-    pub fn get_clone<V, T>(&mut self, var: V) -> Result<T, Error>
-        where V: VMRefInto<SymID>, T: Fissile + 'static + Clone
+    pub fn get<V, R>(&mut self, var: V) -> Result<R, Error>
+        where V: VMRefInto<SymID>, R: TryFrom<PV, Error = Error>
     {
-        self.get_ref_mut(var).map(|rf: &mut T| (*rf).clone())
+        let name = var.vm_into(&mut self.vm);
+        let idx = self.vm.get_env_global(name)
+                         .ok_or(error!(UndefinedVariable, var: name))?;
+        self.vm.mem.get_env(idx).try_into()
     }
 
     pub fn get_ref<V, T>(&mut self, var: V) -> Result<&T, Error>
-        where V: VMRefInto<SymID>, T: Fissile + 'static
+        where V: VMRefInto<SymID>, T: Fissile
     {
         self.get_ref_mut(var).map(|rf| &*rf)
     }
@@ -94,7 +97,7 @@ impl Spaik {
      * - `var` : Variable name
      */
     pub fn get_ref_mut<V, T>(&mut self, var: V) -> Result<&mut T, Error>
-        where V: VMRefInto<SymID>, T: Fissile + 'static
+        where V: VMRefInto<SymID>, T: Fissile
     {
         let name = var.vm_into(&mut self.vm);
         let idx = self.vm.get_env_global(name)
@@ -167,23 +170,31 @@ impl Spaik {
         self.vm.load_with(src_path, lib, code)
     }
 
+    pub fn query<R>(&mut self, enm: impl EnumCall) -> Result<R, Error>
+        where R: TryFrom<PV, Error = Error>
+    {
+        self.vm.call_by_enum(enm).and_then(|pv| pv.try_into())
+    }
+
+    pub fn cmd(&mut self, enm: impl EnumCall) -> Result<(), Error> {
+        let _: Ignore = self.query(enm)?;
+        Ok(())
+    }
+
     pub fn call<V, A, R>(&mut self, sym: V, args: A) -> Result<R, Error>
         where V: VMRefInto<SymID>,
               A: Args,
               R: TryFrom<PV, Error = Error>,
     {
         let sym = sym.vm_into(&mut self.vm);
-        self.vm.call(sym, &args).and_then(|pv| {
-            let r = pv.try_into()?;
-            Ok(r)
-        })
+        self.vm.call(sym, &args).and_then(|pv| pv.try_into())
     }
 
     pub fn run<V, A>(&mut self, sym: V, args: A) -> Result<(), Error>
         where V: VMRefInto<SymID>,
               A: Args,
     {
-        let _r: Ignore = self.call(sym, args)?;
+        let _: Ignore = self.call(sym, args)?;
         Ok(())
     }
 
@@ -372,6 +383,19 @@ macro_rules! args {
     };
 }
 
+pub trait LispUnwrap<T> {
+    fn slap(self, db: &dyn SymDB) -> T;
+}
+
+impl<T> LispUnwrap<T> for Result<T, Error> {
+    fn slap(self, db: &dyn SymDB) -> T {
+        match self {
+            Ok(x) => x,
+            Err(e) => panic!("{}", e.to_string(db))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde::Deserialize;
@@ -517,7 +541,7 @@ mod tests {
         let y: f32 = vm.eval("(obj-y dst-obj)").unwrap();
         assert_eq!(x, 2.0);
         assert_eq!(y, 5.0);
-        let dst_obj_2: TestObj = vm.get_clone("dst-obj").unwrap();
+        let dst_obj_2: TestObj = vm.get_ref::<&str, TestObj>("dst-obj").unwrap().clone();
         assert_eq!(dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                         y: dst_obj.y + src_obj.y });
         let dst_obj_2: &TestObj = vm.get_ref("dst-obj").unwrap();
@@ -545,5 +569,17 @@ mod tests {
             FuncB { arg0: u32, arg1: i16, arg2: &'static str },
             FuncC(u32, i8, &'static str),
         }
+        let mut vm = Spaik::new();
+        vm.exec("(defun func-a (arg-0 arg-1 arg-2) (+ arg-0 arg-1))").slap(&vm);
+        vm.exec("(defvar global 10)").slap(&vm);
+        vm.exec("(defun func-b (arg-2) (set global arg-2))").slap(&vm);
+        let (a, b) = (10, 20);
+        let r: u32 = vm.query(CallSome::FuncA {
+            arg0: a, arg1: b, arg2: "lmao".to_string()
+        }).slap(&vm);
+        assert_eq!(r, a + b as u32);
+        vm.cmd(CallSome::FuncB { arg0: 0, arg1: 0, arg2: "lmao" }).slap(&vm);
+        let s: String = vm.get("global").slap(&vm);
+        assert_eq!("lmao", &s);
     }
 }

@@ -846,7 +846,7 @@ impl SymDB for R8VM {
     }
 }
 
-pub trait EnumCall: Sized {
+pub trait EnumCall {
     fn name(&self, mem: &mut Arena) -> SymID;
     fn pushargs(self, args: &[SymID], mem: &mut Arena) -> Result<(), Error>;
 }
@@ -1007,6 +1007,15 @@ impl R8VM {
         addfn!("/", aproduct);
 
         vm
+    }
+
+    pub fn call_by_enum(&mut self, enm: impl EnumCall) -> Result<PV, Error> {
+        let name = enm.name(&mut self.mem);
+        let args = self.func_arg_syms.get(&name).map(|v| &**v).ok_or_else(|| {
+            error!(UndefinedFunction, name)
+        })?;
+        let nargs = args.len();
+        Ok(vm_call_with!(self, name, nargs, { enm.pushargs(args, &mut self.mem)? }))
     }
 
     pub fn minimize(&mut self) {

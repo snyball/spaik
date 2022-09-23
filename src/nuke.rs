@@ -60,7 +60,7 @@ macro_rules! with_atom_inst {
 }
 
 
-pub trait Fissile: LispFmt + Debug + Clone + Traceable + Any {
+pub trait Fissile: LispFmt + Debug + Clone + Traceable + Any + 'static {
     fn type_of() -> NkT;
 }
 

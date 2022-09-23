@@ -207,7 +207,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                     op, expect, got)?,
         SomeError { msg } => write!(f, "Error: {}", msg)?,
         UndefinedFunction { name } =>
-            write!(f, "Undefined Function: Virtual call to undefined function '{}'",
+            write!(f, "Undefined Function: Virtual call to undefined function {}",
                    nameof(*name))?,
         UndefinedVariable { var } =>
             write!(f, "Undefined Variable: {}", nameof(*var))?,

@@ -137,6 +137,16 @@ impl<'a, T> TryFrom<PV> for ObjRef<&'a T>
     }
 }
 
+impl TryFrom<PV> for String {
+    type Error = Error;
+
+    fn try_from(v: PV) -> Result<Self, Self::Error> {
+        with_ref!(v, String(s) => {
+            Ok(s.clone())
+        })
+    }
+}
+
 impl<'a, T> TryFrom<PV> for ObjRef<&'a mut T>
     where T: Fissile + 'static
 {
