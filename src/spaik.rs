@@ -1,7 +1,7 @@
 //! SPAIK public API
 
 use std::borrow::Cow;
-use std::fmt::Debug;
+use std::fmt::{Debug, self};
 use std::sync::mpsc::{Sender, channel, Receiver, TryRecvError, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -13,9 +13,43 @@ use crate::deserialize;
 use crate::nuke::Fissile;
 use crate::r8vm::{R8VM, Args, ArgSpec, EnumCall};
 use crate::sym_db::SymDB;
-use crate::error::Error;
+use crate::error::Error as IError;
 use crate::nkgc::{SymID, PV, ObjRef, SPV};
 use crate::subrs::{Subr, IntoLisp, Ignore, IntoSubr};
+
+pub struct Error {
+    source: Box<IError>,
+    message: String,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl Error {
+    fn from_source(src: IError, db: &dyn SymDB) -> Error {
+        dbg!("from suace");
+        Error {
+            message: src.to_string(db),
+            source: Box::new(src),
+        }
+    }
+
+    pub fn src(&self) -> IError {
+        (*self.source).clone()
+    }
+}
+
+impl std::error::Error for Error {
+}
 
 /// A Spaik Context
 pub struct Spaik {
@@ -75,18 +109,25 @@ impl Spaik {
     }
 
     pub fn get<V, R>(&mut self, var: V) -> Result<R, Error>
-        where V: VMRefInto<SymID>, R: TryFrom<PV, Error = Error>
+        where V: VMRefInto<SymID>, R: TryFrom<PV, Error = IError>
     {
         let name = var.vm_into(&mut self.vm);
         let idx = self.vm.get_env_global(name)
-                         .ok_or(error!(UndefinedVariable, var: name))?;
-        self.vm.mem.get_env(idx).try_into()
+                         .ok_or(error!(UndefinedVariable, var: name))
+                         .map_err(|e| Error::from_source(e, self))?;
+        self.vm.mem.get_env(idx).try_into().map_err(|e| Error::from_source(e, self))
     }
 
-    pub fn get_ref<V, T>(&mut self, var: V) -> Result<&T, Error>
+    pub fn objref<V, T>(&mut self, var: V) -> Result<&T, Error>
         where V: VMRefInto<SymID>, T: Fissile
     {
-        self.get_ref_mut(var).map(|rf| &*rf)
+        self.objref_mut(var).map(|rf| &*rf)
+    }
+
+    pub fn obj<V, T>(&mut self, var: V) -> Result<T, Error>
+        where V: VMRefInto<SymID>, T: Fissile
+    {
+        self.objref_mut(var).map(|rf| &*rf).cloned()
     }
 
     /**
@@ -96,13 +137,16 @@ impl Spaik {
      *
      * - `var` : Variable name
      */
-    pub fn get_ref_mut<V, T>(&mut self, var: V) -> Result<&mut T, Error>
+    pub fn objref_mut<V, T>(&mut self, var: V) -> Result<&mut T, Error>
         where V: VMRefInto<SymID>, T: Fissile
     {
         let name = var.vm_into(&mut self.vm);
         let idx = self.vm.get_env_global(name)
-                         .ok_or(error!(UndefinedVariable, var: name))?;
-        let ObjRef(x): ObjRef<&mut T> = self.vm.mem.get_env(idx).try_into()?;
+                         .ok_or(error!(UndefinedVariable, var: name))
+                         .map_err(|e| Error::from_source(e, self))?;
+        let ObjRef(x): ObjRef<&mut T> = self.vm.mem.get_env(idx)
+                                                   .try_into()
+                                                   .map_err(|e| Error::from_source(e, self))?;
         Ok(x)
     }
 
@@ -115,10 +159,11 @@ impl Spaik {
      */
     pub fn eval<E, R>(&mut self, expr: E) -> Result<R, Error>
         where E: AsRef<str>,
-              R: TryFrom<PV, Error = Error>
+              R: TryFrom<PV, Error = IError>
     {
         self.vm.eval(expr.as_ref())
                .and_then(|pv| pv.try_into())
+               .map_err(|e| Error::from_source(e, self))
     }
 
     /**
@@ -147,7 +192,7 @@ impl Spaik {
         where V: VMRefInto<SymID>
     {
         let lib = lib.vm_into(&mut self.vm);
-        self.vm.load(lib)
+        self.vm.load(lib).map_err(|e| Error::from_source(e, self))
     }
 
     /**
@@ -167,13 +212,15 @@ impl Spaik {
               S: AsRef<str>
     {
         let lib = lib.vm_into(&mut self.vm);
-        self.vm.load_with(src_path, lib, code)
+        self.vm.load_with(src_path, lib, code).map_err(|e| Error::from_source(e, self))
     }
 
     pub fn query<R>(&mut self, enm: impl EnumCall) -> Result<R, Error>
-        where R: TryFrom<PV, Error = Error>
+        where R: TryFrom<PV, Error = IError>
     {
-        self.vm.call_by_enum(enm).and_then(|pv| pv.try_into())
+        self.vm.call_by_enum(enm)
+               .and_then(|pv| pv.try_into())
+               .map_err(|e| Error::from_source(e, self))
     }
 
     pub fn cmd(&mut self, enm: impl EnumCall) -> Result<(), Error> {
@@ -184,10 +231,12 @@ impl Spaik {
     pub fn call<V, A, R>(&mut self, sym: V, args: A) -> Result<R, Error>
         where V: VMRefInto<SymID>,
               A: Args,
-              R: TryFrom<PV, Error = Error>,
+              R: TryFrom<PV, Error = IError>,
     {
         let sym = sym.vm_into(&mut self.vm);
-        self.vm.call(sym, &args).and_then(|pv| pv.try_into())
+        self.vm.call(sym, &args)
+               .and_then(|pv| pv.try_into())
+               .map_err(|e| Error::from_source(e, self))
     }
 
     pub fn run<V, A>(&mut self, sym: V, args: A) -> Result<(), Error>
@@ -307,7 +356,7 @@ pub struct send_message<T>
 unsafe impl<'de, T> Subr for send_message<T>
     where T: DeserializeOwned + Clone + Send + 'static + Debug + Sized
 {
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, IError> {
         let (msg, r, cont) = match &args[..] {
             [x, y] => (deserialize::from_pv(*x, &vm.mem)
                        .map_err(|e| e.argn(1).op(Builtin::ZSendMessage.sym()))?,
@@ -383,19 +432,6 @@ macro_rules! args {
     };
 }
 
-pub trait LispUnwrap<T> {
-    fn slap(self, db: &dyn SymDB) -> T;
-}
-
-impl<T> LispUnwrap<T> for Result<T, Error> {
-    fn slap(self, db: &dyn SymDB) -> T {
-        match self {
-            Ok(x) => x,
-            Err(e) => panic!("{}", e.to_string(db))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde::Deserialize;
@@ -407,7 +443,7 @@ mod tests {
         INIT.call_once(pretty_env_logger::init);
     }
 
-    use crate::{error::{Source, ErrorKind}, r8vm::Traceback};
+    use crate::error::ErrorKind;
 
     use super::*;
 
@@ -541,19 +577,19 @@ mod tests {
         let y: f32 = vm.eval("(obj-y dst-obj)").unwrap();
         assert_eq!(x, 2.0);
         assert_eq!(y, 5.0);
-        let dst_obj_2: TestObj = vm.get_ref::<&str, TestObj>("dst-obj").unwrap().clone();
+        let dst_obj_2: TestObj = vm.obj("dst-obj").unwrap();
         assert_eq!(dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                         y: dst_obj.y + src_obj.y });
-        let dst_obj_2: &TestObj = vm.get_ref("dst-obj").unwrap();
+        let dst_obj_2: &TestObj = vm.objref("dst-obj").unwrap();
         assert_eq!(*dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                          y: dst_obj.y + src_obj.y });
-        let dst_obj_2: &TestObj = vm.get_ref_mut("dst-obj").unwrap();
+        let dst_obj_2: &TestObj = vm.objref_mut("dst-obj").unwrap();
         assert_eq!(*dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                          y: dst_obj.y + src_obj.y });
         let expr = "(obj-y wrong-obj)";
-        let e = match vm.exec(expr) {
+        let e = match vm.exec(expr).map_err(|e| e.src()) {
             Ok(_) => panic!("Expression should fail: {expr}"),
-            Err(Error {ty: ErrorKind::Traceback { tb }, .. }) => tb.err.ty,
+            Err(IError {ty: ErrorKind::Traceback { tb }, .. }) => tb.err.ty,
             Err(e) => panic!("Unexpected error for {expr}: {}", e.to_string(&vm)),
         };
         dbg!(&e);
@@ -570,16 +606,16 @@ mod tests {
             FuncC(u32, i8, &'static str),
         }
         let mut vm = Spaik::new();
-        vm.exec("(defun func-a (arg-0 arg-1 arg-2) (+ arg-0 arg-1))").slap(&vm);
-        vm.exec("(defvar global 10)").slap(&vm);
-        vm.exec("(defun func-b (arg-2) (set global arg-2))").slap(&vm);
+        vm.exec("(defun func-a (arg-0 arg-1 arg-2) (+ arg-0 arg-1))").unwrap();
+        vm.exec("(defvar global 10)").unwrap();
+        vm.exec("(defun func-b (arg-2) (set global arg-2))").unwrap();
         let (a, b) = (10, 20);
         let r: u32 = vm.query(CallSome::FuncA {
             arg0: a, arg1: b, arg2: "lmao".to_string()
-        }).slap(&vm);
+        }).unwrap();
         assert_eq!(r, a + b as u32);
-        vm.cmd(CallSome::FuncB { arg0: 0, arg1: 0, arg2: "lmao" }).slap(&vm);
-        let s: String = vm.get("global").slap(&vm);
+        vm.cmd(CallSome::FuncB { arg0: 0, arg1: 0, arg2: "lmao" }).unwrap();
+        let s: String = vm.get("global").unwrap();
         assert_eq!("lmao", &s);
     }
 }
