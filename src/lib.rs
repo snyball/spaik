@@ -137,39 +137,24 @@ pub struct Spaik {
     vm: R8VM
 }
 
-pub trait VMInto<T> {
-    fn vm_into(self, vm: &mut R8VM) -> T;
+pub trait AsSym {
+    fn as_sym(&self, vm: &mut R8VM) -> SymID;
 }
 
-impl VMInto<SymID> for &str {
-    fn vm_into(self, vm: &mut R8VM) -> SymID {
+impl AsSym for &str {
+    fn as_sym(&self, vm: &mut R8VM) -> SymID {
         vm.mem.put_sym(self)
     }
 }
 
-impl VMInto<SymID> for SymID {
-    fn vm_into(self, _vm: &mut R8VM) -> SymID {
-        self
-    }
-}
-
-pub trait VMRefInto<T> {
-    fn vm_into(&self, vm: &mut R8VM) -> T;
-}
-
-impl VMRefInto<SymID> for &str {
-    fn vm_into(&self, vm: &mut R8VM) -> SymID {
-        vm.mem.put_sym(self)
-    }
-}
-
-impl VMRefInto<SymID> for SymID {
-    fn vm_into(&self, _vm: &mut R8VM) -> SymID {
+impl AsSym for SymID {
+    fn as_sym(&self, _vm: &mut R8VM) -> SymID {
         *self
     }
 }
 
 impl Spaik {
+    /// Create a new SPAIK VM with the standard library loaded.
     pub fn new() -> Spaik {
         let mut vm = Spaik {
             vm: R8VM::new()
@@ -178,36 +163,42 @@ impl Spaik {
         vm
     }
 
+    /// Create a new SPAIK VM without any libraries.
+    pub fn sparse() -> Spaik {
+        Spaik { vm: R8VM::new() }
+    }
+
+    /// Register a subroutine (function) with the vm
     pub fn register(&mut self, func: impl Subr) {
         self.set(func.name(), func.into_subr());
     }
 
-    pub fn set<V, T>(&mut self, var: V, obj: T)
-        where V: VMRefInto<SymID>, T: IntoLisp
-    {
-        let var = var.vm_into(&mut self.vm);
+    /// Move `obj` into the vm as `var`.
+    pub fn set(&mut self, var: impl AsSym, obj: impl IntoLisp) {
+        let var = var.as_sym(&mut self.vm);
         self.vm.set(var, obj).unwrap();
     }
 
-    pub fn get<V, R>(&mut self, var: V) -> Result<R, Error>
-        where V: VMRefInto<SymID>, R: TryFrom<PV, Error = IError>
+    /// Return a clone of `var`
+    pub fn get<R>(&mut self, var: impl AsSym) -> Result<R, Error>
+        where R: TryFrom<PV, Error = IError>
     {
-        let name = var.vm_into(&mut self.vm);
+        let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
                          .ok_or(error!(UndefinedVariable, var: name))
                          .map_err(|e| Error::from_source(e, self))?;
         self.vm.mem.get_env(idx).try_into().map_err(|e| Error::from_source(e, self))
     }
 
-    pub fn objref<V, T>(&mut self, var: V) -> Result<&T, Error>
-        where V: VMRefInto<SymID>, T: Fissile
+    /// Get a reference to a user-defined object type stored in the vm.
+    pub fn objref<T>(&mut self, var: impl AsSym) -> Result<&T, Error>
+        where T: Fissile
     {
         self.objref_mut(var).map(|rf| &*rf)
     }
 
-    pub fn obj<V, T>(&mut self, var: V) -> Result<T, Error>
-        where V: VMRefInto<SymID>, T: Fissile
-    {
+    /// Get a clone of a user-defined object type stored in the vm.
+    pub fn obj<T: Fissile>(&mut self, var: impl AsSym) -> Result<T, Error> {
         self.objref_mut(var).map(|rf| &*rf).cloned()
     }
 
@@ -216,10 +207,10 @@ impl Spaik {
     /// # Arguments
     ///
     /// - `var` : Variable name
-    pub fn objref_mut<V, T>(&mut self, var: V) -> Result<&mut T, Error>
-        where V: VMRefInto<SymID>, T: Fissile
+    pub fn objref_mut<T>(&mut self, var: impl AsSym) -> Result<&mut T, Error>
+        where T: Fissile
     {
-        let name = var.vm_into(&mut self.vm);
+        let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
                          .ok_or(error!(UndefinedVariable, var: name))
                          .map_err(|e| Error::from_source(e, self))?;
@@ -234,9 +225,8 @@ impl Spaik {
     /// # Arguments
     ///
     /// - `expr` : Lisp expression
-    pub fn eval<E, R>(&mut self, expr: E) -> Result<R, Error>
-        where E: AsRef<str>,
-              R: TryFrom<PV, Error = IError>
+    pub fn eval<R>(&mut self, expr: impl AsRef<str>) -> Result<R, Error>
+        where R: TryFrom<PV, Error = IError>
     {
         self.vm.eval(expr.as_ref())
                .and_then(|pv| pv.try_into())
@@ -248,9 +238,7 @@ impl Spaik {
     /// # Arguments
     ///
     /// - `expr` : Lisp expression
-    pub fn exec<E>(&mut self, expr: E) -> Result<(), Error>
-        where E: AsRef<str>
-    {
+    pub fn exec(&mut self, expr: impl AsRef<str>) -> Result<(), Error> {
         let _: Ignore = self.eval(expr)?;
         Ok(())
     }
@@ -261,10 +249,8 @@ impl Spaik {
     ///
     /// - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
     ///           `<name>` as either a string or symbol
-    pub fn load<V>(&mut self, lib: V) -> Result<SymID, Error>
-        where V: VMRefInto<SymID>
-    {
-        let lib = lib.vm_into(&mut self.vm);
+    pub fn load(&mut self, lib: impl AsSym) -> Result<SymID, Error> {
+        let lib = lib.as_sym(&mut self.vm);
         self.vm.load(lib).map_err(|e| Error::from_source(e, self))
     }
 
@@ -278,14 +264,16 @@ impl Spaik {
     ///                source-file/line error messages.
     /// - `lib` : Library symbol name, i.e the argument to `(load ...)`
     /// - `code` : The source-code contents inside `src_path`
-    pub fn load_with<V, S>(&mut self, src_path: S, lib: SymID, code: S) -> Result<SymID, Error>
-        where V: VMRefInto<SymID>,
-              S: AsRef<str>
+    pub fn load_with<S>(&mut self, src_path: S, lib: SymID, code: S) -> Result<SymID, Error>
+        where S: AsRef<str>
     {
-        let lib = lib.vm_into(&mut self.vm);
+        let lib = lib.as_sym(&mut self.vm);
         self.vm.load_with(src_path, lib, code).map_err(|e| Error::from_source(e, self))
     }
 
+    /// Call a function by-enum and return the result
+    ///
+    /// Use `Spaik::cmd` if don't care about the result.
     pub fn query<R>(&mut self, enm: impl EnumCall) -> Result<R, Error>
         where R: TryFrom<PV, Error = IError>
     {
@@ -294,26 +282,30 @@ impl Spaik {
                .map_err(|e| Error::from_source(e, self))
     }
 
+    /// Call a function by-enum and ignore the result
+    ///
+    /// Use `Spaik::query` if you need the result.
     pub fn cmd(&mut self, enm: impl EnumCall) -> Result<(), Error> {
         let _: Ignore = self.query(enm)?;
         Ok(())
     }
 
-    pub fn call<V, A, R>(&mut self, sym: V, args: A) -> Result<R, Error>
-        where V: VMRefInto<SymID>,
-              A: Args,
-              R: TryFrom<PV, Error = IError>,
+    /// Call a function by-name an args and return the result.
+    ///
+    /// Use `Spaik::run` if don't care about the result.
+    pub fn call<R>(&mut self, sym: impl AsSym, args: impl Args) -> Result<R, Error>
+        where R: TryFrom<PV, Error = IError>
     {
-        let sym = sym.vm_into(&mut self.vm);
+        let sym = sym.as_sym(&mut self.vm);
         self.vm.call(sym, &args)
                .and_then(|pv| pv.try_into())
                .map_err(|e| Error::from_source(e, self))
     }
 
-    pub fn run<V, A>(&mut self, sym: V, args: A) -> Result<(), Error>
-        where V: VMRefInto<SymID>,
-              A: Args,
-    {
+    /// Call a function by-name an args and ignore the result.
+    ///
+    /// Use `Spaik::call` if you need the result.
+    pub fn run(&mut self, sym: impl AsSym, args: impl Args) -> Result<(), Error> {
         let _: Ignore = self.call(sym, args)?;
         Ok(())
     }
@@ -324,6 +316,7 @@ impl Spaik {
         self.vm.mem.full_collection()
     }
 
+    /// Move the VM off-thread and return a `SpaikPlug` handle for IPC.
     pub fn fork<T, Cmd>(mut self) -> SpaikPlug<T, Cmd>
         where T: DeserializeOwned + Send + Debug + Clone + 'static,
               Cmd: EnumCall + Send + 'static
@@ -344,7 +337,7 @@ impl Spaik {
                         }
                     }
                     Event::Event { name, args } => {
-                        let sym = name.vm_into(&mut self.vm);
+                        let sym = name.as_sym(&mut self.vm);
                         let res = self.vm.call(sym, &*args).and_then(|pv| {
                             let r: Ignore = pv.try_into()?;
                             Ok(r)
@@ -396,7 +389,7 @@ impl EnumCall for () {
 
 pub enum Event<Cmd: EnumCall + Send> {
     Promise { res: Box<dyn Args + Send>, cont: SPV },
-    Event { name: Box<dyn VMRefInto<SymID> + Send>,
+    Event { name: Box<dyn AsSym + Send>,
             args: Box<dyn Args + Send> },
     Command(Cmd),
     Stop,
@@ -489,7 +482,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
     }
 
     pub fn send<V, A>(&mut self, name: V, args: A)
-        where V: VMRefInto<SymID> + Send + 'static,
+        where V: AsSym + Send + 'static,
               A: Args + Send + 'static
     {
         self.events.send(Event::Event { name: Box::new(name),
