@@ -74,12 +74,9 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let stdlib = vm.sym_id("stdlib");
     let test = vm.sym_id("test");
 
-    match vm.load(stdlib).and_then(|_| vm.load(test)) {
-        Err(e) => {
-            println!("{}", e.to_string(&vm));
-            return Err(e.into());
-        }
-        _ => ()
+    if let Err(e) = vm.load(stdlib).and_then(|_| vm.load(test)) {
+        println!("{}", e.to_string(&vm));
+        return Err(e.into());
     }
 
     let paths = fs::read_dir(tests_path)?.map(|p| p.map(|p| p.path()))

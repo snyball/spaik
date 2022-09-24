@@ -28,6 +28,7 @@
 //! ```
 
 #![allow(clippy::trivial_regex)]
+#![allow(clippy::upper_case_acronyms)]
 // FIXME: Write documentation for the unsafe functions.
 #![allow(clippy::missing_safety_doc)]
 

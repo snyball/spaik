@@ -217,7 +217,7 @@ impl fmt::Display for SymID {
 }
 
 /// Primitive values
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum PV {
     Ref(*mut NkAtom),
     Sym(SymID),
@@ -227,6 +227,31 @@ pub enum PV {
     Bool(bool),
     Char(char),
     Nil,
+}
+
+impl PartialEq for PV {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Sym(l0), Self::Sym(r0)) => l0 == r0,
+            (Self::Int(l0), Self::Int(r0)) => l0 == r0,
+            (Self::UInt(l0), Self::UInt(r0)) => l0 == r0,
+            (Self::Real(l0), Self::Real(r0)) => l0 == r0,
+            (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
+            (Self::Char(l0), Self::Char(r0)) => l0 == r0,
+            (Self::Ref(l), Self::Ref(r)) => unsafe {
+                let tl = (**l).type_of();
+                if tl == NkT::String && tl == (**r).type_of() {
+                    let sl = (**l).fastcast::<String>();
+                    let sr = (**r).fastcast::<String>();
+                    (*sl).eq(&*sr)
+                } else {
+                    l == r
+                }
+            }
+            (Self::Nil, Self::Nil) => true,
+            (_, _) => false,
+        }
+    }
 }
 
 impl Eq for PV {}
@@ -719,17 +744,21 @@ impl PV {
 
 impl PartialOrd for PV {
     fn partial_cmp(&self, other: &PV) -> Option<Ordering> {
-        match self {
-            PV::Int(x) => match other {
-                PV::Real(y) => (*x as f32).partial_cmp(y),
-                PV::Int(y) => Some(x.cmp(y)),
-                _ => None
-            },
-            PV::Real(x) => match other {
-                PV::Real(y) => x.partial_cmp(y),
-                PV::Int(y) => x.partial_cmp(&(*y as f32)),
-                _ => None
-            },
+        match (*self, *other) {
+            (PV::Int(x), PV::Real(y)) => (x as f32).partial_cmp(&y),
+            (PV::Int(x), PV::Int(y)) => Some(x.cmp(&y)),
+            (PV::Real(x), PV::Real(y)) => (x as f32).partial_cmp(&y),
+            (PV::Real(x), PV::Int(y)) => x.partial_cmp(&(y as f32)),
+            (PV::Ref(l), PV::Ref(r)) => unsafe {
+                let tl = (*l).type_of();
+                if tl == NkT::String && tl == (*r).type_of() {
+                    let sl = (*l).fastcast::<String>();
+                    let sr = (*r).fastcast::<String>();
+                    Some((*sl).cmp(&*sr))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -738,11 +767,6 @@ impl PartialOrd for PV {
 impl Hash for PV {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match *self {
-            PV::Ref(x) => match unsafe { (*x).match_ref() } {
-                NkRef::String(s) => s.hash(state),
-                // FIXME:
-                x => unimplemented!("No hash implementation for: {:?}", x),
-            },
             PV::Sym(x) => x.hash(state),
             PV::Int(x) => x.hash(state),
             PV::UInt(x) => x.hash(state),
@@ -750,6 +774,11 @@ impl Hash for PV {
             PV::Nil => 0.hash(state),
             PV::Real(x) => x.to_ne_bytes().hash(state),
             PV::Char(x) => x.hash(state),
+            PV::Ref(r) => if unsafe { (*r).type_of() } == NkT::String {
+                unsafe { (*r).fastcast::<String>().hash(state) }
+            } else {
+                unimplemented!("Hash only implemented for string references");
+            }
         }
     }
 }

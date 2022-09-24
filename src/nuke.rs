@@ -484,6 +484,7 @@ impl NkAtom {
         DESTRUCTORS[self.meta.typ() as usize](self.fastcast_mut::<u8>());
     }
 
+    #[inline]
     pub fn make_ref<T: Fissile>(p: *mut T) -> PV {
         PV::Ref(NkAtom::make_raw_ref(p))
     }
@@ -521,6 +522,7 @@ impl NkAtom {
         }
     }
 
+    #[inline]
     pub fn cast<T: Fissile>(&mut self) -> Option<&mut T> {
         let ty = T::type_of() as u8;
         if ty == self.meta.typ() {
