@@ -792,7 +792,7 @@ macro_rules! mark_gray {
     }
 }
 
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub struct Cons {
     pub car: PV,
     pub cdr: PV,
@@ -1018,7 +1018,7 @@ impl Traceable for Stream {
 }
 
 // TODO: Should this be a DST? With locals stored inline?
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct Lambda {
     code: usize,
     pub(crate) locals: Vec<PV>,
@@ -1052,7 +1052,7 @@ impl LispFmt for Lambda {
 }
 
 // TODO: Should this be a DST? With locals stored inline?
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct VLambda {
     pub name: SymID,
     pub locals: Vec<PV>,
@@ -1651,12 +1651,12 @@ impl SPV {
     }
 
     pub fn to_string(&self, ar: &R8VM) -> String {
-        let pv = self.pv(&ar);
+        let pv = self.pv(ar);
         pv.lisp_to_string(ar)
     }
 
     pub fn bt_op(&self, ar: &R8VM) -> Option<Builtin> {
-        self.pv(&ar).bt_op()
+        self.pv(ar).bt_op()
     }
 
     pub fn args_vec(&self, ar: &mut R8VM) -> Vec<SPV> {

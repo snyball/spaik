@@ -23,6 +23,7 @@
 //!     vm.exec(r#"(println "code")"#)?;
 //!     // Optionaly retrieve the result
 //!     let res: f32 = vm.eval(r#"(sqrt (+ 1 2))"#)?;
+//!     Ok(())
 //! }
 //! ```
 
@@ -334,14 +335,17 @@ impl Spaik {
         self.vm.mem.full_collection()
     }
 
-    pub fn fork<T: DeserializeOwned + Send + Debug + Clone + 'static>(mut self) -> SpaikPlug<T> {
+    pub fn fork<T, Cmd>(mut self) -> SpaikPlug<T, Cmd>
+        where T: DeserializeOwned + Send + Debug + Clone + 'static,
+              Cmd: EnumCall + Send + 'static
+    {
         let (rx_send, tx_send) = channel::<Promise<T>>();
         let (rx_run, tx_run) = channel();
         let handle = thread::spawn(move || {
             self.register(send_message { sender: rx_send });
             self.run("init", ()).unwrap();
             loop {
-                let ev: Event = tx_run.recv().unwrap();
+                let ev: Event<Cmd> = tx_run.recv().unwrap();
                 match ev {
                     Event::Stop => break,
                     Event::Promise { res, cont } => {
@@ -360,6 +364,9 @@ impl Spaik {
                             log::error!("{}", e.to_string(&self.vm));
                         }
                     }
+                    Event::Command(cmd) => if let Err(e) = self.cmd(cmd) {
+                        log::error!("{}", e);
+                    }
                 }
             }
             self
@@ -369,6 +376,12 @@ impl Spaik {
             events: rx_run,
             handle
         }
+    }
+}
+
+impl Default for Spaik {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -382,13 +395,23 @@ impl SymDB for Spaik {
     }
 }
 
-pub enum Event {
+impl EnumCall for () {
+    fn name(&self, _mem: &mut nkgc::Arena) -> SymID {
+        unimplemented!()
+    }
+
+    fn pushargs(self, _args: &[SymID], _mem: &mut nkgc::Arena) -> Result<(), IError> {
+        unimplemented!()
+    }
+}
+
+pub enum Event<Cmd: EnumCall> {
     Promise { res: Box<dyn Args>, cont: SPV },
     Event { name: Box<dyn VMRefInto<SymID>>, args: Box<dyn Args> },
-    // Ping(u64),
+    Command(Cmd),
     Stop,
 }
-unsafe impl Send for Event {}
+unsafe impl<T> Send for Event<T> where T: Send + EnumCall {}
 
 /// Promise made to SpaikPlug
 #[derive(Debug)]
@@ -408,21 +431,10 @@ impl<T> Promise<T> {
     }
 }
 
-pub enum Ctrl {
-    Pong(u64),
-}
-
-#[derive(Debug)]
-#[must_use = "A promise made should be a promise kept"]
-pub enum Response<T> {
-    Promise(Promise<T>),
-    Ctrl(),
-}
-
 /// Asynchronous SPAIK, in another thread
-pub struct SpaikPlug<T> {
+pub struct SpaikPlug<T, Cmd> where Cmd: EnumCall {
     promises: Receiver<Promise<T>>,
-    events: Sender<Event>,
+    events: Sender<Event<Cmd>>,
     handle: JoinHandle<Spaik>,
 }
 
@@ -434,11 +446,11 @@ struct send_message<T>
     sender: Sender<Promise<T>>,
 }
 
-unsafe impl<'de, T> Subr for send_message<T>
+unsafe impl<T> Subr for send_message<T>
     where T: DeserializeOwned + Clone + Send + 'static + Debug + Sized
 {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, IError> {
-        let (msg, r, cont) = match &args[..] {
+        let (msg, r, cont) = match args {
             [x, y] => (deserialize::from_pv(*x, &vm.mem)
                        .map_err(|e| e.argn(1).op(Builtin::ZSendMessage.sym()))?,
                        *x,
@@ -458,7 +470,9 @@ unsafe impl<'de, T> Subr for send_message<T>
     fn name(&self) -> &'static str { "<ζ>::send-message" }
 }
 
-impl<T> SpaikPlug<T> {
+impl<T, Cmd> SpaikPlug<T, Cmd>
+    where Cmd: EnumCall
+{
     pub fn recv(&mut self) -> Option<Promise<T>>
         where T: DeserializeOwned
     {
@@ -517,7 +531,7 @@ macro_rules! args {
 mod tests {
     use serde::Deserialize;
     use spaik_proc_macros::{spaikfn, Fissile, EnumCall};
-    use std::{sync::Once};
+    use std::sync::Once;
 
     fn setup() {
         static INIT: Once = Once::new();
@@ -535,7 +549,7 @@ mod tests {
         vm.exec("(defvar init-var nil)").unwrap();
         vm.exec("(defun init () (set init-var 'init))").unwrap();
         vm.exec("(defun event-0 (x) (set init-var (+ x 1)))").unwrap();
-        let mut vm = vm.fork::<i32>();
+        let mut vm = vm.fork::<i32, ()>();
         vm.send("event-0", (123,));
         let mut vm = vm.join();
         let init_var: i32 = vm.eval("init-var").unwrap();
@@ -557,7 +571,7 @@ mod tests {
         vm.exec(r#"(defun event-0 (x)
                      (let ((res (await '(test :id 1337))))
                        (set init-var (+ res x 1))))"#).unwrap();
-        let mut vm = vm.fork::<Msg>();
+        let mut vm = vm.fork::<Msg, ()>();
         let ev0_arg = 123;
         vm.send("event-0", (ev0_arg,));
         let p = vm.recv_timeout(Duration::from_secs(1)).expect("timeout");

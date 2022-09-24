@@ -115,17 +115,6 @@ macro_rules! fissile_types {
             }
         }
 
-        // FIXME: This uses dynamic dispatch to potentially reduce a little
-        //        code-duplication, the problem could also be solved using a
-        //        macro-macro (which could be far more general).
-        #[inline]
-        pub fn trace_map_mut<T, F>(atom: &mut NkAtom, f: F) -> T
-            where F: Fn(&mut dyn Traceable) -> T
-        {
-            with_atom_mut!(atom, { f(atom) },
-                           $(($t,$path)),+)
-        }
-
         // TODO: When `if` inside const is stabilized you can make this a const fn,
         //       by calling a recursive const fn min()
         fn minimal_fissile_sz() -> NkSz {
@@ -307,8 +296,8 @@ fn simplify_types<'a, 'b>(ta: &'a str, tb: &'b str) -> (&'a str, &'b str) {
              tb.bytes().enumerate().rev());
     for ((ia, ca), (ib, cb)) in it {
         if ca != cb {
-            return (&ta[ta[..ia].rfind(":").map(|i| i + 1).unwrap_or(0)..],
-                    &tb[tb[..ib].rfind(":").map(|i| i + 1).unwrap_or(0)..])
+            return (&ta[ta[..ia].rfind(':').map(|i| i + 1).unwrap_or(0)..],
+                    &tb[tb[..ib].rfind(':').map(|i| i + 1).unwrap_or(0)..])
         }
     }
     (ta, tb)
@@ -841,12 +830,6 @@ impl Nuke {
     #[inline]
     pub unsafe fn fit<T: Fissile>(&mut self, num: usize) -> RelocateToken {
         self.make_room(Nuke::size_of::<T>() * num)
-    }
-
-    #[inline]
-    #[deprecated]
-    pub unsafe fn fit_bytes(&mut self, num: usize) -> RelocateToken {
-        self.make_room(num)
     }
 
     pub fn head(&mut self) -> *mut NkAtom {

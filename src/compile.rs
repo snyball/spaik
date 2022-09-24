@@ -57,10 +57,6 @@ impl Env {
         self.vars.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
     pub fn empty() -> Env {
         Env::new(vec![])
     }

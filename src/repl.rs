@@ -75,11 +75,7 @@ impl REPL {
                 match e.cause() {
                     Error { ty: ErrorKind::Exit { status }, ..} => {
                         use Builtin::*;
-                        self.exit_status = Some(if *status == Fail.sym() {
-                            1
-                        } else {
-                            0
-                        });
+                        self.exit_status = Some(i32::from(*status == Fail.sym()));
                     }
                     _ => {
                         vmprintln!(self.vm, "{}", e.to_string(&self.vm));

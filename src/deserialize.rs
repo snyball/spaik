@@ -351,8 +351,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             visitor.visit_str(&ident)
         } else if let PV::Sym(sym) = self.input {
             let ident = self.symdb.name(sym);
-            if ident.starts_with(":") {
-                visitor.visit_str(&ident[1..])
+            if let Some(ident) = ident.strip_prefix(':') {
+                visitor.visit_str(ident)
             } else {
                 err!(TypeError,
                      expect: Builtin::Keyword.sym(),

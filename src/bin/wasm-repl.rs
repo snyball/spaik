@@ -5,20 +5,18 @@
 use spaik::repl::REPL;
 use core::slice;
 use std::alloc::Layout;
-use std::fmt::{self, format};
+use std::fmt;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 use std::io;
 use std::os::raw::{c_char, c_void};
 use std::panic;
-use colored::control;
 
+#[allow(dead_code)]
 extern "C" {
     fn xtermjs_write_stdout(ptr: *const c_char, sz: usize);
     fn console_error(ptr: *const c_char, sz: usize);
     fn console_log(ptr: *const c_char, sz: usize);
-    // fn xtermjs_write_stderr(ptr: *const c_char, sz: usize);
-    // fn xterm_read_stdin(ptr: *const c_char, sz: usize);
 }
 
 fn wrap_xtermjs_write_stdout(buf: &[u8]) -> io::Result<()> {

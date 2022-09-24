@@ -288,6 +288,7 @@ impl Fragment {
      *
      * - `stream` : Output.
      */
+    #[allow(dead_code)]
     pub fn print_dot(&self, stream: &mut dyn io::Write) -> io::Result<()> {
         let mut cnt = 0;
         let mut roots = vec![(cnt, self)];

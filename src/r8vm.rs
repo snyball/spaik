@@ -144,7 +144,7 @@ impl From<&str> for RuntimeError {
 #[cfg(feature = "repl")]
 const TABLE_STYLE: &str = comfy_table::presets::UTF8_BORDERS_ONLY;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TraceFrame {
     pub src: Source,
     pub func: SymID,
@@ -358,7 +358,7 @@ mod sysfns {
         }
 
         fn join(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-            let (it, sep) = match &args[..] {
+            let (it, sep) = match args {
                 [xs, PV::Char(s)] => (xs.make_iter()?, Cow::from(s.to_string())),
                 [xs, PV::Sym(s)] => (xs.make_iter()?, Cow::from(vm.sym_name(*s))),
                 [xs, o] => (xs.make_iter()?, with_ref!(*o, String(s) => {
@@ -378,7 +378,9 @@ mod sysfns {
         }
 
         fn exit(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-            let status = args.first().copied().unwrap_or(PV::Sym(Builtin::KwOk.sym()));
+            let status = args.first().copied()
+                                     .unwrap_or_else(
+                                         || PV::Sym(Builtin::KwOk.sym()));
             Err(Error { ty: ErrorKind::Exit {
                 status: status.try_into().map_err(|e: Error|
                                                   e.argn(1).op(Builtin::Exit.sym()))?
@@ -453,7 +455,7 @@ mod sysfns {
 
     unsafe impl Subr for make_symbol {
         fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-            match &args[..] {
+            match args {
                 [s @ PV::Sym(_)] => Ok(*s),
                 [r] => with_ref!(*r, String(s) => {
                     Ok(PV::Sym(vm.mem.symdb.put_ref(s)))
@@ -487,7 +489,7 @@ mod sysfns {
 
     unsafe impl Subr for sym_id {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-            match &args[..] {
+            match args {
                 [PV::Sym(SymID { id })] => Ok(PV::Int((*id).try_into()?)),
                 [x] => err!(TypeError,
                             expect: Builtin::Symbol.sym(),
@@ -1011,9 +1013,9 @@ impl R8VM {
 
     pub fn call_by_enum(&mut self, enm: impl EnumCall) -> Result<PV, Error> {
         let name = enm.name(&mut self.mem);
-        let args = self.func_arg_syms.get(&name).map(|v| &**v).ok_or_else(|| {
+        let args = self.func_arg_syms.get(&name).map(|v| &**v).ok_or(
             error!(UndefinedFunction, name)
-        })?;
+        )?;
         let nargs = args.len();
         Ok(vm_call_with!(self, name, nargs, { enm.pushargs(args, &mut self.mem)? }))
     }
@@ -1130,9 +1132,9 @@ impl R8VM {
                     Err(e)
                 }
             })
-            .or_else(|e| -> Result<(), Error> {
+            .map_err(|e| {
                 log::error!("{}", e.to_string(self));
-                Err(e)
+                e
             }).unwrap();
     }
 
@@ -1374,7 +1376,7 @@ impl R8VM {
                // FIXME: vm_call_with can error out, meaning this code won't
                //        run:
                for ast in asts.into_iter() {
-                   let pv = ast.pv(&self);
+                   let pv = ast.pv(self);
                    self.mem.untag_ast(pv);
                }
 
@@ -1610,7 +1612,8 @@ impl R8VM {
                     let it = *self.mem.stack.as_ptr().offset(offset);
                     with_ref_mut!(it, Iter(it) => {
                         let elem = it.next()
-                                     .unwrap_or(PV::Sym(Builtin::IterStop.sym()));
+                                     .unwrap_or_else(
+                                         || PV::Sym(Builtin::IterStop.sym()));
                         self.mem.push(elem);
                         Ok(())
                     }).map_err(|e| e.op(Builtin::Next.sym()))?;
@@ -1777,7 +1780,7 @@ impl R8VM {
                     match self.funcs.get(sym) {
                         Some(func) => {
                             func.args.check((*sym).into(), *nargs)?;
-                            let pos = func.pos.clone();
+                            let pos = func.pos;
                             self.call_pre(ip);
                             self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
                             ip = self.ret_to(pos);
@@ -1952,7 +1955,7 @@ impl R8VM {
         self.frame = self.mem.stack.len();
         self.mem.push(PV::UInt(0));
         self.mem.push(PV::UInt(frame));
-        self.mem.push(f.pv(&self));
+        self.mem.push(f.pv(self));
         args.pusharg(&mut self.mem)?;
         let pos = clzcall_pad_dip(args.nargs() as u16);
         unsafe {

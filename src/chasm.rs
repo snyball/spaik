@@ -70,6 +70,7 @@ impl fmt::Display for Lbl {
 pub enum Arg {
     Lbl(Lbl),
     ASMPV(ASMPV),
+    #[allow(dead_code)]
     Func(SymID)
 }
 
@@ -266,6 +267,7 @@ pub struct ChASM {
 type Linked<ASM> = (Vec<ASM>, FnvHashMap<u32, Lbl>);
 
 impl ChASM {
+    #[allow(dead_code)]
     pub fn new() -> ChASM { Default::default() }
 
     /// # Arguments
@@ -334,10 +336,6 @@ impl ChASM {
 
     pub fn len(&self) -> usize {
         self.ops.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 }
 
