@@ -1,2 +1,0 @@
-//! SPAIK public API
-
