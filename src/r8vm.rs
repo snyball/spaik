@@ -976,37 +976,53 @@ impl R8VM {
         }
 
 
+        // IO
         addfn!(println);
         addfn!(print);
-        addfn!(string);
+        addfn!(instant);
+
+        // Modules
+        addfn!(load);
+
+        // Meta
         addfn!(eval);
         addfn!(read);
-        addfn!(concat);
-        addfn!(join);
-        addfn!(error);
-        addfn!(exit);
-        addfn!(iter);
         addfn!(macroexpand);
-        addfn!(pow);
-        addfn!(disassemble);
-        addfn!(load);
-        addfn!(instant);
-        addfn!("disassemble-all", disassemble_all);
-        addfn!("dump-gc-stats", dump_gc_stats);
-        addfn!("dump-stack", dump_stack);
-        addfn!("%", modulo);
+        addfn!("make-symbol", make_symbol);
+        addfn!("type-of", type_of);
+        addfn!("sym-id", sym_id);
         addfn!("set-macro", set_macro);
+
+        // Debug
+        addfn!("disassemble-all", disassemble_all);
         addfn!("dump-macro-tbl", dump_macro_tbl);
         addfn!("dump-sym-tbl", dump_sym_tbl);
         addfn!("dump-env-tbl", dump_env_tbl);
         addfn!("dump-fn-tbl", dump_fn_tbl);
-        addfn!("type-of", type_of);
-        addfn!("sym-id", sym_id);
-        addfn!("make-symbol", make_symbol);
+        addfn!("dump-gc-stats", dump_gc_stats);
+        addfn!("dump-stack", dump_stack);
+        addfn!(disassemble);
+
+        // Control-Flow
+        addfn!(error);
+        addfn!(exit);
+
+        // Arithmetic
+        addfn!("%", modulo);
         addfn!("+", sum);
         addfn!("-", asum);
         addfn!("*", product);
         addfn!("/", aproduct);
+        addfn!(pow);
+
+        // Strings
+        addfn!(string);
+        addfn!(concat);
+        addfn!(join);
+
+        // Iter
+        addfn!(iter);
+
 
         vm
     }
