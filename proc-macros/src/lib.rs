@@ -19,7 +19,7 @@ fn crate_root() -> proc_macro2::TokenStream {
     }
 }
 
-fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> TokenStream {
+fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: TokenStream) -> TokenStream {
     let inp = parse_macro_input!(item as syn::ItemFn);
     let ItemFn { attrs, vis, sig, block } = inp;
     let Signature { ident, inputs, .. } = sig.clone();
@@ -36,16 +36,29 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
     let inputs_it_idx_1 = inputs_it.clone().enumerate().map(|(idx, _)| idx);
     let inputs_it_idx_2 = inputs_it.clone().enumerate().map(|(idx, _)| idx as u32);
     let nargs = inputs.len() as u16;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    let count = COUNT.fetch_add(1, Ordering::SeqCst);
+    let anon_namespace = format_ident!("__spaik_fn_anonymous_{count}");
     let out = quote! {
         #(#attrs)* #vis #sig {
             #block
         }
 
-        #[allow(non_camel_case_types)]
-        #[derive(Clone)]
-        struct #obj_ident();
+        mod #anon_namespace {
+            #[allow(non_camel_case_types)]
+            #[derive(Clone)]
+            pub struct #obj_ident;
+        }
 
-        unsafe impl #spaik_root::subrs::Subr for #obj_ident {
+        impl #namespace {
+            #[allow(non_upper_case_globals)]
+            pub const #ident: #anon_namespace::#obj_ident =
+                #anon_namespace::#obj_ident;
+        }
+
+        unsafe impl #spaik_root::subrs::Subr for #anon_namespace::#obj_ident {
             fn call(&mut self,
                     vm: &mut #spaik_root::r8vm::R8VM,
                     args: &[#spaik_root::nkgc::PV])
@@ -69,8 +82,8 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
             }
         }
 
-        impl From<#obj_ident> for Box<dyn #spaik_root::subrs::Subr> {
-            fn from(x: #obj_ident) -> Self {
+        impl From<#anon_namespace::#obj_ident> for Box<dyn #spaik_root::subrs::Subr> {
+            fn from(x: #anon_namespace::#obj_ident) -> Self {
                 Box::new(x)
             }
         }
@@ -81,8 +94,8 @@ fn spaik_fn_impl(spaik_root: proc_macro2::TokenStream, item: TokenStream) -> Tok
 
 #[proc_macro_attribute]
 pub fn spaikfn(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let _meta = parse_macro_input!(attr as AttributeArgs);
-    spaik_fn_impl(crate_root(), item)
+    let namespace = parse_macro_input!(attr as Ident);
+    spaik_fn_impl(namespace, crate_root(), item)
 }
 
 #[proc_macro_attribute]

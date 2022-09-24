@@ -515,13 +515,15 @@ mod tests {
 
     #[test]
     fn register_fn() {
-        #[spaikfn]
+        struct fns;
+
+        #[spaikfn(fns)]
         fn funky_function(x: i32, y: i32) -> i32 {
             x + 2 + y
         }
 
         let mut vm = Spaik::new();
-        vm.register(funky_function_obj());
+        vm.register(fns::funky_function);
         let result: i32 = vm.eval("(funky-function 2 8)").unwrap();
         assert_eq!(result, 12);
 
@@ -543,7 +545,9 @@ mod tests {
             x: f32,
         }
 
-        #[spaikfn]
+        struct fns;
+
+        #[spaikfn(fns)]
         fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
             let res = x + y.pow(2);
             obj2.x += obj.x;
@@ -551,20 +555,20 @@ mod tests {
             res
         }
 
-        #[spaikfn]
+        #[spaikfn(fns)]
         fn obj_x(obj: &TestObj) -> f32 {
             obj.x
         }
 
-        #[spaikfn]
+        #[spaikfn(fns)]
         fn obj_y(obj: &TestObj) -> f32 {
             obj.y
         }
 
         let mut vm = Spaik::new();
-        vm.register(my_function_obj());
-        vm.register(obj_x_obj());
-        vm.register(obj_y_obj());
+        vm.register(fns::my_function);
+        vm.register(fns::obj_x);
+        vm.register(fns::obj_y);
         let src_obj = TestObj { x: 1.0, y: 3.0 };
         let dst_obj = TestObj { x: 1.0, y: 2.0 };
         let wrong_obj = TestObj2 { x: 10.0 };
