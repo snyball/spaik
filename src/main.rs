@@ -1,10 +1,8 @@
 #![allow(unused_imports)]
 #[macro_use]
 extern crate spaik;
-use spaik::r8vm::*;
-use spaik::nkgc::{SymID, PV};
-use spaik::error::Error;
-use spaik::spaik::Spaik;
+use spaik::Error;
+use spaik::Spaik;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::File;
@@ -23,10 +21,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if f.read_to_string(&mut code).is_err() {
         return Ok(())
     }
-    let mut vm = R8VM::new();
-    match vm.eval(&code) {
+    let mut vm = Spaik::new();
+    match vm.exec(&code) {
         Ok(_) => (),
-        Err(e) => println!("{}", e.to_string(&vm)),
+        Err(e) => eprintln!("{}", e),
     }
 
     Ok(())

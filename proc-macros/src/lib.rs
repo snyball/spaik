@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, AttributeArgs, DataEnum};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, DataEnum};
 
 fn crate_root() -> proc_macro2::TokenStream {
     let found_crate = crate_name("spaik")
@@ -128,7 +128,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
-    let name_s = input.ident.to_string().to_case(Case::Kebab);
+    let _name_s = input.ident.to_string().to_case(Case::Kebab);
     let data = input.data.clone();
     let fields = match data {
         Data::Enum(DataEnum {
@@ -154,7 +154,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
                                .is_none();
         (is_tuple, idents)
     });
-    let query_nil = variant_data.clone().map(|(is_tuple, idents)| {
+    let query_nil = variant_data.clone().map(|(is_tuple, _)| {
         if is_tuple {
             quote!(( .. ))
         } else {

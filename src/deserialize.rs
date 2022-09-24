@@ -1,3 +1,5 @@
+//! Ser(de)serialization for runtime SPAIK values
+
 use serde::Deserialize;
 use serde::de::{
     self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess,

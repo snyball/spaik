@@ -140,6 +140,7 @@ impl From<ErrorKind> for RuntimeError {
     }
 }
 
+/// Structural Error Type
 #[derive(Debug, Clone, PartialEq)]
 pub struct Error {
     pub src: Option<Source>,

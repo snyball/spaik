@@ -54,10 +54,6 @@ name = "main"
 path = "src/main.rs"
 
 [[bin]]
-name = "tokenize"
-path = "src/bin/tokenize.rs"
-
-[[bin]]
 name = "lisp-test"
 path = "src/lisp_test.rs"
 required-features = ["lisp-test"]

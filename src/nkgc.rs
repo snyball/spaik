@@ -175,6 +175,7 @@ impl LispFmt for String {
 
 pub type SymIDInt = i32;
 
+/// Symbol ID
 #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 pub struct SymID {
     pub id: SymIDInt,
@@ -1631,6 +1632,13 @@ impl Drop for Arena {
     }
 }
 
+/// Safe Primitive Value, a way of safely referring to GC storage
+///
+/// The name is based on the internal-use `spaik::raw::nkgc::PV` type,
+/// which itself stands for Primitive Value. Unlike the `PV` type `SPV` makes
+/// sure that the data it refers to is kept alive during garbage collection, and
+/// that when data is moved during garbage collection it still refers to the
+/// correct memory location.
 #[derive(Debug)]
 pub struct SPV {
     ar: Sender<ExtRefMsg>,

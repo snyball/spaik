@@ -1,6 +1,6 @@
-use spaik::r8vm::R8VM;
-use spaik::nkgc::SPV;
-use spaik::compile::Builtin;
+use spaik::raw::r8vm::R8VM;
+use spaik::SPV;
+use spaik::Builtin;
 use colored::*;
 use std::{fs, fmt};
 use std::fs::File;
@@ -40,7 +40,7 @@ enum TestError {
         got: String,
     },
     RuntimeError {
-        origin: spaik::error::Error,
+        origin: spaik::IError,
     }
 }
 

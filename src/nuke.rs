@@ -10,7 +10,6 @@ use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
 use std::any::{TypeId, Any};
-use std::borrow::Cow;
 use std::mem::{self, size_of};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
