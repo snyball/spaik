@@ -14,6 +14,7 @@
 //! ```
 //!
 //! ## Running SPAIK from Rust
+//!
 //! ```rust
 //! use spaik::Spaik;
 //!
@@ -118,7 +119,6 @@ impl Debug for Error {
 
 impl Error {
     fn from_source(src: IError, db: &dyn SymDB) -> Error {
-        dbg!("from suace");
         Error {
             message: src.to_string(db),
             source: Box::new(src),
@@ -130,8 +130,7 @@ impl Error {
     }
 }
 
-impl std::error::Error for Error {
-}
+impl std::error::Error for Error {}
 
 /// A SPAIK Context
 pub struct Spaik {
@@ -212,13 +211,11 @@ impl Spaik {
         self.objref_mut(var).map(|rf| &*rf).cloned()
     }
 
-    /**
-     * Retrieve a variable as a mutable reference.
-     *
-     * # Arguments
-     *
-     * - `var` : Variable name
-     */
+    /// Retrieve a variable as a mutable reference.
+    ///
+    /// # Arguments
+    ///
+    /// - `var` : Variable name
     pub fn objref_mut<V, T>(&mut self, var: V) -> Result<&mut T, Error>
         where V: VMRefInto<SymID>, T: Fissile
     {
@@ -232,13 +229,11 @@ impl Spaik {
         Ok(x)
     }
 
-    /**
-     * Run an expression.
-     *
-     * # Arguments
-     *
-     * - `expr` : Lisp expression
-     */
+    /// Run an expression.
+    ///
+    /// # Arguments
+    ///
+    /// - `expr` : Lisp expression
     pub fn eval<E, R>(&mut self, expr: E) -> Result<R, Error>
         where E: AsRef<str>,
               R: TryFrom<PV, Error = IError>
@@ -248,13 +243,11 @@ impl Spaik {
                .map_err(|e| Error::from_source(e, self))
     }
 
-    /**
-     * Run an expression and ignore the result (unless there was an error.)
-     *
-     * # Arguments
-     *
-     * - `expr` : Lisp expression
-     */
+    /// Run an expression and ignore the result (unless there was an error.)
+    ///
+    /// # Arguments
+    ///
+    /// - `expr` : Lisp expression
     pub fn exec<E>(&mut self, expr: E) -> Result<(), Error>
         where E: AsRef<str>
     {
@@ -262,14 +255,12 @@ impl Spaik {
         Ok(())
     }
 
-    /**
-     * Load library from the load-path, by default this is `./lisp/`.
-     *
-     * # Arguments
-     *
-     * - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
-     *           `<name>` as either a string or symbol
-     */
+    /// Load library from the load-path, by default this is `./lisp/`.
+    ///
+    /// # Arguments
+    ///
+    /// - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
+    ///           `<name>` as either a string or symbol
     pub fn load<V>(&mut self, lib: V) -> Result<SymID, Error>
         where V: VMRefInto<SymID>
     {
@@ -277,18 +268,16 @@ impl Spaik {
         self.vm.load(lib).map_err(|e| Error::from_source(e, self))
     }
 
-    /**
-     * Load a SPAIK library from a string, this is useful both for embedding code
-     * into your binary with e.g `load_with(x, y, include_str!(...))` or when
-     * loading from a virtual filesystem.
-     *
-     * # Arguments
-     *
-     * - `src_path` : File-system path to the `.lisp` file, needed for
-     *                source-file/line error messages.
-     * - `lib` : Library symbol name, i.e the argument to `(load ...)`
-     * - `code` : The source-code contents inside `src_path`
-     */
+    /// Load a SPAIK library from a string, this is useful both for embedding code
+    /// into your binary with e.g `load_with(x, y, include_str!(...))` or when
+    /// loading from a virtual filesystem.
+    ///
+    /// # Arguments
+    ///
+    /// - `src_path` : File-system path to the `.lisp` file, needed for
+    ///                source-file/line error messages.
+    /// - `lib` : Library symbol name, i.e the argument to `(load ...)`
+    /// - `code` : The source-code contents inside `src_path`
     pub fn load_with<V, S>(&mut self, src_path: S, lib: SymID, code: S) -> Result<SymID, Error>
         where V: VMRefInto<SymID>,
               S: AsRef<str>
@@ -329,10 +318,8 @@ impl Spaik {
         Ok(())
     }
 
-    /**
-     * Perform a full GC collection, this may finish a currently ongoing collection
-     * and start a new one afterwards.
-     */
+    /// Perform a full GC collection, this may finish a currently ongoing collection
+    /// and start a new one afterwards.
     pub fn gc(&mut self) {
         self.vm.mem.full_collection()
     }
