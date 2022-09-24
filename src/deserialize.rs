@@ -64,7 +64,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             PV::Ref(_) => todo!(),
             PV::Sym(_) => self.deserialize_identifier(visitor),
             PV::Int(_) => self.deserialize_i32(visitor),
-            PV::UInt(_) => todo!(),
+            PV::UInt(_) => self.deserialize_u64(visitor),
             PV::Real(_) => self.deserialize_f32(visitor),
             PV::Bool(_) => self.deserialize_bool(visitor),
             PV::Char(_) => self.deserialize_char(visitor),

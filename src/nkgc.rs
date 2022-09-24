@@ -1424,6 +1424,7 @@ impl Arena {
             ValueKind::Real(x) => PV::Real(*x),
             ValueKind::Nil => PV::Nil,
             ValueKind::Symbol(s) => PV::Sym(*s),
+            ValueKind::Char(c) => PV::Char(*c),
             ValueKind::String(s) => {
                 let gcell = self.alloc::<String>();
                 ptr::write(gcell, s.clone());

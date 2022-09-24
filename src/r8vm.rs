@@ -1307,8 +1307,10 @@ impl R8VM {
                 NkRef::PV(v) => self.pull_ast(*v, src).kind,
                 x => unimplemented!("inner: {:?}", x),
             }
+            PV::Char(x) => ValueKind::Char(x),
+            // UInt is only an implementation detail, SPAIK code can't create or
+            // interact with these values directly.
             PV::UInt(x) => panic!("Stray UInt: {}", x),
-            PV::Char(x) => panic!("Stray char: {}", x),
         };
         Value { kind, src: src.clone() }
     }

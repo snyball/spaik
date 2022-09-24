@@ -20,6 +20,7 @@ pub enum ValueKind {
     Symbol(SymID),
     Cons(Box<Value>, Box<Value>),
     Bool(bool),
+    Char(char),
     Nil,
 }
 
@@ -38,6 +39,7 @@ fn fmt_value(val: &Value, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         Real(a) => write!(f, "{}", a),
         String(x) => write!(f, "{:?}", x),
         Symbol(id) => write!(f, "{}", db.name(*id)),
+        Char(c) => write!(f, "{}", c),
         Cons(_, _) => {
             write!(f, "(")?;
             let mut head = val;
@@ -117,6 +119,7 @@ impl Value {
             ValueKind::Cons(_, _) => Builtin::Cons.sym(),
             ValueKind::Bool(_) => Builtin::Bool.sym(),
             ValueKind::Nil => Builtin::Nil.sym(),
+            ValueKind::Char(_) => Builtin::Char.sym(),
         }
     }
 

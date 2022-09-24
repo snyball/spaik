@@ -1260,6 +1260,7 @@ impl<'a> R8Compiler<'a> {
             Bool(true) => { self.asm.op(chasm!(BOOL 1)); },
             Bool(false) => { self.asm.op(chasm!(BOOL 0)); },
             Real(x) => { self.asm.op(chasm!(PUSHF (*x).to_bits())); },
+            Char(c) => { self.asm.op(chasm!(CHAR *c as u32)); }
             String(s) => {
                 let idx = self.consts.len();
                 self.consts.push(NkSum::String(s.clone()));
@@ -1582,8 +1583,9 @@ impl<'a> R8Compiler<'a> {
             Bool(true) => { self.asm.op(chasm!(BOOL 1)); },
             Bool(false) => { self.asm.op(chasm!(BOOL 0)); },
             Nil => { self.asm.op(chasm!(NIL)); },
-            Real(x) => { self.asm.op(chasm!(PUSHF (*x).to_bits())); }
-            x => unimplemented!("{:?}", x),
+            Real(x) => { self.asm.op(chasm!(PUSHF (*x).to_bits())); },
+            Char(c) => { self.asm.op(chasm!(CHAR *c as u32)); },
+            Cons(_, _) => unreachable!("Input should be atomic"),
         }
         Ok(())
     }
