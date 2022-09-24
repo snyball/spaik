@@ -406,15 +406,15 @@ impl EnumCall for () {
     }
 }
 
-pub enum Event<Cmd: EnumCall> {
-    Promise { res: Box<dyn Args>, cont: SPV },
-    Event { name: Box<dyn VMRefInto<SymID>>, args: Box<dyn Args> },
+pub enum Event<Cmd: EnumCall + Send> {
+    Promise { res: Box<dyn Args + Send>, cont: SPV },
+    Event { name: Box<dyn VMRefInto<SymID> + Send>,
+            args: Box<dyn Args + Send> },
     Command(Cmd),
     Stop,
 }
-unsafe impl<T> Send for Event<T> where T: Send + EnumCall {}
 
-/// Promise made to SpaikPlug
+/// Promise made to `SpaikPlug`
 #[derive(Debug)]
 #[must_use = "A promise made should be a promise kept"]
 pub struct Promise<T> {
@@ -433,7 +433,9 @@ impl<T> Promise<T> {
 }
 
 /// Asynchronous SPAIK, in another thread
-pub struct SpaikPlug<T, Cmd> where Cmd: EnumCall {
+pub struct SpaikPlug<T, Cmd>
+    where Cmd: EnumCall + Send, T: Send
+{
     promises: Receiver<Promise<T>>,
     events: Sender<Event<Cmd>>,
     handle: JoinHandle<Spaik>,
@@ -472,7 +474,7 @@ unsafe impl<T> Subr for send_message<T>
 }
 
 impl<T, Cmd> SpaikPlug<T, Cmd>
-    where Cmd: EnumCall
+    where Cmd: EnumCall + Send, T: Send
 {
     pub fn recv(&mut self) -> Option<Promise<T>>
         where T: DeserializeOwned
@@ -499,15 +501,15 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
     }
 
     pub fn send<V, A>(&mut self, name: V, args: A)
-        where V: VMRefInto<SymID> + 'static,
-              A: Args + 'static
+        where V: VMRefInto<SymID> + Send + 'static,
+              A: Args + Send + 'static
     {
         self.events.send(Event::Event { name: Box::new(name),
                                         args: Box::new(args) }).unwrap();
     }
 
     pub fn fulfil<R>(&mut self, promise: Promise<T>, ans: R)
-        where R: IntoLisp + Clone + 'static
+        where R: IntoLisp + Clone + Send + 'static
     {
         if let Some(cont) = promise.cont {
             self.events.send(Event::Promise { res: Box::new((ans,)),
