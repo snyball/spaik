@@ -33,6 +33,7 @@ comfy-table = { version = "5.0.0", optional = true, default-features = false, fe
 dirs = { version = "4.0.0", optional = true }
 rustyline = { version = "6.2", optional = true }
 colored = { version = "2.0", optional = true }
+glam = { version = "0.21.3", features = ["mint", "serde"] }
 
 [dev-dependencies]
 pretty_env_logger = "0.4.0"
