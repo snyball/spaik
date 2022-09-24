@@ -194,6 +194,25 @@
                (break))
              ,@body))))
 
+;; FIXME: (next) doesn't work in range. In order for (next) to work there needs
+;; to be a special loop constrct like (s-loop (a..) (b..)) where (next) in (a..)
+;; jumps to (b..) rather than the start of the next loop. Alternatively...
+;; There could be a
+(defmacro defexample (name &body body))
+(defexample range-impl
+    `(with-labels
+       :loop-start
+       (if (not (< ,loop-var ,max))
+           (jmp :loop-end))
+       (with-macros ((next (&? x)
+                        (if x '(next x)
+                            '(jmp :loop-next)))
+                     (break () '(jmp :loop-end)))
+         ,@body)
+       :loop-next
+       (inc! ,loop-var)
+       (jmp :loop-start)
+       :loop-end))
 (defmacro range (cnd &body body)
   (let ((loop-var (car cnd))
         (min (caadr cnd))
@@ -208,15 +227,6 @@
     (range (x (a b))
       (set xs (cons x xs)))
     (reverse xs)))
-
-(defmacro ignore (&body code)
-  `(progn ,@code nil))
-
-(defmacro take! (var)
-  (let ((head (gensym)))
-    `(let ((,head (car ,var)))
-       (set ,var (cdr ,var))
-       ,head)))
 
 (defun map (f xs)
   (when xs
@@ -291,9 +301,6 @@
 (defun mean (xs)
   (/ (sum xs) (len xs)))
 
-(defun id (x)
-  x)
-
 (defmacro m-map (m xs)
   (let ((p '()))
     (dolist (x xs)
@@ -317,7 +324,6 @@
 (defun nil? (x)
   (= x nil))
 
-
 (defun equal-cons? (as bs)
   (loop (when (or (= as nil)
                   (= bs nil))
@@ -331,37 +337,6 @@
   (if (and (cons? a) (cons? b))
       (equal-cons? a b)
     (= a b)))
-
-(defun dot-node-label (node)
-  (make-symbol (or (and (string? node)
-                        (concat "'" node "'"))
-                   (string
-                    (if (cons? node)
-                        (car node)
-                      node)))))
-
-(defun dot-node-name (idx)
-  (make-symbol (concat 'N_ idx)))
-
-(defun print-ast-dot-rec (tree idx)
-  (let ((root-idx (dot-node-name idx))
-        (root-label (dot-node-label tree)))
-    (println "    " root-idx " [label=\"" root-label "\"]")
-    (when (cons? tree)
-      (dolist (node (cdr tree))
-        (println "    " root-idx " -> " (dot-node-name (inc! idx)))
-        (set idx (print-ast-dot-rec node idx)))))
-  idx)
-
-(defun print-ast-dot (ast)
-  (println "digraph {")
-  (print-ast-dot-rec ast 0)
-  (println "}"))
-
-(defmacro show-ast (&body body)
-  ;; (print-ast-dot `(progn ,@(macroexpand body)))
-  (print-ast-dot (macroexpand `(progn ,@body)))
-  `(progn ,@body))
 
 (defmacro cond (&rest cnds)
   `(loop
@@ -395,14 +370,14 @@
         (next))
       (when (= c end)
         (unless in-sub
-          (error 'TrailingDelimiter))
+          (error 'trailing-delimiter))
         (set out (cons (make-symbol (join span)) out))
         (set span (vec))
         (set in-sub false)
         (next))
       (push span c))
     (when in-sub
-      (error 'UnclosedDelimiter))
+      (error 'unclosed-delimiter))
     (set out (cons (join span) out))
     (reverse out)))
 
@@ -424,11 +399,6 @@
 
 (defmacro dbg (obj)
   `(_println (concat ',obj ": " ,obj)))
-
-(defmacro dis (&body expr)
-  (let ((fname (gensym)))
-    `(progn (defun ,fname () ,@expr)
-            (disassemble ',fname))))
 
 (defun collect (it)
   (let ((elem nil)
