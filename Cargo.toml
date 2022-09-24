@@ -60,7 +60,7 @@ required-features = ["lisp-test"]
 
 [[bin]]
 name = "scratch"
-path = "src/scratch.rs"
+path = "src/bin/scratch.rs"
 
 [[bin]]
 name = "wasm-repl"

@@ -63,6 +63,7 @@ pub(crate) mod module;
 #[cfg(feature = "repl")]
 pub mod repl;
 pub mod deserialize;
+pub mod scratch;
 
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
