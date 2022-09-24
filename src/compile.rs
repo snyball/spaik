@@ -175,7 +175,9 @@ macro_rules! builtins {
 
 builtins! {
     (Unknown, "?"),
+    (AyyLmao, "ayy-lmao"),
     (Unwind, "unwind"),
+    (SysLoadPath, "sys/load-path"),
     (KwUnwind, ":unwind"),
     (If, "if"),
     (Compile, "compile"),
