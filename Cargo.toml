@@ -42,6 +42,7 @@ wasm-bindgen = { version = "0.2.79", optional = true }
 
 [lib]
 name = "spaik"
+doctest = false
 path = "src/lib.rs"
 
 [[bin]]
