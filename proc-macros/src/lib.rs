@@ -49,7 +49,7 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
         mod #anon_namespace {
             #[allow(non_camel_case_types)]
             #[derive(Clone)]
-            pub struct #obj_ident;
+            pub(super) struct #obj_ident;
         }
 
         impl #namespace {
