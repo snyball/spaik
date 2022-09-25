@@ -68,6 +68,7 @@ pub mod scratch;
 
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
+pub use sym_db::SymDB;
 
 /// This module makes it possible to interact with SPAIK internals.
 ///
@@ -95,9 +96,21 @@ pub use crate::compile::Builtin;
 pub use crate::nuke::Fissile;
 pub use crate::error::Error as IError;
 use crate::r8vm::{R8VM, Args, ArgSpec, EnumCall};
-use crate::sym_db::SymDB;
 use crate::nkgc::PV;
 use crate::subrs::{Subr, IntoLisp, Ignore, IntoSubr};
+
+pub trait FmtErr<T> {
+    fn fmterr(self, db: &dyn SymDB) -> Result<T, Box<dyn std::error::Error>>;
+}
+
+impl<T> FmtErr<T> for Result<T, IError> {
+    fn fmterr(self, db: &dyn SymDB) -> Result<T, Box<dyn std::error::Error>> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(e.to_string(db).into())
+        }
+    }
+}
 
 /// Formatted error message
 pub struct Error {

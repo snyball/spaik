@@ -1,12 +1,12 @@
+use spaik::FmtErr;
 use spaik::raw::r8vm::R8VM;
 use spaik::SPV;
 use spaik::Builtin;
 use colored::*;
-use std::{fs, fmt};
-use std::fs::File;
-use std::io::prelude::*;
+use std::fmt;
 use std::error::Error;
 use std::process::exit;
+use std::fs;
 
 enum TestResult {
     Pass,
@@ -82,15 +82,17 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let paths = fs::read_dir(tests_path)?.map(|p| p.map(|p| p.path()))
                                          .collect::<Result<Vec<_>, _>>()?;
     for path in paths {
-        let mut file = File::open(&path)?;
-        let mut test_src = String::new();
-        file.read_to_string(&mut test_src)?;
-        match vm.eval(&test_src) {
+        let test_src = fs::read_to_string(&path)?;
+        let path_s = path.to_str().expect("utf8 error");
+        let sym = vm.sym_id(path_s);
+        let entry = vm.load_with(path_s, sym, &test_src).fmterr(&vm)?;
+        match vm.call(entry, &()) {
             Ok(_) => println!("Loaded {}", path.display()),
             Err(e) => {
                 println!("Error when loading {}", path.display());
-                println!("{}", e.to_string(&vm));
-                return Err(e.into());
+                let s = e.to_string(&vm);
+                println!("{}", s);
+                return Err(s.into());
             },
         }
     }
