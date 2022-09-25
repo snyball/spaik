@@ -133,43 +133,6 @@
 (defmacro let* (pairs &body body)
   (let*/helper pairs body))
 
-(defun math/fibonacci (n)
-  (let ((a 0) (b 1))
-    (while (> n 0)
-      (set* (a b) (b (+ a b)))
-      (dec! n))
-    a))
-
-(defun math/factorial (n)
-  (let ((x 1))
-    (while (> n 0)
-      (set* (x n) ((* x n) (- n 1))))
-    x))
-
-(defmacro ++ (var)
-  (let ((val (gensym)))
-    `(let ((,val ,var))
-       (inc! ,var)
-       ,val)))
-
-(defmacro -- (var)
-  (let ((val (gensym)))
-    `(let ((,val ,var))
-       (dec! ,var)
-       ,val)))
-
-(defun count! ()
-  (defvar cnt 0)
-  (++ cnt))
-
-(defmacro alias (alias-name name)
-  `(defmacro ,alias-name (&rest r)
-     (cons ',name r)))
-
-(defmacro fn-alias (alias-name args name)
-  `(defun ,alias-name ,args
-     (,name ,@args)))
-
 (defun _load (lib)
   (load lib))
 
@@ -177,12 +140,11 @@
   `((eval (eval-when :compile
             (_load ,lib)))))
 
-;;; FIXME: (next)/(break) don't work inside dolist/range,
-;;;        a compiler built-in is needed to fix it.
-
 (defmacro iter-end? (res)
   `(= ,res '<ζ>::iter-stop))
 
+;;; FIXME: (next)/(break) don't work inside dolist/range,
+;;;        a compiler built-in is needed to fix it.
 (defmacro dolist (cnd &body body)
   (let ((name (car cnd))
         (init (car (cdr cnd)))
