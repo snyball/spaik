@@ -10,7 +10,7 @@ use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
-use std::mem::{self, size_of};
+use std::mem::{self, size_of, align_of};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
@@ -21,6 +21,7 @@ use std::time::SystemTime;
 use fnv::FnvHashMap;
 use std::sync::Mutex;
 use std::collections::hash_map::Entry;
+use std::alloc::{Layout, alloc, dealloc};
 
 macro_rules! with_atom {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
@@ -279,14 +280,14 @@ pub struct Object {
     /// This indirection allows us to safely pass references to the underlying T
     /// to user code, without having to worry about updating the pointer when
     /// the GC compacts.
-    mem: Vec<u8>,
+    mem: *mut u8,
 }
 
 impl Debug for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Object {{ ")?;
         unsafe {
-            (self.vt.fmt)(self.mem.as_ptr(), f)?;
+            (self.vt.fmt)(self.mem, f)?;
         }
         write!(f, " }}")?;
         Ok(())
@@ -296,12 +297,12 @@ impl Debug for Object {
 impl LispFmt for Object {
     fn lisp_fmt(&self, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
-            (self.vt.lisp_fmt)(self.mem.as_ptr(), db, visited, f)
+            (self.vt.lisp_fmt)(self.mem, db, visited, f)
         }
     }
 }
 
-/// Simpliy types `ta` and `tb`, so that they are as short as possible while
+/// Simplify types `ta` and `tb`, so that they are as short as possible while
 /// being both distinct from each other and complete.
 /// Essentially (x::y::abc, x::b::rac) becomes (abc, rac) while
 ///             (x::y::abc, x::b::abc) becomes (y::abc, b::abc)
@@ -326,12 +327,21 @@ impl Object {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { println!("{}.{}", type_name::<T>(), stringify!($name)); (*(this as *mut T)).$name($($arg),*) }
         }}
+        let layout = unsafe {
+            Layout::from_size_align(size_of::<T>(), align_of::<T>()).unwrap_unchecked()
+        };
         let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<T>()) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     type_name: type_name::<T>(),
-                    drop: |obj| unsafe { drop_in_place(obj as *mut T) },
+                    drop: |obj| unsafe {
+                        drop_in_place(obj as *mut T);
+                        let layout =
+                            Layout::from_size_align(size_of::<T>(), align_of::<T>())
+                            .unwrap_unchecked();
+                        dealloc(obj, layout);
+                    },
                     trace: delegate! { trace(gray) },
                     update_ptrs: delegate! { update_ptrs(reloc) },
                     lisp_fmt: delegate! { lisp_fmt(db, visited, f) },
@@ -339,8 +349,11 @@ impl Object {
                 })))
             },
         };
-        let mut mem: Vec<u8> = Vec::with_capacity(size_of::<T>());
-        unsafe { *(mem.as_mut_ptr() as *mut T) = obj }
+        let mem = unsafe {
+            let p = alloc(layout) as *mut T;
+            *p = obj;
+            p as *mut u8
+        };
         Object {
             type_id: TypeId::of::<T>(),
             vt: vtable,
@@ -350,7 +363,7 @@ impl Object {
 
     pub fn cast<T: Fissile + 'static>(&self) -> Result<&T, Error> {
         if TypeId::of::<T>() != self.type_id {
-            let expect_t = std::any::type_name::<T>();
+            let expect_t = type_name::<T>();
             let actual_t = self.vt.type_name;
             let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
             return err!(STypeError,
@@ -359,15 +372,11 @@ impl Object {
                         op: Builtin::Nil.sym(),
                         argn: 0)
         }
-        let ptr = self.mem.as_ptr();
-        Ok(unsafe {
-            &*(ptr as *const T)
-        })
+        Ok(unsafe { &*(self.mem as *const T) })
     }
 
     pub unsafe fn fastcast_mut<T: Fissile + 'static>(&mut self) -> &mut T {
-        let ptr = self.mem.as_mut_ptr();
-        &mut*(ptr as *mut T)
+        &mut*(self.mem as *mut T)
     }
 
     pub fn cast_mut<T: Fissile + 'static>(&mut self) -> Result<&mut T, Error> {
@@ -383,13 +392,13 @@ impl Object {
 impl Traceable for Object {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
         unsafe {
-            (self.vt.trace)(self.mem.as_ptr(), gray);
+            (self.vt.trace)(self.mem, gray);
         }
     }
 
     fn update_ptrs(&mut self, reloc: &PtrMap) {
         unsafe {
-            (self.vt.update_ptrs)(self.mem.as_mut_ptr(), reloc);
+            (self.vt.update_ptrs)(self.mem, reloc);
         }
     }
 }
@@ -397,7 +406,7 @@ impl Traceable for Object {
 impl Drop for Object {
     fn drop(&mut self) {
         unsafe {
-            (self.vt.drop)(self.mem.as_mut_ptr());
+            (self.vt.drop)(self.mem);
         }
     }
 }
