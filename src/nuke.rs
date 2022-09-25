@@ -9,7 +9,7 @@ use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 use crate::subrs::IntoLisp;
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
-use std::any::{TypeId, Any};
+use std::any::{TypeId, Any, type_name};
 use std::mem::{self, size_of};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
@@ -18,6 +18,9 @@ use std::fmt;
 use core::fmt::Debug;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
+use fnv::FnvHashMap;
+use std::sync::Mutex;
+use std::collections::hash_map::Entry;
 
 macro_rules! with_atom {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
@@ -256,15 +259,26 @@ impl Iterator for Iter {
     }
 }
 
+/// Rust doesn't expose its vtables
+#[derive(Clone)]
+pub struct VTable {
+    type_name: &'static str,
+    trace: unsafe fn(*const u8, gray: &mut Vec<*mut NkAtom>),
+    update_ptrs: unsafe fn(*mut u8, reloc: &PtrMap),
+    drop: unsafe fn(*mut u8),
+    lisp_fmt: unsafe fn(*const u8, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+}
+
+unsafe impl Send for VTable {}
+
 #[derive(Clone)]
 pub struct Object {
     type_id: TypeId,
-    type_name: &'static str,
-    trace_fnp: unsafe fn(*const u8, gray: &mut Vec<*mut NkAtom>),
-    update_ptrs_fnp: unsafe fn(*mut u8, reloc: &PtrMap),
-    destructor_fnp: unsafe fn(*mut u8),
-    lisp_fmt_fnp: unsafe fn(*const u8, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
-    debug_fmt_fnp: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    vt: &'static VTable,
+    /// This indirection allows us to safely pass references to the underlying T
+    /// to user code, without having to worry about updating the pointer when
+    /// the GC compacts.
     mem: Vec<u8>,
 }
 
@@ -272,7 +286,7 @@ impl Debug for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Object {{ ")?;
         unsafe {
-            (self.debug_fmt_fnp)(self.mem.as_ptr(), f)?;
+            (self.vt.fmt)(self.mem.as_ptr(), f)?;
         }
         write!(f, " }}")?;
         Ok(())
@@ -282,7 +296,7 @@ impl Debug for Object {
 impl LispFmt for Object {
     fn lisp_fmt(&self, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
-            (self.lisp_fmt_fnp)(self.mem.as_ptr(), db, visited, f)
+            (self.vt.lisp_fmt)(self.mem.as_ptr(), db, visited, f)
         }
     }
 }
@@ -305,36 +319,31 @@ fn simplify_types<'a, 'b>(ta: &'a str, tb: &'b str) -> (&'a str, &'b str) {
 
 impl Object {
     pub fn new<T: Fissile + 'static>(obj: T) -> Object {
-        let mut mem: Vec<u8> = Vec::with_capacity(size_of::<T>());
-        unsafe {
-            ptr::copy_nonoverlapping(&obj as *const T as *const u8,
-                                     mem.as_mut_ptr(),
-                                     size_of::<T>())
+        lazy_static! {
+            static ref VTABLES: Mutex<FnvHashMap<TypeId, &'static VTable>> =
+                Mutex::new(FnvHashMap::default());
         }
+        macro_rules! delegate {($name:ident($($arg:ident),*)) => {
+            |this, $($arg),*| unsafe { println!("{}.{}", type_name::<T>(), stringify!($name)); (*(this as *mut T)).$name($($arg),*) }
+        }}
+        let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<T>()) {
+            Entry::Occupied(vp) => *vp.get(),
+            Entry::Vacant(entry) => {
+                entry.insert(Box::leak(Box::new(VTable {
+                    type_name: type_name::<T>(),
+                    drop: |obj| unsafe { drop_in_place(obj as *mut T) },
+                    trace: delegate! { trace(gray) },
+                    update_ptrs: delegate! { update_ptrs(reloc) },
+                    lisp_fmt: delegate! { lisp_fmt(db, visited, f) },
+                    fmt: delegate! { fmt(f) },
+                })))
+            },
+        };
+        let mut mem: Vec<u8> = Vec::with_capacity(size_of::<T>());
+        unsafe { *(mem.as_mut_ptr() as *mut T) = obj }
         Object {
             type_id: TypeId::of::<T>(),
-            type_name: std::any::type_name::<T>(),
-            trace_fnp: |obj, gray| {
-                let obj = unsafe { &*( obj as *const T ) };
-                obj.trace(gray)
-            },
-            update_ptrs_fnp: |obj, reloc| {
-                let obj = unsafe { &mut*( obj as *mut T ) };
-                obj.update_ptrs(reloc)
-            },
-            destructor_fnp: |obj| {
-                unsafe {
-                    drop_in_place(obj as *mut T)
-                }
-            },
-            lisp_fmt_fnp: |obj, db, visited, f| -> fmt::Result {
-                let obj = unsafe { &mut*( obj as *mut T ) };
-                obj.lisp_fmt(db, visited, f)
-            },
-            debug_fmt_fnp: |obj, f| -> fmt::Result {
-                let obj = unsafe { &mut*( obj as *mut T ) };
-                obj.fmt(f)
-            },
+            vt: vtable,
             mem
         }
     }
@@ -342,7 +351,7 @@ impl Object {
     pub fn cast<T: Fissile + 'static>(&self) -> Result<&T, Error> {
         if TypeId::of::<T>() != self.type_id {
             let expect_t = std::any::type_name::<T>();
-            let actual_t = self.type_name;
+            let actual_t = self.vt.type_name;
             let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
             return err!(STypeError,
                         expect: format!("(object {expect_t})"),
@@ -374,13 +383,13 @@ impl Object {
 impl Traceable for Object {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
         unsafe {
-            (self.trace_fnp)(self.mem.as_ptr(), gray);
+            (self.vt.trace)(self.mem.as_ptr(), gray);
         }
     }
 
     fn update_ptrs(&mut self, reloc: &PtrMap) {
         unsafe {
-            (self.update_ptrs_fnp)(self.mem.as_mut_ptr(), reloc);
+            (self.vt.update_ptrs)(self.mem.as_mut_ptr(), reloc);
         }
     }
 }
@@ -388,7 +397,7 @@ impl Traceable for Object {
 impl Drop for Object {
     fn drop(&mut self) {
         unsafe {
-            (self.destructor_fnp)(self.mem.as_mut_ptr());
+            (self.vt.drop)(self.mem.as_mut_ptr());
         }
     }
 }
@@ -681,6 +690,17 @@ impl Nuke {
         self.free = start;
 
         RelocateToken::new()
+    }
+
+    pub unsafe fn destroy_the_world(&mut self) {
+        for atom in self.iter_mut() {
+            atom.destroy();
+        }
+        self.last = self.fst();
+        self.free = self.offset(mem::size_of::<NkAtom>());
+        self.used = mem::size_of::<NkAtom>();
+        (*self.fst()).next = ptr::null_mut();
+        self.num_atoms = 1;
     }
 
     #[must_use = "Relocation must be confirmed"]

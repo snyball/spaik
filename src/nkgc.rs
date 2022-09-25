@@ -1132,7 +1132,7 @@ struct ExtRefMsg {
 /// Come and fight in the arena!
 #[derive(Debug)]
 pub struct Arena {
-    mem: Nuke,
+    nuke: Nuke,
     tags: FnvHashMap<*mut NkAtom, Source>,
     pub(crate) stack: Vec<PV>,
     pub(crate) symdb: SIntern<SymID>,
@@ -1209,7 +1209,7 @@ impl Arena {
     pub fn new(memsz: usize) -> Arena {
         let (rx, tx) = channel();
         let mut ar = Arena {
-            mem: Nuke::new(memsz),
+            nuke: Nuke::new(memsz),
             gray: Vec::with_capacity(DEFAULT_GRAYSZ),
             stack: Vec::with_capacity(DEFAULT_STACKSZ),
             env: Vec::with_capacity(DEFAULT_ENVSZ),
@@ -1230,7 +1230,7 @@ impl Arena {
 
     pub fn print_state(&self) {
         println!("Stack: {:?}", self.stack);
-        println!("Memory: {:?}", self.mem);
+        println!("Memory: {:?}", self.nuke);
     }
 
     pub fn minimize(&mut self) {
@@ -1287,7 +1287,7 @@ impl Arena {
     }
 
     pub fn stats(&self) -> GCStats {
-        self.mem.stats()
+        self.nuke.stats()
     }
 
     pub fn push_sym(&mut self, v: SymID) {
@@ -1487,8 +1487,8 @@ impl Arena {
     }
 
     fn update_ptrs(&mut self, tok: RelocateToken) {
-        if self.mem.reloc().is_empty() {
-            self.mem.confirm_relocation(tok);
+        if self.nuke.reloc().is_empty() {
+            self.nuke.confirm_relocation(tok);
             return
         }
 
@@ -1497,7 +1497,7 @@ impl Arena {
         }
 
         let tags = self.tags.iter().map(|(ptr, _)| {
-            (*ptr, self.mem.reloc().get(*ptr))
+            (*ptr, self.nuke.reloc().get(*ptr))
         }).collect::<Vec<_>>();
         for (old, new) in tags.into_iter() {
             let src = self.tags.remove(&old).unwrap();
@@ -1505,29 +1505,29 @@ impl Arena {
         }
 
         for (_id, (_, pv)) in self.extref.iter_mut() {
-            pv.update_ptrs(self.mem.reloc());
+            pv.update_ptrs(self.nuke.reloc());
         }
         for ptr in self.gray.iter_mut() {
-            *ptr = self.mem.reloc().get(*ptr) as *mut NkAtom;
+            *ptr = self.nuke.reloc().get(*ptr) as *mut NkAtom;
         }
-        let reloc_p = self.mem.reloc() as *const PtrMap;
-        for obj in self.mem.iter_mut() {
+        let reloc_p = self.nuke.reloc() as *const PtrMap;
+        for obj in self.nuke.iter_mut() {
             update_ptr_atom(obj, unsafe { &*reloc_p });
         }
         for pv in self.stack.iter_mut().chain(self.env.iter_mut()) {
-            pv.update_ptrs(self.mem.reloc());
+            pv.update_ptrs(self.nuke.reloc());
         }
-        self.mem.confirm_relocation(tok);
+        self.nuke.confirm_relocation(tok);
     }
 
     unsafe fn mem_fit_bytes(&mut self, n: usize) {
-        let tok = self.mem.make_room(n);
+        let tok = self.nuke.make_room(n);
         self.update_ptrs(tok)
     }
 
     fn mem_fit<T: Fissile>(&mut self, n: usize) {
         unsafe {
-            let tok = self.mem.fit::<T>(n);
+            let tok = self.nuke.fit::<T>(n);
             self.update_ptrs(tok);
         }
     }
@@ -1538,7 +1538,7 @@ impl Arena {
             x => x
         };
         unsafe {
-            let (ptr, grow) = self.mem.alloc::<T>();
+            let (ptr, grow) = self.nuke.alloc::<T>();
             if let Some(tok) = grow {
                 self.update_ptrs(tok);
             }
@@ -1554,7 +1554,7 @@ impl Arena {
 
     #[inline]
     fn sweep_compact(&mut self) {
-        let reloc = unsafe { self.mem.sweep_compact() };
+        let reloc = unsafe { self.nuke.sweep_compact() };
         self.update_ptrs(reloc);
         self.state = GCState::Sleep(GC_SLEEP_MEM_BYTES);
     }
@@ -1577,7 +1577,7 @@ impl Arena {
     #[inline]
     fn mark_begin(&mut self) {
         self.clear_extrefs();
-        self.state = GCState::Mark(1 + (self.mem.num_atoms() / 150) as u32);
+        self.state = GCState::Mark(1 + (self.nuke.num_atoms() / 150) as u32);
         let it = self.stack.iter()
                            .chain(self.env.iter())
                            .chain(self.extref.values().map(|(_, pv)| pv));
@@ -1646,10 +1646,13 @@ impl Arena {
 
     /// Remove all allocated objects
     pub fn ignore_and_sweep(&mut self) {
+        if !matches!(self.state, GCState::Sleep(_)) {
+            self.finish_cycle();
+        }
         self.stack.clear();
         self.env.clear();
         self.gray.clear();
-        for obj in self.mem.iter_mut() {
+        for obj in self.nuke.iter_mut() {
             obj.set_color(Color::White);
         }
         self.sweep_compact();
@@ -1658,7 +1661,9 @@ impl Arena {
 
 impl Drop for Arena {
     fn drop(&mut self) {
-        self.ignore_and_sweep();
+        unsafe {
+            self.nuke.destroy_the_world();
+        }
     }
 }
 
