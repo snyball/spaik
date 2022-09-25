@@ -57,7 +57,6 @@ impl REPL {
         if let Some(out) = out_override {
             vm.set_stdout(out);
         }
-        vm.load_stdlib();
         Ok(REPL {
             vm,
             exit_status: None,

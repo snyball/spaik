@@ -15,7 +15,7 @@ use crate::{
     perr::PResult,
     sexpr_parse::Parser,
     subrs::{IntoLisp, Subr, IntoSubr},
-    sym_db::SymDB,
+    sym_db::SymDB, FmtErr,
 };
 use fnv::FnvHashMap;
 use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
@@ -1023,6 +1023,12 @@ impl R8VM {
         // Iter
         addfn!(iter);
 
+        let core_sym = vm.sym_id("<ζ>::core");
+        let entry = vm.load_with("_/core.lisp",
+                                 core_sym,
+                                 include_str!("../lisp/core.lisp"))
+                      .fmt_unwrap(&vm);
+        vm.call(entry, &()).fmt_unwrap(&vm);
 
         vm
     }
@@ -1131,27 +1137,6 @@ impl R8VM {
         let mut src = String::new();
         file.read_to_string(&mut src).map_err(|_| err)?;
         self.load_with(src_path, lib, src)
-    }
-
-    pub fn load_stdlib(&mut self) {
-        let stdlib = self.sym_id("stdlib");
-        self.load(stdlib)
-            .map(|_| ())
-            .or_else(|e| -> Result<(), Error> {
-                if matches!(e.ty, ErrorKind::ModuleLoadError { .. }) {
-                    #[cfg(not(target_arch = "wasm32"))] {
-                        log::info!("Using bundled stdlib");
-                    }
-                    self.eval(include_str!("../lisp/stdlib.lisp"))?;
-                    Ok(())
-                } else {
-                    Err(e)
-                }
-            })
-            .map_err(|e| {
-                log::error!("{}", e.to_string(self));
-                e
-            }).unwrap();
     }
 
     pub fn consts_top(&self) -> usize {

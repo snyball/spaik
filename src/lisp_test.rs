@@ -71,10 +71,9 @@ impl Error for TestError {
 fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let mut vm = R8VM::new();
     let tests_path = "./tests";
-    let stdlib = vm.sym_id("stdlib");
     let test = vm.sym_id("test");
 
-    if let Err(e) = vm.load(stdlib).and_then(|_| vm.load(test)) {
+    if let Err(e) = vm.load(test) {
         println!("{}", e.to_string(&vm));
         return Err(e.into());
     }

@@ -99,16 +99,27 @@ use crate::r8vm::{R8VM, Args, ArgSpec, EnumCall};
 use crate::nkgc::PV;
 use crate::subrs::{Subr, IntoLisp, Ignore, IntoSubr};
 
-pub trait FmtErr<T> {
+pub trait FmtErr<T> where T: Sized {
+    /// Format an internal VM runtime error as a string, by replacing symbol IDs
+    /// with their strings.
     fn fmterr(self, db: &dyn SymDB) -> Result<T, Box<dyn std::error::Error>>;
+
+    /// Like `Result::unwrap` but first runs `FmtErr::fmterr` on the error.
+    fn fmt_unwrap(self, db: &dyn SymDB) -> T;
 }
 
 impl<T> FmtErr<T> for Result<T, IError> {
+    #[inline]
     fn fmterr(self, db: &dyn SymDB) -> Result<T, Box<dyn std::error::Error>> {
         match self {
             Ok(x) => Ok(x),
             Err(e) => Err(e.to_string(db).into())
         }
+    }
+
+    #[inline]
+    fn fmt_unwrap(self, db: &dyn SymDB) -> T {
+        self.fmterr(db).unwrap()
     }
 }
 
@@ -167,17 +178,8 @@ impl AsSym for SymID {
 }
 
 impl Spaik {
-    /// Create a new SPAIK VM with the standard library loaded.
+    /// Create a new SPAIK VM
     pub fn new() -> Spaik {
-        let mut vm = Spaik {
-            vm: R8VM::new()
-        };
-        vm.vm.load_stdlib();
-        vm
-    }
-
-    /// Create a new SPAIK VM without any libraries.
-    pub fn sparse() -> Spaik {
         Spaik { vm: R8VM::new() }
     }
 
