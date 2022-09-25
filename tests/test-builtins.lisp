@@ -7,6 +7,19 @@
   (/ (* n (+ n 1)) 2))
 
 ;;; ---[ math ]----------------------------------------
+(defun math/fibonacci (n)
+  (let ((a 0) (b 1))
+    (while (> n 0)
+      (set* (a b) (b (+ a b)))
+      (dec! n))
+    a))
+
+(defun math/factorial (n)
+  (let ((x 1))
+    (while (> n 0)
+      (set* (x n) ((* x n) (- n 1))))
+    x))
+
 (test math
       (= (+) 0)
       (= (+ 10) 10)
