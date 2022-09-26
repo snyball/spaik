@@ -125,9 +125,7 @@ pub trait Traceable {
 
 pub struct ObjRef<T>(pub T);
 
-impl<'a, T> TryFrom<PV> for ObjRef<&'a T>
-    where T: Fissile + 'static
-{
+impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<&'a T>, Self::Error> {
@@ -147,9 +145,7 @@ impl TryFrom<PV> for String {
     }
 }
 
-impl<'a, T> TryFrom<PV> for ObjRef<&'a mut T>
-    where T: Fissile + 'static
-{
+impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a mut T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<&'a mut T>, Self::Error> {
@@ -1719,6 +1715,7 @@ impl Drop for SPV {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use spaik_proc_macros::Fissile;
 
     #[test]
     fn spv() {
@@ -1730,4 +1727,28 @@ mod tests {
         gc.list(len);
         let _li = gc.pop_spv().unwrap();
     }
+
+    #[test]
+    fn virtual_destructors() {
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        pub struct TestObj {
+            hello: Vec<u64>,
+            thing: String,
+        }
+        let mut ar = Arena::new(1024);
+        for i in 0..10 {
+            let mut hello = vec![];
+            for j in 1..100*i {
+                hello.push(j * i);
+            }
+            let thing = String::from("lmao");
+            let obj = Object::new(TestObj {
+                hello, thing,
+            });
+            ar.put(obj);
+        }
+        drop(ar);
+        println!("phew");
+    }
+
 }

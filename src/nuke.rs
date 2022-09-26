@@ -63,7 +63,17 @@ macro_rules! with_atom_inst {
 }
 
 
-pub trait Fissile: LispFmt + Debug + Clone + Traceable + Any + 'static {
+/// SAFETY: No. Do not implement this trait directly.
+///         Add your new internal heap-storage type to the fissile_types! {...}
+///         list, or just use Object. This is essentially just a marker-type.
+///
+///         What makes it really gnarly to implement this trait yourself,
+///         without adding it to fissile_types!{...} is that type_of() is used
+///         as an index into `DESTRUCTORS` when deallocating unreachable GC
+///         objects, and to figure out which pointers to follow during the GC
+///         mark phase. This will obviously cause UB if the memory layout of your
+///         type isn't what the destructor, or `trace`/`update_ptrs` expects
+pub unsafe trait Fissile: LispFmt + Debug + Clone + Traceable + Any + 'static {
     fn type_of() -> NkT;
 }
 
@@ -176,14 +186,13 @@ macro_rules! fissile_types {
             }
         }
 
-        $(impl Fissile for $path {
+        $(unsafe impl Fissile for $path {
             fn type_of() -> NkT { NkT::$t }
         })+
     };
 }
 
-trait Fuse: Fissile {
-}
+pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any + 'static {}
 
 pub trait CloneIterator: Iterator + Traceable {
     fn clone_box(&self) -> Box<dyn CloneIterator<Item = Self::Item>>;
@@ -319,16 +328,17 @@ fn simplify_types<'a, 'b>(ta: &'a str, tb: &'b str) -> (&'a str, &'b str) {
 }
 
 impl Object {
-    pub fn new<T: Fissile + 'static>(obj: T) -> Object {
+    pub fn new<T: Userdata>(obj: T) -> Object {
         lazy_static! {
             static ref VTABLES: Mutex<FnvHashMap<TypeId, &'static VTable>> =
                 Mutex::new(FnvHashMap::default());
         }
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
-            |this, $($arg),*| unsafe { println!("{}.{}", type_name::<T>(), stringify!($name)); (*(this as *mut T)).$name($($arg),*) }
+            |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
         let layout = unsafe {
-            Layout::from_size_align(size_of::<T>(), align_of::<T>()).unwrap_unchecked()
+            Layout::from_size_align(size_of::<T>(), align_of::<T>())
+                .unwrap_unchecked()
         };
         let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<T>()) {
             Entry::Occupied(vp) => *vp.get(),
@@ -361,7 +371,7 @@ impl Object {
         }
     }
 
-    pub fn cast<T: Fissile + 'static>(&self) -> Result<&T, Error> {
+    pub fn cast<T: Userdata>(&self) -> Result<&T, Error> {
         if TypeId::of::<T>() != self.type_id {
             let expect_t = type_name::<T>();
             let actual_t = self.vt.type_name;
@@ -375,11 +385,11 @@ impl Object {
         Ok(unsafe { &*(self.mem as *const T) })
     }
 
-    pub unsafe fn fastcast_mut<T: Fissile + 'static>(&mut self) -> &mut T {
+    pub unsafe fn fastcast_mut<T: Userdata>(&mut self) -> &mut T {
         &mut*(self.mem as *mut T)
     }
 
-    pub fn cast_mut<T: Fissile + 'static>(&mut self) -> Result<&mut T, Error> {
+    pub fn cast_mut<T: Userdata>(&mut self) -> Result<&mut T, Error> {
         let id = TypeId::of::<T>();
         if id != self.type_id {
             // FIXME: Better error

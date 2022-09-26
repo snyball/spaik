@@ -69,6 +69,7 @@ pub mod scratch;
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
 pub use sym_db::SymDB;
+pub use nuke::Userdata;
 
 /// This module makes it possible to interact with SPAIK internals.
 ///
@@ -177,7 +178,7 @@ impl AsSym for SymID {
     }
 }
 
-impl Spaik {
+impl Spaik where {
     /// Create a new SPAIK VM
     pub fn new() -> Spaik {
         Spaik { vm: R8VM::new() }
@@ -207,13 +208,15 @@ impl Spaik {
 
     /// Get a reference to a user-defined object type stored in the vm.
     pub fn objref<T>(&mut self, var: impl AsSym) -> Result<&T, Error>
-        where T: Fissile
+        where T: Userdata
     {
         self.objref_mut(var).map(|rf| &*rf)
     }
 
     /// Get a clone of a user-defined object type stored in the vm.
-    pub fn obj<T: Fissile>(&mut self, var: impl AsSym) -> Result<T, Error> {
+    pub fn obj<T>(&mut self, var: impl AsSym) -> Result<T, Error>
+        where T: Userdata
+    {
         self.objref_mut(var).map(|rf| &*rf).cloned()
     }
 
@@ -223,7 +226,7 @@ impl Spaik {
     ///
     /// - `var` : Variable name
     pub fn objref_mut<T>(&mut self, var: impl AsSym) -> Result<&mut T, Error>
-        where T: Fissile
+        where T: Userdata
     {
         let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
@@ -635,9 +638,10 @@ mod tests {
             y: f32,
         }
 
-        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Fissile)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         pub struct TestObj2 {
             x: f32,
+            thing: String,
         }
 
         #[allow(non_camel_case_types)]
@@ -667,7 +671,7 @@ mod tests {
         vm.register(fns::obj_y);
         let src_obj = TestObj { x: 1.0, y: 3.0 };
         let dst_obj = TestObj { x: 1.0, y: 2.0 };
-        let wrong_obj = TestObj2 { x: 10.0 };
+        let wrong_obj = TestObj2 { x: 10.0, thing: "test".to_string() };
         vm.set("wrong-obj", wrong_obj);
         vm.set("src-obj", src_obj.clone());
         vm.set("dst-obj", dst_obj.clone());

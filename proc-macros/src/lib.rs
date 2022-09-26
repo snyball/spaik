@@ -250,16 +250,12 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
                         _visited: &mut #root::fmt::VisitSet,
                         f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "({}", stringify!(#name))?;
-                #( write!(f, " {} {}", #field_kws, self.#field_names)?; )*
+                #( write!(f, " {} {:?}", #field_kws, self.#field_names)?; )*
                 write!(f, ")")
             }
         }
 
-        impl #root::nuke::Fissile for #name {
-            fn type_of() -> #root::nuke::NkT {
-                #root::nuke::NkT::Struct
-            }
-        }
+        impl Userdata for #name {}
 
         impl #root::subrs::IntoLisp for #name {
             fn into_pv(self, mem: &mut #root::nkgc::Arena)
