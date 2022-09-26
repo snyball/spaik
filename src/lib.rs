@@ -180,22 +180,26 @@ impl AsSym for SymID {
 
 impl Spaik where {
     /// Create a new SPAIK VM
+    #[inline]
     pub fn new() -> Spaik {
         Spaik { vm: R8VM::new() }
     }
 
     /// Register a subroutine (function) with the vm
+    #[inline]
     pub fn register(&mut self, func: impl Subr) {
         self.set(func.name(), func.into_subr());
     }
 
     /// Move `obj` into the vm as `var`.
+    #[inline]
     pub fn set(&mut self, var: impl AsSym, obj: impl IntoLisp) {
         let var = var.as_sym(&mut self.vm);
         self.vm.set(var, obj).unwrap();
     }
 
     /// Return a clone of `var`
+    #[inline]
     pub fn get<R>(&mut self, var: impl AsSym) -> Result<R, Error>
         where R: TryFrom<PV, Error = IError>
     {
@@ -207,6 +211,7 @@ impl Spaik where {
     }
 
     /// Get a reference to a user-defined object type stored in the vm.
+    #[inline]
     pub fn objref<T>(&mut self, var: impl AsSym) -> Result<&T, Error>
         where T: Userdata
     {
@@ -214,6 +219,7 @@ impl Spaik where {
     }
 
     /// Get a clone of a user-defined object type stored in the vm.
+    #[inline]
     pub fn obj<T>(&mut self, var: impl AsSym) -> Result<T, Error>
         where T: Userdata
     {
@@ -225,6 +231,7 @@ impl Spaik where {
     /// # Arguments
     ///
     /// - `var` : Variable name
+    #[inline]
     pub fn objref_mut<T>(&mut self, var: impl AsSym) -> Result<&mut T, Error>
         where T: Userdata
     {
@@ -243,6 +250,7 @@ impl Spaik where {
     /// # Arguments
     ///
     /// - `expr` : Lisp expression
+    #[inline]
     pub fn eval<R>(&mut self, expr: impl AsRef<str>) -> Result<R, Error>
         where R: TryFrom<PV, Error = IError>
     {
@@ -256,6 +264,7 @@ impl Spaik where {
     /// # Arguments
     ///
     /// - `expr` : Lisp expression
+    #[inline]
     pub fn exec(&mut self, expr: impl AsRef<str>) -> Result<(), Error> {
         let _: Ignore = self.eval(expr)?;
         Ok(())
@@ -267,6 +276,7 @@ impl Spaik where {
     ///
     /// - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
     ///           `<name>` as either a string or symbol
+    #[inline]
     pub fn load(&mut self, lib: impl AsSym) -> Result<SymID, Error> {
         let lib = lib.as_sym(&mut self.vm);
         self.vm.load(lib).map_err(|e| Error::from_source(e, self))
@@ -282,6 +292,7 @@ impl Spaik where {
     ///                source-file/line error messages.
     /// - `lib` : Library symbol name, i.e the argument to `(load ...)`
     /// - `code` : The source-code contents inside `src_path`
+    #[inline]
     pub fn load_with<S>(&mut self, src_path: S, lib: SymID, code: S) -> Result<SymID, Error>
         where S: AsRef<str>
     {
@@ -292,6 +303,7 @@ impl Spaik where {
     /// Call a function by-enum and return the result
     ///
     /// Use `Spaik::cmd` if don't care about the result.
+    #[inline]
     pub fn query<R>(&mut self, enm: impl EnumCall) -> Result<R, Error>
         where R: TryFrom<PV, Error = IError>
     {
@@ -303,6 +315,7 @@ impl Spaik where {
     /// Call a function by-enum and ignore the result
     ///
     /// Use `Spaik::query` if you need the result.
+    #[inline]
     pub fn cmd(&mut self, enm: impl EnumCall) -> Result<(), Error> {
         let _: Ignore = self.query(enm)?;
         Ok(())
@@ -311,6 +324,7 @@ impl Spaik where {
     /// Call a function by-name an args and return the result.
     ///
     /// Use `Spaik::run` if don't care about the result.
+    #[inline]
     pub fn call<R>(&mut self, sym: impl AsSym, args: impl Args) -> Result<R, Error>
         where R: TryFrom<PV, Error = IError>
     {
@@ -323,6 +337,7 @@ impl Spaik where {
     /// Call a function by-name an args and ignore the result.
     ///
     /// Use `Spaik::call` if you need the result.
+    #[inline]
     pub fn run(&mut self, sym: impl AsSym, args: impl Args) -> Result<(), Error> {
         let _: Ignore = self.call(sym, args)?;
         Ok(())
@@ -330,6 +345,7 @@ impl Spaik where {
 
     /// Perform a full GC collection, this may finish a currently ongoing collection
     /// and start a new one afterwards.
+    #[inline]
     pub fn gc(&mut self) {
         self.vm.mem.full_collection()
     }
@@ -386,10 +402,12 @@ impl Default for Spaik {
 }
 
 impl SymDB for Spaik {
+    #[inline]
     fn name(&self, sym: SymID) -> std::borrow::Cow<str> {
         Cow::Borrowed(self.vm.mem.symdb.name(sym).unwrap())
     }
 
+    #[inline]
     fn put_sym(&mut self, name: &str) -> SymID {
         self.vm.mem.symdb.put_sym(name)
     }
@@ -475,6 +493,7 @@ unsafe impl<T> Subr for send_message<T>
 impl<T, Cmd> SpaikPlug<T, Cmd>
     where Cmd: EnumCall + Send, T: Send
 {
+    #[inline]
     pub fn recv(&mut self) -> Option<Promise<T>>
         where T: DeserializeOwned
     {
@@ -487,6 +506,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
         }
     }
 
+    #[inline]
     pub fn recv_timeout(&mut self, timeout: Duration) -> Option<Promise<T>>
         where T: DeserializeOwned
     {
@@ -499,6 +519,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
         }
     }
 
+    #[inline]
     pub fn send<V, A>(&mut self, name: V, args: A)
         where V: AsSym + Send + 'static,
               A: Args + Send + 'static
@@ -507,6 +528,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
                                         args: Box::new(args) }).unwrap();
     }
 
+    #[inline]
     pub fn fulfil<R>(&mut self, promise: Promise<T>, ans: R)
         where R: IntoLisp + Clone + Send + 'static
     {
@@ -516,6 +538,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
         }
     }
 
+    #[inline]
     pub fn join(self) -> Spaik {
         self.events.send(Event::Stop).unwrap();
         self.handle.join().unwrap()

@@ -130,10 +130,12 @@ impl<'a, R: Iterator<Item = T>, T> Iterator for SInternIter<'a, R, T> {
 }
 
 impl SymDB for SIntern<SymID> {
+    #[inline]
     fn name(&self, sym: SymID) -> Cow<str> {
         Cow::Borrowed(self.name(sym).unwrap())
     }
 
+    #[inline]
     fn put_sym(&mut self, name: &str) -> SymID {
         self.put(String::from(name))
     }
