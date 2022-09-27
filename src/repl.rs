@@ -116,7 +116,7 @@ impl REPL {
         }
         self.print_intro();
         while self.exit_status.is_none() {
-            let readline = rl.readline(&"λ> ".white().bold().to_string());
+            let readline = rl.readline(&"λ> ".white().bold());
             match readline {
                 Ok(line) => {
                     rl.add_history_entry(line.as_str());
