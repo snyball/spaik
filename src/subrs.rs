@@ -11,6 +11,12 @@ use std::fmt;
 use std::ptr;
 
 /// The `mem` parameter is necessary here, because some of the conversions
+/// may need to create an SPV reference-counter
+pub trait FromLisp<T>: Sized {
+    fn from_lisp(self, mem: &mut Arena) -> Result<T, Error>;
+}
+
+/// The `mem` parameter is necessary here, because some of the conversions
 /// may need to do memory allocation.
 pub trait IntoLisp: Sized {
     fn into_spv(self, mem: &mut Arena) -> Result<SPV, Error> {
