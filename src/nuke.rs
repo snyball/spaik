@@ -624,15 +624,37 @@ pub struct Nuke {
     start_time: SystemTime,
 }
 
+/// Modern computers really don't like it if you put a pointer in a memory
+/// address that is not a multiple of the word size. In other words, the CPU
+/// expects that ptr % sizeof(ptr) == 0, where sizeof(ptr) will be 4, and 8
+/// for 32 and 64 bit architectures respectively. Other types (mostly things
+/// related to SIMD (AFAIK)) may even require 16 bytes.
+///
+/// This function is an optimized method of computing the next valid memory
+/// address starting at `p`, where a storage class of alignment `a` can be
+/// placed (Note that T is arbtrary and is not used in the calculation, see
+/// Layout::* for getting the alignment for a type.) For all intents and
+/// purposes as far as SPAIK is concerned, `a` will *always* be 8 on
+/// x86_64/arm64/wasm64 and 4 on i686/arm32/wasm32. See `ALIGNMENT`.
+///
+/// We don't make use of more granularity than that, but might choose to do so
+/// in the future to avoid having to pad when not necessary.
 fn align<T>(p: *mut T, a: isize) -> *mut T {
     (((p as isize) + a - 1) & !(a - 1)) as *mut T
 }
 
+/// Equivalent to memcpy from ANSI C, void* and all. In almost all cases this is
+/// not what you want, but in the dark corners of the computing stack, where the
+/// untyped pointers play, and the light of the type system is all but
+/// extinguished. In there, you can count on memcpy to just copy, byte-sized,
+/// and do nothing else.
 #[inline(always)]
 pub unsafe fn memcpy<R, W>(dst: *mut W, src: *const R, sz: usize) {
     ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, sz);
 }
 
+/// Copy into `dst`, from `src`. The buffers may overlap. See `memcpy` for
+/// copying memory regions that do not overlap.
 #[allow(dead_code)]
 #[inline(always)]
 pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {

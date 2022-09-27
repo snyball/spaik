@@ -1,7 +1,7 @@
 //! SPAIK Compiler
 
 use crate::nuke::{NkSum, NkRef};
-use crate::nkgc::{PV, SymID, Cons};
+use crate::nkgc::{PV, SymID, SymIDInt, Cons};
 use crate::r8vm::{R8VM, r8c, ArgSpec};
 use crate::r8vm::r8c::Op as R8C;
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl};
@@ -152,8 +152,8 @@ macro_rules! builtins {
             }
 
             pub fn sym(&self) -> SymID {
-                let id: i32 = unsafe { mem::transmute(*self) };
-                SymID { id }
+                let id: SymIDInt = unsafe { mem::transmute(*self) };
+                id.into()
             }
 
             pub fn to_string(&self) -> String {
@@ -831,7 +831,7 @@ impl<'a> R8Compiler<'a> {
                 let res = cc.link()?;
                 self.vm.add_func(name, res, spec, args);
                 if ret {
-                    self.asm_op(chasm!(CLZ name.id, 0));
+                    self.asm_op(chasm!(CLZ name, 0));
                 }
                 Ok(())
             }
@@ -1359,7 +1359,7 @@ impl<'a> R8Compiler<'a> {
             }
         }
         spec.env = num;
-        self.asm_op(chasm!(CLZ name.id, num));
+        self.asm_op(chasm!(CLZ name, num));
         let mut cc = R8Compiler::new(self.vm);
         cc.enter_fn(&args, spec)?;
         for (var, bound) in lowered.iter() {

@@ -282,6 +282,8 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, convert::Infallible, borrow::Cow};
 
+    use spaik_proc_macros::spaikfn;
+
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, SymID}, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
 
@@ -490,7 +492,7 @@ mod sysfns {
     unsafe impl Subr for sym_id {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             match args {
-                [PV::Sym(SymID { id })] => Ok(PV::Int((*id).try_into()?)),
+                [PV::Sym(id)] => Ok(PV::Int((*id).try_into()?)),
                 [x] => err!(TypeError,
                             expect: Builtin::Symbol.sym(),
                             got: x.type_of(),
@@ -594,6 +596,11 @@ mod sysfns {
         }
         fn name(&self) -> &'static str { "dump-stack" }
     }
+
+    // struct Fns;
+    // #[spaikfn(Fns)]
+    // fn push(v: &mut Vec<PV>) {
+    // }
 }
 
 pub type ArgInt = u16;
@@ -951,7 +958,7 @@ impl R8VM {
             vm.pmem.push(r8c::Op::CLZCALL(i));
             vm.pmem.push(r8c::Op::RET());
             let sym = vm.mem.symdb.put(format!("<ζ>::clz-entrypoint-{i}"));
-            vm.funcs.insert(sym.id, Func {
+            vm.funcs.insert(sym.into(), Func {
                 pos,
                 sz: 2,
                 args: ArgSpec::normal(0)
@@ -1098,12 +1105,12 @@ impl R8VM {
     }
 
     pub fn get_func(&self, name: SymID) -> Option<&Func> {
-        self.funcs.get(&name.id)
+        self.funcs.get(&name.into())
     }
 
     pub fn add_func(&mut self, name: SymID, code: Linked, args: ArgSpec, arg_names: Vec<SymID>) {
         let (asm, labels, consts, srcs) = code;
-        self.funcs.insert(name.id, Func {
+        self.funcs.insert(name.into(), Func {
             pos: self.pmem.len(),
             sz: asm.len(),
             args
@@ -1362,7 +1369,7 @@ impl R8VM {
 
     pub fn expand(&mut self, ast: &Value) -> Option<Result<Value, Error>> {
         ast.op()
-           .and_then(|sym| self.macros.get(&sym.id).copied())
+           .and_then(|sym| self.macros.get(&sym.into()).copied())
            .map(|sym| {
                let args = ast.args().collect::<Vec<_>>();
                let mut asts = vec![];
@@ -1386,7 +1393,7 @@ impl R8VM {
     }
 
     pub fn set_macro(&mut self, macro_sym: SymID, fn_sym: SymID) {
-        self.macros.insert(macro_sym.id, fn_sym);
+        self.macros.insert(macro_sym.into(), fn_sym);
     }
 
     pub fn defun(&mut self,
@@ -1461,7 +1468,7 @@ impl R8VM {
                            .expect("Unable to find function by binary search");
 
             let (nenv, nargs) = if func.pos + func.sz < ip {
-                name = Builtin::Unknown.sym().id;
+                name = Builtin::Unknown.sym().into();
                 (0, 0)
             } else {
                 let spec = func.args;
@@ -1522,7 +1529,7 @@ impl R8VM {
             }
             let sym = lambda.name;
             let pos = self.funcs
-                          .get(&sym.id)
+                          .get(&sym.into())
                           .ok_or_else(|| Error::from(
                               ErrorKind::UndefinedFunction {
                                   name: sym
@@ -1551,11 +1558,13 @@ impl R8VM {
             self.mem.push(res?);
             Ok(self.ret_to(dip))
         }, Continuation(cont) => {
-            let pv = self.mem.pop().unwrap();
-            self.mem.stack.drain(idx..).for_each(drop); // drain gang
-
+            println!("run cont");
             ArgSpec::normal(1).check(Builtin::Continuation.sym(), nargs)?;
             let cont_stack = cont.take_stack()?;
+            println!("got stack");
+
+            let pv = self.mem.pop().unwrap();
+            self.mem.stack.drain(idx..).for_each(drop); // drain gang
 
             // push state
             let dip = self.ip_delta(ip);
@@ -1567,6 +1576,7 @@ impl R8VM {
             self.mem.stack.push(pv);
             self.frame = cont.frame;
             let res = unsafe { self.run_from_unwind(cont.dip) };
+            dbg!(&res);
 
             // pop state
             let mut stack = mem::replace(&mut self.mem.stack,
@@ -1738,7 +1748,7 @@ impl R8VM {
                     let locals: Vec<_> = self.mem.stack
                                                  .drain(from..to)
                                                  .collect();
-                    let name = SymID { id: *sym };
+                    let name = (*sym).into();
                     let args = self.funcs
                                    .get(sym)
                                    .ok_or(error_src!(Source::none(),
@@ -1814,7 +1824,7 @@ impl R8VM {
                             ip = self.op_clzcall(ip, *nargs)?;
                         } else {
                             return Err(ErrorKind::UndefinedFunction {
-                                name: SymID { id: *sym }
+                                name: (*sym).into()
                             }.into())
                         }
                     };
@@ -2026,7 +2036,7 @@ impl R8VM {
 
     #[cfg(feature = "repl")]
     pub fn dump_all_code(&self) -> Result<(), Error> {
-        let mut funks = self.funcs.iter().map(|(k, v)| (SymID { id: *k }, v.pos)).collect::<Vec<_>>();
+        let mut funks = self.funcs.iter().map(|(k, v)| ((*k).into(), v.pos)).collect::<Vec<_>>();
         funks.sort_by_key(|(_, v)| *v);
         for funk in funks.into_iter().map(|(u, _)| u) {
             self.dump_fn_code(funk)?
@@ -2041,10 +2051,10 @@ impl R8VM {
         lazy_static! {
             static ref EMPTY_MAP: FnvHashMap<u32, Lbl> = FnvHashMap::default();
         }
-        if let Some(mac_fn) = self.macros.get(&name.id) {
+        if let Some(mac_fn) = self.macros.get(&name.into()) {
             name = *mac_fn;
         }
-        let func = self.funcs.get(&name.id).ok_or("No such function")?;
+        let func = self.funcs.get(&name.into()).ok_or("No such function")?;
         let labels = self.func_labels.get(&name)
                                      .unwrap_or(&EMPTY_MAP);
         let start = func.pos as isize;
@@ -2124,7 +2134,7 @@ impl R8VM {
         table.load_preset(TABLE_STYLE);
         table.set_header(vec!["Symbol", "ID"]);
         for (id, name) in self.mem.symdb.iter() {
-            table.add_row(vec![name, &id.id.to_string()]);
+            table.add_row(vec![name, &id.to_string()]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();

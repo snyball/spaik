@@ -135,6 +135,21 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a T> {
     }
 }
 
+pub struct Str {
+    len: usize,
+    buf: *const u8,
+    rc: SPV,
+}
+
+impl AsRef<str> for Str {
+    fn as_ref(&self) -> &str {
+        unsafe {
+            let slice = std::slice::from_raw_parts(self.buf, self.len);
+            std::str::from_utf8_unchecked(slice)
+        }
+    }
+}
+
 impl TryFrom<PV> for String {
     type Error = Error;
 
@@ -174,7 +189,13 @@ pub type SymIDInt = i32;
 /// Symbol ID
 #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 pub struct SymID {
-    pub id: SymIDInt,
+    id: SymIDInt,
+}
+
+impl SymID {
+    pub fn as_int(self) -> SymIDInt {
+        self.id
+    }
 }
 
 impl fmt::Debug for SymID {

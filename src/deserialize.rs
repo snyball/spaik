@@ -611,7 +611,7 @@ mod tests {
 
         let s = vm.eval(r#" '(d :sym (:id 1)) "#).unwrap();
         let u = from_pv::<U>(s, &vm).unwrap();
-        assert_eq!(u, U::D { sym: SymID { id: 1 } });
+        assert_eq!(u, U::D { sym: 1.into() });
 
         let s = vm.eval(r#" `(d :sym (:id ,(sym-id 'ayy-lmao))) "#).unwrap();
         let u = from_pv::<U>(s, &vm).unwrap();

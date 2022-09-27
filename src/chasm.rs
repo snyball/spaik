@@ -1,10 +1,11 @@
 //! ChASM /ˈkæz(ə)m/, an assembler
 
-use crate::nkgc::SymID;
+use crate::nkgc::{SymID, SymIDInt};
 use std::{collections::HashMap, io::{Read, Write}};
 use std::fmt;
 use crate::error::{Error, ErrorKind};
 use ErrorKind::*;
+use serde::de::IntoDeserializer;
 use std::convert::{TryInto, TryFrom};
 use fnv::FnvHashMap;
 
@@ -78,7 +79,7 @@ impl From<Lbl> for Arg {
     fn from(v: Lbl) -> Self { Arg::Lbl(v) }
 }
 impl From<SymID> for Arg {
-    fn from(v: SymID) -> Self { Arg::ASMPV(v.id.into()) }
+    fn from(v: SymID) -> Self { Arg::ASMPV(v.as_int().into()) }
 }
 
 #[derive(Debug, Clone)]
@@ -303,7 +304,7 @@ impl ChASM {
                                  Arg::ASMPV(pv) => Ok(pv),
                                  Arg::Func(s) => xtrn.get(&s)
                                                      .map(|pos| ASMPV::isize(*pos - (i as isize + sz)))
-                                                     .ok_or_else(|| link_err("sym", s.id as u32))
+                                                     .ok_or_else(|| link_err("sym", s.as_int() as u32))
                              }).collect::<Result<Vec<ASMPV>, _>>()?;
                 T::new(op.id, &args[..])
             }).collect::<Result<_, _>>()?,
