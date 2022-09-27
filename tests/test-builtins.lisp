@@ -305,3 +305,7 @@
      nil))
 
 (test gensym)
+
+;;; ---[ continuations ]---------------------------------
+(test continuations
+      (= (+ (call/cc (lambda (k) (throw (k 1)))) 1) 2))
