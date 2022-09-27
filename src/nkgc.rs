@@ -1132,6 +1132,7 @@ pub struct Arena {
     tags: FnvHashMap<*mut NkAtom, Source>,
     pub(crate) stack: Vec<PV>,
     pub(crate) symdb: SIntern<SymID>,
+    pub(crate) conts: Vec<Vec<PV>>,
     env: Vec<PV>,
     gray: Vec<*mut NkAtom>,
     extref: FnvHashMap<ExtRefID, (i32, PV)>,
@@ -1216,6 +1217,7 @@ impl Arena {
             extref: FnvHashMap::default(),
             tags: FnvHashMap::default(),
             no_reorder: false,
+            conts: Vec::new(),
             extref_id_cnt: 0,
         };
         for &blt in BUILTIN_SYMBOLS.iter() {
@@ -1513,6 +1515,9 @@ impl Arena {
         for pv in self.stack.iter_mut().chain(self.env.iter_mut()) {
             pv.update_ptrs(self.nuke.reloc());
         }
+        for cont in self.conts.iter_mut() {
+            cont.update_ptrs(self.nuke.reloc());
+        }
         self.nuke.confirm_relocation(tok);
     }
 
@@ -1576,6 +1581,7 @@ impl Arena {
         self.state = GCState::Mark(1 + (self.nuke.num_atoms() / 150) as u32);
         let it = self.stack.iter()
                            .chain(self.env.iter())
+                           .chain(self.conts.iter().flatten())
                            .chain(self.extref.values().map(|(_, pv)| pv));
         for obj in it {
             if let PV::Ref(cell) = *obj {

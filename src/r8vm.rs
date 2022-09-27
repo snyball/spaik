@@ -1024,9 +1024,7 @@ impl R8VM {
         addfn!(iter);
 
         let core_sym = vm.sym_id("<ζ>::core");
-        let entry = vm.load_with("_/core.lisp",
-                                 core_sym,
-                                 include_str!("../lisp/core.lisp"))
+        let entry = vm.load_with("<ζ>::core", core_sym, include_str!("../lisp/core.lisp"))
                       .fmt_unwrap(&vm);
         vm.call(entry, &()).fmt_unwrap(&vm);
 
@@ -1431,7 +1429,9 @@ impl R8VM {
     }
 
     /**
-     * Unwind the stack into a Traceback.
+     * Unwind the stack into a Traceback, if you don't need a Traceback you
+     * should use `R8VM::unwind` instead. This method is far more expensive than
+     * the non-traceback version.
      *
      * # Arguments
      *
@@ -1518,7 +1518,7 @@ impl R8VM {
             lambda.args.check(lambda.name, nargs)?;
             let has_env = lambda.args.has_env();
             if !has_env {
-                self.mem.stack.drain(idx..(idx+1)).for_each(drop);
+                self.mem.stack.drain(idx..(idx+1)).for_each(drop); // drain gang
             }
             let sym = lambda.name;
             let pos = self.funcs
@@ -1547,28 +1547,45 @@ impl R8VM {
             };
             let dip = self.ip_delta(ip);
             let res = subr.call(self, args);
-            self.mem.stack.drain(idx..).for_each(drop);
+            self.mem.stack.drain(idx..).for_each(drop); // drain gang
             self.mem.push(res?);
             Ok(self.ret_to(dip))
         }, Continuation(cont) => {
+            let pv = self.mem.pop().unwrap();
+            self.mem.stack.drain(idx..).for_each(drop); // drain gang
+
             ArgSpec::normal(1).check(Builtin::Continuation.sym(), nargs)?;
+            let cont_stack = cont.take_stack()?;
+
+            // push state
             let dip = self.ip_delta(ip);
-            let pv = self.mem.pop()?;
             let frame = self.frame;
-            // FIXME: This is not particularly efficient
-            let ostack = mem::replace(&mut self.mem.stack, cont.stack.clone());
+            let stack = mem::replace(&mut self.mem.stack, cont_stack);
+            self.mem.conts.push(stack);
+
+            // call continuation
             self.mem.stack.push(pv);
             self.frame = cont.frame;
-            unsafe {
-                self.run_from(cont.dip).map_err(|(_, e)| e)?;
-            }
-            let res = self.mem.pop()?;
-            // FIXME: This is not particularly efficient
-            drop(mem::replace(&mut self.mem.stack, ostack));
-            self.mem.stack.drain(idx..).for_each(drop);
+            let res = unsafe { self.run_from_unwind(cont.dip) };
+
+            // pop state
+            let mut stack = mem::replace(&mut self.mem.stack,
+                                         self.mem.conts.pop().unwrap());
             self.frame = frame;
-            self.mem.push(res);
-            Ok(self.ret_to(dip))
+
+            // handle error
+            let res = if let Err(e) = res {
+                Err(e.into())
+            } else if let Some(pv) = stack.pop() {
+                self.mem.push(pv);
+                Ok(self.ret_to(dip))
+            } else {
+                err!(NotEnough, got: 0, expect: 1, op: "continuation")
+            };
+
+            cont.put_stack(stack);
+
+            res
         })
     }
 
