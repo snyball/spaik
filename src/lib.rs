@@ -68,6 +68,8 @@ pub mod scratch;
 
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
+pub use nuke::Gc;
+use subrs::FromLisp;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
 
@@ -201,13 +203,15 @@ impl Spaik where {
     /// Return a clone of `var`
     #[inline]
     pub fn get<R>(&mut self, var: impl AsSym) -> Result<R, Error>
-        where R: TryFrom<PV, Error = IError>
+        where PV: FromLisp<R>
     {
         let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
                          .ok_or(error!(UndefinedVariable, var: name))
                          .map_err(|e| Error::from_source(e, self))?;
-        self.vm.mem.get_env(idx).try_into().map_err(|e| Error::from_source(e, self))
+        self.vm.mem.get_env(idx)
+                   .from_lisp(&mut self.vm.mem)
+                   .map_err(|e| Error::from_source(e, self))
     }
 
     /// Get a reference to a user-defined object type stored in the vm.
@@ -220,9 +224,7 @@ impl Spaik where {
 
     /// Get a clone of a user-defined object type stored in the vm.
     #[inline]
-    pub fn obj<T>(&mut self, var: impl AsSym) -> Result<T, Error>
-        where T: Userdata
-    {
+    pub fn obj<T: Userdata>(&mut self, var: impl AsSym) -> Result<T, Error> {
         self.objref_mut(var).map(|rf| &*rf).cloned()
     }
 
@@ -252,10 +254,10 @@ impl Spaik where {
     /// - `expr` : Lisp expression
     #[inline]
     pub fn eval<R>(&mut self, expr: impl AsRef<str>) -> Result<R, Error>
-        where R: TryFrom<PV, Error = IError>
+        where PV: FromLisp<R>
     {
         self.vm.eval(expr.as_ref())
-               .and_then(|pv| pv.try_into())
+               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
                .map_err(|e| Error::from_source(e, self))
     }
 
@@ -305,10 +307,10 @@ impl Spaik where {
     /// Use `Spaik::cmd` if don't care about the result.
     #[inline]
     pub fn query<R>(&mut self, enm: impl EnumCall) -> Result<R, Error>
-        where R: TryFrom<PV, Error = IError>
+        where PV: FromLisp<R>
     {
         self.vm.call_by_enum(enm)
-               .and_then(|pv| pv.try_into())
+               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
                .map_err(|e| Error::from_source(e, self))
     }
 
@@ -326,11 +328,11 @@ impl Spaik where {
     /// Use `Spaik::run` if don't care about the result.
     #[inline]
     pub fn call<R>(&mut self, sym: impl AsSym, args: impl Args) -> Result<R, Error>
-        where R: TryFrom<PV, Error = IError>
+        where PV: FromLisp<R>
     {
         let sym = sym.as_sym(&mut self.vm);
         self.vm.call(sym, &args)
-               .and_then(|pv| pv.try_into())
+               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
                .map_err(|e| Error::from_source(e, self))
     }
 
@@ -698,6 +700,7 @@ mod tests {
         vm.set("wrong-obj", wrong_obj);
         vm.set("src-obj", src_obj.clone());
         vm.set("dst-obj", dst_obj.clone());
+        let perst_ref: Gc<TestObj> = vm.get("dst-obj").unwrap();
         vm.exec("(my-function 1 1 src-obj dst-obj)").unwrap();
         vm.exec("(println dst-obj)").unwrap();
         let x: f32 = vm.eval("(obj-x dst-obj)").unwrap();
@@ -720,7 +723,11 @@ mod tests {
             Err(e) => panic!("Unexpected error for {expr}: {}", e.to_string(&vm)),
         };
         dbg!(&e);
-        assert!(matches!(e, ErrorKind::STypeError { .. }))
+        assert!(matches!(e, ErrorKind::STypeError { .. }));
+        drop(vm);
+        dbg!(&perst_ref);
+        perst_ref.with(|r| r.x = 3.0);
+        dbg!(&perst_ref);
     }
 
     #[test]

@@ -6,22 +6,25 @@ use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
-use crate::subrs::IntoLisp;
+use crate::subrs::{IntoLisp, FromLisp};
 use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::mem::{self, size_of, align_of};
+use std::ops::{Deref, DerefMut};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt;
 use core::fmt::Debug;
+use std::sync::atomic::AtomicU32;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
 use fnv::FnvHashMap;
 use std::sync::Mutex;
 use std::collections::hash_map::Entry;
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::{Layout, alloc, dealloc, realloc};
+use std::sync::atomic;
 
 macro_rules! with_atom {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
@@ -292,6 +295,24 @@ pub struct Object {
     mem: *mut u8,
 }
 
+pub struct GcRc(AtomicU32);
+
+impl GcRc {
+    pub fn inc(&mut self) {
+        self.0.fetch_add(1, atomic::Ordering::SeqCst);
+    }
+
+    pub fn is_dropped(&mut self) -> bool {
+        self.0.fetch_sub(1, atomic::Ordering::SeqCst) == 0
+    }
+}
+
+#[repr(C)]
+pub struct RcMem<T> {
+    obj: T,
+    rc: GcRc
+}
+
 impl Debug for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Object {{ ")?;
@@ -327,6 +348,17 @@ fn simplify_types<'a, 'b>(ta: &'a str, tb: &'b str) -> (&'a str, &'b str) {
     (ta, tb)
 }
 
+pub unsafe fn ud_layout<T: Userdata>() -> Layout {
+    Layout::from_size_align(size_of::<RcMem<T>>(),
+                            align_of::<RcMem<T>>())
+        .unwrap_unchecked()
+}
+
+pub unsafe fn drop_ud<T: Userdata>(obj: *mut u8) {
+    drop_in_place(obj as *mut T);
+    dealloc(obj, ud_layout::<T>());
+}
+
 impl Object {
     pub fn new<T: Userdata>(obj: T) -> Object {
         lazy_static! {
@@ -336,21 +368,17 @@ impl Object {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
-        let layout = unsafe {
-            Layout::from_size_align(size_of::<T>(), align_of::<T>())
-                .unwrap_unchecked()
-        };
+        let layout = unsafe { ud_layout::<T>() };
         let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<T>()) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     type_name: type_name::<T>(),
                     drop: |obj| unsafe {
-                        drop_in_place(obj as *mut T);
-                        let layout =
-                            Layout::from_size_align(size_of::<T>(), align_of::<T>())
-                            .unwrap_unchecked();
-                        dealloc(obj, layout);
+                        let rc_mem = obj as *mut RcMem<T>;
+                        if (*rc_mem).rc.is_dropped() {
+                            drop_ud::<T>(obj);
+                        }
                     },
                     trace: delegate! { trace(gray) },
                     update_ptrs: delegate! { update_ptrs(reloc) },
@@ -362,6 +390,7 @@ impl Object {
         let mem = unsafe {
             let p = alloc(layout) as *mut T;
             *p = obj;
+            (*(p as *mut RcMem<T>)).rc.inc();
             p as *mut u8
         };
         Object {
@@ -371,7 +400,7 @@ impl Object {
         }
     }
 
-    pub fn cast<T: Userdata>(&self) -> Result<&T, Error> {
+    pub fn cast_mut_ptr<T: Userdata>(&self) -> Result<*mut T, Error> {
         if TypeId::of::<T>() != self.type_id {
             let expect_t = type_name::<T>();
             let actual_t = self.vt.type_name;
@@ -382,20 +411,27 @@ impl Object {
                         op: Builtin::Nil.sym(),
                         argn: 0)
         }
-        Ok(unsafe { &*(self.mem as *const T) })
+        Ok(self.mem as *mut T)
+    }
+
+    pub fn cast_ptr<T: Userdata>(&self) -> Result<*const T, Error> {
+        Ok(self.cast_mut_ptr()? as *const T)
+    }
+
+    pub fn cast<T: Userdata>(&self) -> Result<&T, Error> {
+        Ok(unsafe { &*(self.cast_mut_ptr()?) })
+    }
+
+    pub fn cast_mut<T: Userdata>(&mut self) -> Result<&mut T, Error> {
+        Ok(unsafe { &mut *(self.cast_mut_ptr()?) })
     }
 
     pub unsafe fn fastcast_mut<T: Userdata>(&mut self) -> &mut T {
         &mut*(self.mem as *mut T)
     }
 
-    pub fn cast_mut<T: Userdata>(&mut self) -> Result<&mut T, Error> {
-        let id = TypeId::of::<T>();
-        if id != self.type_id {
-            // FIXME: Better error
-            return err!(SomeError, msg: String::from("Object cast error"))
-        }
-        Ok(unsafe { self.fastcast_mut() })
+    pub unsafe fn fastcast<T: Userdata>(&self) -> &T {
+        &*(self.mem as *const T)
     }
 }
 
@@ -417,6 +453,185 @@ impl Drop for Object {
     fn drop(&mut self) {
         unsafe {
             (self.vt.drop)(self.mem);
+        }
+    }
+}
+
+/// Garbage-collected smart-pointer. Not thread-safe. Cheap to clone.
+///
+/// Remember that you have to actually run the VM occasionally for the GC to
+/// eventually drop these references.
+pub struct Gc<T> where T: Userdata {
+    this: *mut RcMem<T>,
+}
+
+impl<T: Userdata> Gc<T> where {
+    pub fn with<R>(&self, mut f: impl FnMut(&mut T) -> R) -> R {
+        f(unsafe { &mut *(self.this as *mut T) })
+    }
+}
+
+impl<T> Clone for Gc<T> where T: Userdata {
+    fn clone(&self) -> Self {
+        unsafe { (*self.this).rc.inc() }
+        Self { this: self.this }
+    }
+}
+
+impl<T> Debug for Gc<T> where T: Userdata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        unsafe { (*self.this).obj.fmt(f) }
+    }
+}
+
+impl<T> fmt::Display for Gc<T> where T: fmt::Display + Userdata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", unsafe { &(*self.this).obj })
+    }
+}
+
+/// SAFETY: This is safe for Userdata, because of the additional indirection.
+/// They are not stored inline by the GC, the GC only has a pointer to it. This
+/// means that unlike other PV ref-types the pointer does not move, and it is
+/// therefore sufficient to keep an SPV reference-counter to avoid
+/// dangling-pointer references.
+impl<T> FromLisp<Gc<T>> for PV where T: Userdata {
+    fn from_lisp(self, _mem: &mut Arena) -> Result<Gc<T>, Error> {
+        with_ref!(self, Struct(s) => {
+            let this = (s.cast_mut_ptr()? as *mut T) as *mut RcMem<T>;
+            unsafe { (*this).rc.inc() }
+            Ok(Gc { this })
+        })
+    }
+}
+
+impl<T: Userdata> Drop for Gc<T> {
+    fn drop(&mut self) {
+        unsafe {
+            if (*self.this).rc.is_dropped() {
+                drop_ud::<T>(self.this as *mut u8);
+            }
+        }
+    }
+}
+
+#[repr(C)]
+pub struct RcStr {
+    rc: GcRc,
+    len: u32,
+}
+
+impl RcStr {
+    pub unsafe fn layout_with(len: usize) -> Layout {
+        Layout::from_size_align_unchecked(
+            size_of::<RcStr>() + len, align_of::<RcStr>()
+        )
+    }
+
+    pub unsafe fn layout(&self) -> Layout {
+        Self::layout_with(self.len as usize)
+    }
+}
+
+impl AsRef<str> for RcStr {
+    fn as_ref(&self) -> &str {
+        unsafe {
+            let v = std::slice::from_raw_parts(
+                (self as *const RcStr as *const u8)
+                    .offset(size_of::<RcStr>() as isize),
+                self.len as usize
+            );
+            std::str::from_utf8_unchecked(v)
+        }
+    }
+}
+
+pub struct StrBuilder {
+    s: *mut RcStr,
+    sz: usize,
+}
+
+impl StrBuilder {
+    pub fn new(sz: usize) -> Self {
+        unsafe {
+            let layout = RcStr::layout_with(sz);
+            let s = alloc(layout) as *mut RcStr;
+            Self { s, sz }
+        }
+    }
+
+    pub fn push_char(&mut self, c: char) {
+        unsafe {
+            (*self.s).len += 1;
+            if (*self.s).len as usize > self.sz {
+                self.sz *= 2;
+                self.s = realloc(self.s as *mut u8,
+                                 RcStr::layout_with(self.sz),
+                                 1) as *mut RcStr;
+            }
+        }
+    }
+
+    pub fn push(&mut self, s: impl AsRef<str>) {
+        unsafe {
+            let s = s.as_ref();
+            (*self.s).len += s.len() as u32;
+            if (*self.s).len as usize > self.sz {
+                self.sz *= 2;
+                if self.sz < (*self.s).len as usize {
+                    self.sz = (*self.s).len as usize;
+                }
+                self.s = realloc(self.s as *mut u8,
+                                 RcStr::layout_with(self.sz),
+                                 1) as *mut RcStr;
+            }
+        }
+    }
+
+    pub fn fit(self) -> *mut RcStr {
+        unsafe {
+            let len = (*self.s).len as usize;
+            if self.sz == len {
+                self.s
+            } else {
+                realloc(self.s as *mut u8,
+                        RcStr::layout_with(len),
+                        1) as *mut RcStr
+            }
+        }
+    }
+
+    pub fn done(self) -> *mut RcStr {
+        self.s
+    }
+}
+
+impl<T: AsRef<str>> From<T> for Str {
+    fn from(s: T) -> Self {
+        let s = s.as_ref();
+        let sz = s.len();
+        let mut builder = StrBuilder::new(sz);
+        builder.push(s);
+        Str(builder.done())
+    }
+}
+
+// TODO: Replace the String type with this
+pub struct Str(*mut RcStr);
+
+impl Clone for Str {
+    fn clone(&self) -> Self {
+        unsafe { (*self.0).rc.inc() }
+        Self(self.0.clone())
+    }
+}
+
+impl Drop for Str {
+    fn drop(&mut self) {
+        unsafe {
+            if (*self.0).rc.is_dropped() {
+                dealloc(self.0 as *mut u8, (*self.0).layout())
+            }
         }
     }
 }

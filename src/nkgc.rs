@@ -6,6 +6,7 @@ use crate::r8vm::{RuntimeError, ArgSpec, ArgInt, R8VM};
 use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
+use crate::subrs::FromLisp;
 use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
 use std::collections::HashMap;
@@ -13,7 +14,7 @@ use std::collections::hash_map::Entry;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::{str, char};
 use std::ptr;
 use std::time::Duration;
@@ -135,18 +136,9 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a T> {
     }
 }
 
-pub struct Str {
-    len: usize,
-    buf: *const u8,
-    rc: SPV,
-}
-
-impl AsRef<str> for Str {
-    fn as_ref(&self) -> &str {
-        unsafe {
-            let slice = std::slice::from_raw_parts(self.buf, self.len);
-            std::str::from_utf8_unchecked(slice)
-        }
+impl<T> FromLisp<T> for PV where T: TryFrom<PV, Error = Error> {
+    fn from_lisp(self, _mem: &mut Arena) -> Result<T, Error> {
+        self.try_into()
     }
 }
 
