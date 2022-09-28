@@ -515,127 +515,6 @@ impl<T: Userdata> Drop for Gc<T> {
     }
 }
 
-#[repr(C)]
-pub struct RcStr {
-    rc: GcRc,
-    len: u32,
-}
-
-impl RcStr {
-    pub unsafe fn layout_with(len: usize) -> Layout {
-        Layout::from_size_align_unchecked(
-            size_of::<RcStr>() + len, align_of::<RcStr>()
-        )
-    }
-
-    pub unsafe fn layout(&self) -> Layout {
-        Self::layout_with(self.len as usize)
-    }
-}
-
-impl AsRef<str> for RcStr {
-    fn as_ref(&self) -> &str {
-        unsafe {
-            let v = std::slice::from_raw_parts(
-                (self as *const RcStr as *const u8)
-                    .offset(size_of::<RcStr>() as isize),
-                self.len as usize
-            );
-            std::str::from_utf8_unchecked(v)
-        }
-    }
-}
-
-pub struct StrBuilder {
-    s: *mut RcStr,
-    sz: usize,
-}
-
-impl StrBuilder {
-    pub fn new(sz: usize) -> Self {
-        unsafe {
-            let layout = RcStr::layout_with(sz);
-            let s = alloc(layout) as *mut RcStr;
-            Self { s, sz }
-        }
-    }
-
-    pub fn push_char(&mut self, c: char) {
-        unsafe {
-            (*self.s).len += 1;
-            if (*self.s).len as usize > self.sz {
-                self.sz *= 2;
-                self.s = realloc(self.s as *mut u8,
-                                 RcStr::layout_with(self.sz),
-                                 1) as *mut RcStr;
-            }
-        }
-    }
-
-    pub fn push(&mut self, s: impl AsRef<str>) {
-        unsafe {
-            let s = s.as_ref();
-            (*self.s).len += s.len() as u32;
-            if (*self.s).len as usize > self.sz {
-                self.sz *= 2;
-                if self.sz < (*self.s).len as usize {
-                    self.sz = (*self.s).len as usize;
-                }
-                self.s = realloc(self.s as *mut u8,
-                                 RcStr::layout_with(self.sz),
-                                 1) as *mut RcStr;
-            }
-        }
-    }
-
-    pub fn fit(self) -> *mut RcStr {
-        unsafe {
-            let len = (*self.s).len as usize;
-            if self.sz == len {
-                self.s
-            } else {
-                realloc(self.s as *mut u8,
-                        RcStr::layout_with(len),
-                        1) as *mut RcStr
-            }
-        }
-    }
-
-    pub fn done(self) -> *mut RcStr {
-        self.s
-    }
-}
-
-impl<T: AsRef<str>> From<T> for Str {
-    fn from(s: T) -> Self {
-        let s = s.as_ref();
-        let sz = s.len();
-        let mut builder = StrBuilder::new(sz);
-        builder.push(s);
-        Str(builder.done())
-    }
-}
-
-// TODO: Replace the String type with this
-pub struct Str(*mut RcStr);
-
-impl Clone for Str {
-    fn clone(&self) -> Self {
-        unsafe { (*self.0).rc.inc() }
-        Self(self.0.clone())
-    }
-}
-
-impl Drop for Str {
-    fn drop(&mut self) {
-        unsafe {
-            if (*self.0).rc.is_dropped() {
-                dealloc(self.0 as *mut u8, (*self.0).layout())
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Continuation {
     stack: Option<Vec<PV>>,
@@ -703,6 +582,7 @@ fissile_types! {
     (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
     (VLambda, Builtin::Lambda.sym(), crate::nkgc::VLambda),
     (String, Builtin::String.sym(), std::string::String),
+    (Str, Builtin::String.sym(), Str),
     (PV, Builtin::Ref.sym(), crate::nkgc::PV),
     (Vector, Builtin::Vector.sym(), Vec<PV>),
     (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),

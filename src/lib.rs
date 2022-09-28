@@ -65,10 +65,12 @@ pub(crate) mod module;
 pub mod repl;
 pub mod deserialize;
 pub mod scratch;
+pub mod string;
 
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
 pub use nuke::Gc;
+pub use string::Str;
 use subrs::FromLisp;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
