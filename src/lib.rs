@@ -202,7 +202,7 @@ impl AsSym for SymID {
     }
 }
 
-impl Spaik where {
+impl Spaik {
     /// Create a new SPAIK VM
     #[inline]
     pub fn new() -> Spaik {

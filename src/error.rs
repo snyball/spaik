@@ -75,6 +75,7 @@ pub enum ErrorKind {
     UndefinedFunctionString { name: String },
     UndefinedVariableString { name: String },
     ModuleLoadError { lib: SymID },
+    ModuleNotFound { lib: SymID },
     Unsupported { op: &'static str },
     IllegalVariableDeclaration { decl: Value },
     Traceback { tb: Box<Traceback> },
@@ -216,6 +217,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             write!(f, "Unsupported operation: {}", op)?,
         ModuleLoadError { lib } =>
             write!(f, "Module Error: Unable to load module {}", nameof(*lib))?,
+        ModuleNotFound { lib } =>
+            write!(f, "Module Not Found: Could not find {}, check sys/load-path", nameof(*lib))?,
         IllegalVariableDeclaration { decl } =>
             write!(f, "Syntax Error: Illegal variable declaration: {}",
                    tostring(decl))?,

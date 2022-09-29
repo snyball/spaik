@@ -18,7 +18,7 @@ use crate::{
     sym_db::SymDB, FmtErr,
 };
 use fnv::FnvHashMap;
-use std::{io, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex};
+use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex, path::PathBuf};
 
 chasm_def! {
     r8c:
@@ -1136,16 +1136,37 @@ impl R8VM {
 
     pub fn load(&mut self, lib: SymID) -> Result<SymID, Error> {
         let sym_name = self.sym_name(lib).to_string();
-        let err = ErrorKind::ModuleLoadError { lib };
-        let src_path = format!("lisp/{}.lisp", &sym_name);
-        let mut file = File::open(&src_path).map_err(|_| err.clone())?;
-        let mut src = String::new();
-        file.read_to_string(&mut src).map_err(|_| err)?;
-        self.load_with(src_path, lib, src)
+        let mut path = String::new();
+        let it = self.var(Builtin::SysLoadPath.sym())?
+                     .make_iter()
+                     .map_err(|e| e.op(Builtin::SysLoadPath.sym()))?;
+        for (i, p) in it.enumerate() {
+            path.push_str(with_ref!(p, String(s) => {Ok(&*s)})
+                          .map_err(|e| e.argn(i as u32)
+                                        .op(Builtin::SysLoadPath.sym()))?);
+            path.push_str("/");
+            path.push_str(&sym_name);
+            let extd = path.len();
+            for ext in &[".sp", ".spk", ".lisp"] {
+                path.push_str(&ext);
+                if let Ok(src) = fs::read_to_string(&path) {
+                    return self.load_with(path, lib, src);
+                }
+                path.drain(extd..).for_each(drop);
+            }
+            path.clear();
+        }
+        err!(ModuleNotFound, lib)
     }
 
     pub fn consts_top(&self) -> usize {
         self.consts.len()
+    }
+
+    pub fn var(&self, sym: SymID) -> Result<PV, Error> {
+        let idx = self.get_env_global(sym)
+                      .ok_or(error!(UndefinedVariable, var: sym))?;
+        Ok(self.mem.get_env(idx))
     }
 
     pub fn get_env_global(&self, name: SymID) -> Option<usize> {
