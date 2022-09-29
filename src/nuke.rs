@@ -66,16 +66,22 @@ macro_rules! with_atom_inst {
 }
 
 
-/// SAFETY: No. Do not implement this trait directly.
-///         Add your new internal heap-storage type to the fissile_types! {...}
-///         list, or just use Object. This is essentially just a marker-type.
+/// Structs that can be stored inline in the GC `Arena` memory must implement
+/// this trait.
 ///
-///         What makes it really gnarly to implement this trait yourself,
-///         without adding it to fissile_types!{...} is that type_of() is used
-///         as an index into `DESTRUCTORS` when deallocating unreachable GC
-///         objects, and to figure out which pointers to follow during the GC
-///         mark phase. This will obviously cause UB if the memory layout of your
-///         type isn't what the destructor, or `trace`/`update_ptrs` expects
+/// # Safety
+///
+/// No. Not safe. Do not implement this trait directly.
+///
+/// Add your new internal heap-storage type to the `fissile_types! {...}`
+/// list, or just use `Object`. This is essentially just a marker-type.
+///
+/// What makes it really gnarly to implement this trait yourself,
+/// without adding it to `fissile_types! {...}` is that `type_of()` is used
+/// as an index into `DESTRUCTORS` when deallocating unreachable GC
+/// objects, and to figure out which pointers to follow during the GC
+/// mark phase. This will obviously cause UB if the memory layout of your
+/// type isn't what the destructor, or `trace`/`update_ptrs` expects
 pub unsafe trait Fissile: LispFmt + Debug + Clone + Traceable + Any + 'static {
     fn type_of() -> NkT;
 }
@@ -195,6 +201,8 @@ macro_rules! fissile_types {
     };
 }
 
+/// Marker-trait for data that can be stored inside a SPAIK `Object`, and
+/// referred to from Rust using `Gc<T>`.
 pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any + 'static {}
 
 pub trait CloneIterator: Iterator + Traceable {
@@ -272,19 +280,28 @@ impl Iterator for Iter {
     }
 }
 
-/// Rust doesn't expose its vtables
+/// Rust doesn't expose its vtables via any stable API, so we need to recreate
+/// what we need for `Object` here.
 #[derive(Clone)]
 pub struct VTable {
+    /// Result of `Any::type_name`
     type_name: &'static str,
+    /// `Traceable::trace`
     trace: unsafe fn(*const u8, gray: &mut Vec<*mut NkAtom>),
+    /// `Traceable::update_ptrs`
     update_ptrs: unsafe fn(*mut u8, reloc: &PtrMap),
+    /// `Drop::drop`
     drop: unsafe fn(*mut u8),
+    /// `LispFmt::lisp_fmt`
     lisp_fmt: unsafe fn(*const u8, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
 }
 
 unsafe impl Send for VTable {}
 
+/// How SPAIK sees objects internally, for referring to objects outside of the
+/// SPAIK internals (library user code) see `Gc<T>`.
 #[derive(Clone)]
 pub struct Object {
     type_id: TypeId,
@@ -292,9 +309,12 @@ pub struct Object {
     /// This indirection allows us to safely pass references to the underlying T
     /// to user code, without having to worry about updating the pointer when
     /// the GC compacts.
+    ///
+    /// See RcMem<T> for the actual layout of this memory.
     mem: *mut u8,
 }
 
+/// Reference-counter for `Object` memory, see `RcMem`
 pub struct GcRc(AtomicU32);
 
 impl GcRc {
@@ -307,8 +327,13 @@ impl GcRc {
     }
 }
 
+/// A `T` with a reference-counter stored right after it, uses repr(C) for
+/// consistent memory layout.
 #[repr(C)]
 pub struct RcMem<T> {
+    /// `obj` *must* be the first item of this struct, the `Object`
+    /// implementation relies on being able to coerce an `*mut RcMem<T>` into a
+    /// `*mut T`.
     obj: T,
     rc: GcRc
 }
@@ -499,7 +524,8 @@ impl<T> fmt::Display for Gc<T> where T: fmt::Display + Userdata {
     }
 }
 
-/// SAFETY: This is safe for Userdata, because of the additional indirection.
+/// # Safety
+/// This is safe for Userdata, because of the additional indirection.
 /// They are not stored inline by the GC, the GC only has a pointer to it. This
 /// means that unlike other PV ref-types the pointer does not move, and it is
 /// therefore sufficient to keep an SPV reference-counter to avoid

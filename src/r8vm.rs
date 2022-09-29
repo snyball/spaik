@@ -1508,8 +1508,7 @@ impl R8VM {
         Traceback { frames, err }
     }
 
-    unsafe fn run_from_unwind(&mut self, offs: usize) -> Result<usize,
-                                                                Traceback> {
+    unsafe fn run_from_unwind(&mut self, offs: usize) -> Result<usize, Traceback> {
         self.catch();
         let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
@@ -1540,11 +1539,10 @@ impl R8VM {
                               }))
                           .map(|func| func.pos)?;
             self.call_pre(ip);
-            self.frame =
-                self.mem.stack.len()
-                - 2
-                - nargs as usize
-                - has_env as usize;
+            self.frame = self.mem.stack.len()
+                       - 2
+                       - nargs as usize
+                       - has_env as usize;
             Ok(self.ret_to(pos))
         }, Subroutine(subr) => {
             // SAFETY: The Subr trait is marked unsafe, read the associated

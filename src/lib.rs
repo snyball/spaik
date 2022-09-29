@@ -702,7 +702,8 @@ mod tests {
         vm.set("wrong-obj", wrong_obj);
         vm.set("src-obj", src_obj.clone());
         vm.set("dst-obj", dst_obj.clone());
-        let perst_ref: Gc<TestObj> = vm.get("dst-obj").unwrap();
+        let mut perst_ref: Gc<TestObj> = vm.get("dst-obj").unwrap();
+        let mut perst_ref_2: Gc<TestObj> = vm.get("dst-obj").unwrap();
         vm.exec("(my-function 1 1 src-obj dst-obj)").unwrap();
         vm.exec("(println dst-obj)").unwrap();
         let x: f32 = vm.eval("(obj-x dst-obj)").unwrap();
