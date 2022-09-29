@@ -1,6 +1,4 @@
-/*!
- * The Nuclear Allocator
- */
+//! The Nuclear Allocator
 
 use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
