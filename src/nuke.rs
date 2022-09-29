@@ -480,13 +480,24 @@ impl Drop for Object {
     }
 }
 
-/// Garbage-collected smart-pointer. Not thread-safe. Cheap to clone.
+/// Thread-safe reference-counted smart-pointer. Cheap to clone. Used to refer
+/// to `Userdata` stored on the SPAIK heap.
+///
+/// Gc<T> survives your VM getting dropped, so you can create a reference to
+/// something that you intend for a VM to modify, and then keep the reference
+/// after the VM is no longer necessary.
 ///
 /// Remember that you have to actually run the VM occasionally for the GC to
 /// eventually drop these references.
+///
+/// In order for Gc<T> to be `Send`/`Sync` it requires that `T` is too, it
+/// doesn't do any synchronization magic on `T` itself.
 pub struct Gc<T> where T: Userdata {
     this: *mut RcMem<T>,
 }
+
+unsafe impl<T: ?Sized + Sync + Send + Userdata> Send for Gc<T> {}
+unsafe impl<T: ?Sized + Sync + Send + Userdata> Sync for Gc<T> {}
 
 impl<T: Userdata> Gc<T> {
     /// # Why does this take an `Fn` instead of an `FnMut`?
