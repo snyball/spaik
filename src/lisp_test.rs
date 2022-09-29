@@ -72,6 +72,7 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let mut vm = R8VM::new();
     let tests_path = "./tests";
     let test = vm.sym_id("test");
+    vm.eval(r#"(push sys/load-path "./lisp")"#).fmt_unwrap(&vm);
 
     if let Err(e) = vm.load(test) {
         println!("{}", e.to_string(&vm));
