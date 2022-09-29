@@ -1031,7 +1031,8 @@ impl R8VM {
         addfn!(iter);
 
         let core_sym = vm.sym_id("<ζ>::core");
-        let entry = vm.load_with("<ζ>::core", core_sym, include_str!("../lisp/core.lisp"))
+        let core = include_str!("../lisp/core.lisp");
+        let entry = vm.load_with("<ζ>::core", core_sym, core)
                       .fmt_unwrap(&vm);
         vm.call(entry, &()).fmt_unwrap(&vm);
 
@@ -1127,7 +1128,15 @@ impl R8VM {
                                 Some(Cow::from(src_path.as_ref().to_string())))?;
         let mut cc = R8Compiler::new(self);
         cc.compile_top(true, &ast)?;
+        let globs = cc.globals()
+                      .map(|v| v.map(|(u, v)| (*u, *v))
+                                .collect::<Vec<_>>());
         let (mut asm, lbls, consts, srcs) = cc.link()?;
+        if let Some(globs) = globs {
+            for (name, idx) in globs {
+                self.globals.insert(name, idx);
+            }
+        }
         asm.push(r8c::Op::RET());
         let fn_sym = self.mem.symdb.put(format!("<Σ>::{}", sym_name));
         self.add_func(fn_sym, (asm, lbls, consts, srcs), ArgSpec::none(), vec![]);
