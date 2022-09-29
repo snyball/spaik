@@ -1484,6 +1484,10 @@ impl R8VM {
                                      src });
 
             self.mem.stack.drain(frame..frame+nenv).for_each(drop);
+            if frame >= self.mem.stack.len() {
+                vmprintln!(self, "Warning: Incomplete stack trace!");
+                break;
+            }
             ip = match self.mem.stack[frame] {
                 PV::UInt(x) => x,
                 _ => {
@@ -1558,10 +1562,8 @@ impl R8VM {
             self.mem.push(res?);
             Ok(self.ret_to(dip))
         }, Continuation(cont) => {
-            println!("run cont");
             ArgSpec::normal(1).check(Builtin::Continuation.sym(), nargs)?;
             let cont_stack = cont.take_stack()?;
-            println!("got stack");
 
             let pv = self.mem.pop().unwrap();
             self.mem.stack.drain(idx..).for_each(drop); // drain gang
@@ -1576,7 +1578,6 @@ impl R8VM {
             self.mem.stack.push(pv);
             self.frame = cont.frame;
             let res = unsafe { self.run_from_unwind(cont.dip) };
-            dbg!(&res);
 
             // pop state
             let mut stack = mem::replace(&mut self.mem.stack,
