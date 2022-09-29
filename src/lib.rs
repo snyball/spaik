@@ -614,7 +614,6 @@ mod tests {
             Test { id: i32 },
         }
         let mut vm = Spaik::new();
-        vm.exec("(load 'async)").unwrap();
         vm.exec("(defvar init-var nil)").unwrap();
         vm.exec("(defun init () (set init-var 'init))").unwrap();
         vm.exec(r#"(defun event-0 (x)
