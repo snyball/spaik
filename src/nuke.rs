@@ -465,9 +465,17 @@ pub struct Gc<T> where T: Userdata {
     this: *mut RcMem<T>,
 }
 
-impl<T: Userdata> Gc<T> where {
+impl<T: Userdata> Gc<T> {
+    /// # Why does this take an `Fn` instead of an `FnMut`?
+    ///
+    /// Because you should not be able to call `with` on a potentially aliased
+    /// Gc<T> inside `with` recursively, then you could have multiple `&mut`
+    /// references to the same data and that is UB in Rust.
+    ///
+    /// You should use `with` only for simple setter/getter operations on the
+    /// underlying `T` and nothing else.
     #[inline]
-    pub fn with<R>(&self, mut f: impl FnMut(&mut T) -> R) -> R {
+    pub fn with<R>(&mut self, f: impl Fn(&mut T) -> R) -> R {
         f(unsafe { &mut *(self.this as *mut T) })
     }
 }
