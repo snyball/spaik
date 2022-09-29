@@ -374,6 +374,23 @@ impl Spaik {
         self.vm.mem.full_collection()
     }
 
+    /// Add to load path, this influences where `Spaik::load` will search for
+    /// spaik files.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `sys/load-path` variable is not defined, or is not a
+    /// vector.
+    pub fn add_load_path(&mut self, path: impl AsRef<str>) {
+        let p = self.vm.var(Builtin::SysLoadPath.sym())
+                       .fmt_unwrap(&self.vm);
+        let s = self.vm.mem.put(path.as_ref().to_string());
+        with_ref_mut!(p, Vector(v) => {
+            v.push(s);
+            Ok(())
+        }).fmt_unwrap(&self.vm);
+    }
+
     /// Move the VM off-thread and return a `SpaikPlug` handle for IPC.
     pub fn fork<T, Cmd>(mut self) -> SpaikPlug<T, Cmd>
         where T: DeserializeOwned + Send + Debug + Clone + 'static,
