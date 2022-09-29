@@ -466,6 +466,7 @@ pub struct Gc<T> where T: Userdata {
 }
 
 impl<T: Userdata> Gc<T> where {
+    #[inline]
     pub fn with<R>(&self, mut f: impl FnMut(&mut T) -> R) -> R {
         f(unsafe { &mut *(self.this as *mut T) })
     }

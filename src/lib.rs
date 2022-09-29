@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn register_fn_mutate_struct() {
-        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Fissile)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         pub struct TestObj {
             x: f32,
             y: f32,
