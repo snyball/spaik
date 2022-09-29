@@ -77,17 +77,37 @@ pub use nuke::Userdata;
 
 /// This module makes it possible to interact with SPAIK internals.
 ///
-/// Everything in `raw::*` is marked as unstable and might change upon the next
-/// release even in SemVer minor releases. It is *not* a stable public API.
+/// Everything in `raw::*` which is not re-exported by the top level spaik
+/// module is implicitly marked as unstable and can change upon the next release
+/// even in SemVer minor releases. `spaik::raw` is *not* a stable public API.
 ///
 /// Using functions from this module incorrectly can cause memory-unsafety issues.
+///
+/// Now with that out of the way: Happy Hacking!
 pub mod raw {
+    /// # R8VM: The Rodent Virtual Machine
+    ///
+    /// Trivia: In Norwegian, R8 is pronounced as "rotte", which means "rat".
     pub mod r8vm { pub use crate::r8vm::*; }
+    /// # The Nuclear Garbage Collector
     pub mod nkgc { pub use crate::nkgc::*; }
+    /// # The Nuclear Allocator
+    pub mod nuke { pub use crate::nuke::*; }
+    /// # Subroutine routines
+    pub mod subrs { pub use crate::subrs::*; }
+    /// # Compiler
+    pub mod compile { pub use crate::compile::*; }
+    /// # String interning
+    pub mod sintern { pub use crate::sintern::*; }
+    /// # ChASM /ˈkæz(ə)m/, an assembler
+    pub mod chasm { pub use crate::chasm::*; }
+    /// # LispFmt and friends
+    pub mod fmt { pub use crate::fmt::*; }
+    /// # SymDB
+    pub mod sym_db { pub use crate::sym_db::*; }
+    /// # S-Expression parser
+    pub mod sexpr_parse { pub use crate::sexpr_parse::*; }
 }
-
-//pub mod asm_parse;
-//pub mod arg_parse_tests;
 
 use std::borrow::Cow;
 use std::fmt::Debug;
