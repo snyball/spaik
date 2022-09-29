@@ -72,6 +72,7 @@ impl StrBuilder {
 
     pub fn fit(self) -> *mut RcStr {
         unsafe {
+            (*self.s).rc.inc();
             let len = (*self.s).len as usize;
             if self.sz == len {
                 self.s
@@ -84,19 +85,10 @@ impl StrBuilder {
     }
 
     pub fn done(self) -> *mut RcStr {
+        unsafe { (*self.s).rc.inc() }
         self.s
     }
 }
-
-// impl<T: AsRef<str>> From<T> for *mut RcStr {
-//     fn from(s: T) -> Self {
-//         let s = s.as_ref();
-//         let sz = s.len();
-//         let mut builder = StrBuilder::new(sz);
-//         builder.push(s);
-//         builder.done()
-//     }
-// }
 
 // TODO: Replace the String type with this
 #[derive(Debug)]
