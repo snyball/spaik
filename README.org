@@ -20,28 +20,34 @@ somewhat complex example showcasing some of SPAIKs features.
 use spaik::{Spaik, EnumCall, Promise, Fissile, spaikfn};
 use serde::Deserialize;
 
+// SPAIK makes it easy to implement the command-pattern using call-by-enum
 #[derive(EnumCall)]
 enum Command {
     Funky(i32),
 }
 
+// We use serdes Deserialize trait to construct complex Rust types from s-expressions
 #[derive(Deserialize)]
 enum Response {
     HowLoud,
 }
 
+// We'll be putting some functions into `Fns`
 struct Fns;
 
+// In order to work with this `History` struct
 #[derive(Fissile)]
 struct History {
     tracks: Vec<String>
 }
 
+// One for adding history
 #[spaikfn(Fns)]
 fn add_to_history(hist: &mut History, item: String) {
     hist.tracks.push(item);
 }
 
+// One for creating the `History` struct
 #[spaikfn(Fns)]
 fn new_history() -> History {
     History { tracks: vec![] }
@@ -49,8 +55,12 @@ fn new_history() -> History {
 
 fn api_func_call() -> Result<(), Box<dyn std::error::Error>> {
     let mut vm = Spaik::new()?;
+
+    // We'll register the functions so that they're callable from SPAIK
     vm.register(Fns::add_to_history)?;
     vm.register(Fns::new_history)?;
+
+    // Then we set up the load-path and load the script
     vm.add_load_path("examples")?;
     vm.load("funk.lisp")?;
 
