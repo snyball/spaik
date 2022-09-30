@@ -182,6 +182,7 @@ builtins! {
     (If, "if"),
     (Compile, "compile"),
     (Send, "send"),
+    (Async, "async"),
     (ZSendMessage, "<ζ>::send-message"),
     (SymID, "sym-id"),
     (Continuation, "continuation"),

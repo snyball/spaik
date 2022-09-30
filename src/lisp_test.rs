@@ -86,7 +86,7 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
         let path_s = path.to_str().expect("utf8 error");
         let sym = vm.sym_id(path_s);
         let entry = vm.load_with(path_s, sym, &test_src).fmterr(&vm)?;
-        match vm.call(entry, &()) {
+        match vm.call(entry, ()) {
             Ok(_) => println!("Loaded {}", path.display()),
             Err(e) => {
                 println!("Error when loading {}", path.display());
@@ -109,7 +109,7 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                      .chars()
                      .skip(test_fn_prefix.len())
                      .collect::<String>();
-        match vm.call_spv(*func, &()) {
+        match vm.call_spv(*func, ()) {
             Ok(res) => match TestResult::new(res, &mut vm) {
                 Some(TestResult::Pass) =>
                     println!("  - {} [{}]", name.bold(), "✓".green().bold()),

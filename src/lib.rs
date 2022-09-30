@@ -353,7 +353,7 @@ impl Spaik {
         where PV: FromLisp<R>
     {
         let sym = sym.as_sym(&mut self.vm);
-        self.vm.call(sym, &args)
+        self.vm.call(sym, args)
                .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
                .map_err(|e| Error::from_source(e, self))
     }
@@ -406,14 +406,14 @@ impl Spaik {
                 match ev {
                     Event::Stop => break,
                     Event::Promise { res, cont } => {
-                        let res = self.vm.apply_spv(cont, &*res);
+                        let res = self.vm.apply_spv(cont, res);
                         if let Err(e) = res {
                             log::error!("{}", e.to_string(&self.vm));
                         }
                     }
                     Event::Event { name, args } => {
                         let sym = name.as_sym(&mut self.vm);
-                        let res = self.vm.call(sym, &*args).and_then(|pv| {
+                        let res = self.vm.call(sym, args).and_then(|pv| {
                             let r: Ignore = pv.try_into()?;
                             Ok(r)
                         });

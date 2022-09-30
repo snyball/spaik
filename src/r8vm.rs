@@ -861,13 +861,48 @@ pub trait EnumCall {
 }
 
 pub trait Args {
-    fn pusharg(&self, mem: &mut Arena) -> Result<(), Error>;
+    fn pusharg(self, mem: &mut Arena) -> Result<(), Error>;
+    fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error>;
     fn nargs(&self) -> usize;
 }
 
+pub trait AsArgs {
+    fn inner_pusharg(self, mem: &mut Arena) -> Result<(), Error>;
+    fn inner_nargs(&self) -> usize;
+}
+
+impl<T> AsArgs for T where T: Args {
+    #[inline(always)]
+    fn inner_pusharg(self, mem: &mut Arena) -> Result<(), Error> {
+        self.pusharg(mem)
+    }
+
+    #[inline(always)]
+    fn inner_nargs(&self) -> usize {
+        self.nargs()
+    }
+}
+
+impl AsArgs for Box<dyn Args + Send> {
+    fn inner_pusharg(self, mem: &mut Arena) -> Result<(), Error> {
+        self.pusharg_ref(mem)
+    }
+
+    fn inner_nargs(&self) -> usize {
+        self.nargs()
+    }
+}
+
 impl Args for &[PV] {
-    fn pusharg(&self, mem: &mut Arena) -> Result<(), Error> {
+    fn pusharg(self, mem: &mut Arena) -> Result<(), Error> {
         for arg in self.iter().copied() {
+            mem.push(arg);
+        }
+        Ok(())
+    }
+
+    fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error> {
+        for arg in self.into_iter().copied() {
             mem.push(arg);
         }
         Ok(())
@@ -879,8 +914,15 @@ impl Args for &[PV] {
 }
 
 impl<const N: usize> Args for &[PV; N] {
-    fn pusharg(&self, mem: &mut Arena) -> Result<(), Error> {
+    fn pusharg(self, mem: &mut Arena) -> Result<(), Error> {
         for arg in self.iter().copied() {
+            mem.push(arg);
+        }
+        Ok(())
+    }
+
+    fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error> {
+        for arg in self.into_iter().copied() {
             mem.push(arg);
         }
         Ok(())
@@ -894,16 +936,23 @@ impl<const N: usize> Args for &[PV; N] {
 macro_rules! impl_args_tuple {
     ($($arg:ident),*) => {
         impl<$($arg),*> Args for ($($arg),*,)
-            where $($arg: crate::subrs::RefIntoLisp),*
+            where $($arg: crate::subrs::IntoLisp + crate::subrs::RefIntoLisp ),*
         {
-            fn pusharg(&self, mem: &mut Arena) -> Result<(), Error> {
+            fn pusharg(self, mem: &mut Arena) -> Result<(), Error> {
                 #[allow(non_snake_case)]
                 let ($($arg),*,) = self;
-                $(
-                    #[allow(non_snake_case)]
-                    let $arg = $arg.ref_into_pv(mem)?;
-                    mem.push($arg);
-                )*
+                $(#[allow(non_snake_case)]
+                  let $arg = $arg.into_pv(mem)?;
+                  mem.push($arg);)*
+                Ok(())
+            }
+
+            fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error> {
+                #[allow(non_snake_case)]
+                let ($($arg),*,) = self;
+                $(#[allow(non_snake_case)]
+                  let $arg = $arg.ref_into_pv(mem)?;
+                  mem.push($arg);)*
                 Ok(())
             }
 
@@ -915,7 +964,8 @@ macro_rules! impl_args_tuple {
 }
 
 impl Args for () {
-    fn pusharg(&self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
+    fn pusharg(self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
+    fn pusharg_ref(&self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
     fn nargs(&self) -> usize { 0 }
 }
 
@@ -939,7 +989,7 @@ unsafe impl Send for R8VM {}
 const MAX_CLZCALL_ARGS: u16 = 12;
 
 #[inline]
-fn clzcall_pad_dip(nargs: u16) -> usize {
+const fn clzcall_pad_dip(nargs: u16) -> usize {
     debug_assert!(nargs <= MAX_CLZCALL_ARGS);
     // NOTE: See R8VM::new, it creates a MAX_CLZCALL_ARGS number of
     // CLZCALL(n)/RET bytecodes after the first HCF bytecode.
@@ -1034,7 +1084,7 @@ impl R8VM {
         let core = include_str!("../lisp/core.lisp");
         let entry = vm.load_with("<ζ>::core", core_sym, core)
                       .fmt_unwrap(&vm);
-        vm.call(entry, &()).fmt_unwrap(&vm);
+        vm.call(entry, ()).fmt_unwrap(&vm);
 
         vm
     }
@@ -1994,29 +2044,25 @@ impl R8VM {
      * - `sym` : Symbol mapped to the function, see Arena::sym.
      * - `args` : Arguments that should be passed.
      */
-    pub fn call<A>(&mut self, sym: SymID, args: &A) -> Result<PV, Error>
-        where A: Args + ?Sized
-    {
-        Ok(vm_call_with!(self, sym, args.nargs(), { args.pusharg(&mut self.mem)? }))
+    pub fn call(&mut self, sym: SymID, args: impl AsArgs) -> Result<PV, Error> {
+        Ok(vm_call_with!(self, sym, args.inner_nargs(), {
+            args.inner_pusharg(&mut self.mem)?
+        }))
     }
 
-    pub fn call_spv<A>(&mut self, sym: SymID, args: &A) -> Result<SPV, Error>
-        where A: Args + ?Sized
-    {
+    pub fn call_spv(&mut self, sym: SymID, args: impl AsArgs) -> Result<SPV, Error> {
         let res = self.call(sym, args)?;
         Ok(self.mem.make_extref(res))
     }
 
-    pub fn apply_spv<A>(&mut self, f: SPV, args: &A) -> Result<(), Error>
-        where A: Args + ?Sized
-    {
+    pub fn apply_spv(&mut self, f: SPV, args: impl AsArgs) -> Result<(), Error> {
         let frame = self.frame;
         self.frame = self.mem.stack.len();
         self.mem.push(PV::UInt(0));
         self.mem.push(PV::UInt(frame));
         self.mem.push(f.pv(self));
-        args.pusharg(&mut self.mem)?;
-        let pos = clzcall_pad_dip(args.nargs() as u16);
+        let pos = clzcall_pad_dip(args.inner_nargs() as u16);
+        args.inner_pusharg(&mut self.mem)?;
         unsafe {
             self.run_from_unwind(pos)?;
         }
