@@ -1,7 +1,12 @@
 #+TITLE: SPAIK
 
-The *SPAIK*-LISP programming language, with a [[https://moesys.no/en/#spaik][live webassembly demo]]! Here's a
-somewhat complex example showcasing some of SPAIKs features.
+The *SPAIK*-LISP programming language, a dynamic extension language for Rust
+applications.
+
+*SPAIK* compiles to bytecode which is executed by the Rodent VM, and uses a
+moving garbage collector called NUKE. In addition to standard affairs like loops
+and conditionals it has iterators, continuations, and of course macros. The
+following somewhat long example showcases many of its features.
 
 #+begin_src lisp
 (defvar history (new-history))
@@ -90,10 +95,6 @@ fn api_func_call() -> Result<(), Box<dyn std::error::Error>> {
 }
 #+end_src
 
-*SPAIK* compiles to bytecode which is executed by its VM, and uses a moving
-garbage collector. In addition to standard affairs like loops and conditionals
-it has iterators, continuations, and of course macros.
-
 * What can I use this for?
 *SPAIK* is designed as an embedded scripting language. Its goal is to be
 reasonably performant, like PUC Lua, but unlike PUC Lua it aims to have a safe
@@ -106,3 +107,16 @@ applications.
 See ~lisp/test.lisp~ and the ~tests/*.lisp~ files for an example of a non-trivial
 macro, and ~lisp/self.lisp~ for a non-trivial program. You can also check out
 the standard library at ~lisp/stdlib.lisp~.
+
+* Trivia
+The SPAIK VM is referred to in code as ~r8vm~, and in speech as "The Rodent
+Virtual Machine" or "Rodent VM". This is a pun on V8, and the fact that R8 is
+pronounced like "rotte" in Norwegian, meaning "rat."
+
+The SPAIK GC is referred to as the "Nuclear Garbage Collector," I find it
+fitting both because it is a compacting garbage collector, which is kind of the
+nuclear solution to memory fragmentation. But also because of the association
+between radioactivity and ~unsafe~ in Rust, and ~nkgc~ contains a lot of that.
+The nuclear theme carries over into the ~Fissile~ trait, and ~Fissile~
+derive-macro for values that can be stored in the SPAIK heap (the ~nuke~, if you
+will.)
