@@ -67,7 +67,7 @@ fn api_func_call() -> Result<(), Box<dyn std::error::Error>> {
 
     // Then we set up the load-path and load the script
     vm.add_load_path("examples")?;
-    vm.load("funk.lisp")?;
+    vm.load("funk")?;
 
     // Reference to heap-allocated SPAIK objects are made using `Gc<T>`
     let hist: Gc<History> = vm.get("history")?;
@@ -104,6 +104,60 @@ the alternatives.
 
 In short, use it for things like scripting behavior in games, or automating
 applications.
+
+* Games and other soft real-time apps
+If your game is not very demanding, running SPAIK code in the main loop might be
+acceptable. But SPAIK also supports an alternate asynchronous methdod of
+operation, based on the command-pattern.
+
+The way it works, is that you call ~fork~ on a ~Spaik~ struct. This gives you a
+~SpaikPlug~ that you can send commands to, these commands correspond to
+functions in your script. The scripts can also send messages back to the main
+thread, and can additionally ~await~ responses to their messages.
+
+#+begin_src lisp
+(defvar init-var nil)
+
+(defun init () (set init-var 'init))
+
+(defun event-0 (x)
+  (let ((res (await '(test :id 1337))))
+    (set init-var (+ res x 1))))
+#+end_src
+
+#+begin_src rust
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum Msg {
+    Test { id: i32 },
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum Cmd {
+    Event0(i32),
+}
+
+fn api_func_call() -> Result<(), Box<dyn std::error::Error>> {
+    let mut vm = Spaik::new();
+    vm.load("async-example");
+    let mut vm = vm.fork::<Msg, Cmd>();
+
+    // Send commands
+    vm.cmd(Cmd::Event0(123));
+
+    // ... Later on
+    let p = vm.recv();
+    assert_eq!(p.get(), &Msg::Test { id: 1337 });
+    let fulfil_res = 31337;
+    vm.fulfil(p, fulfil_res);
+
+    // We can join with the VM again on the same thread
+    let mut vm = vm.join();
+    let init_var: i32 = vm.eval("init-var").unwrap();
+    assert_eq!(init_var, fulfil_res + ev0_arg + 1);
+}
+#+end_src
 
 * More Examples
 See ~lisp/test.lisp~ and the ~tests/*.lisp~ files for an example of a non-trivial
