@@ -1,36 +1,83 @@
 #+TITLE: SPAIK
 
-The *SPAIK*-LISP programming language, with a [[https://moesys.no/en/#spaik][live webassembly demo]]! Here's some
-Rust code calling a *SPAIK* function:
+The *SPAIK*-LISP programming language, with a [[https://moesys.no/en/#spaik][live webassembly demo]]! Here's a
+somewhat complex example showcasing some of SPAIKs features.
 
 #+begin_src lisp
-(defun plus (&rest xs)
-  (let ((s 0))
-    (dolist (x xs)
-      (set s (+ s x)))
-    s))
+(defvar history (new-history))
+
+(defun funky (track)
+  (let ((volume (yield '(how-loud))))
+    (play-funk track)
+    (add-to-history history track)
+    (let ((adjective (if (> volume 50)
+                         "loudly"
+                       "softly")))
+      (fmt "Playing {track} {adjective}"))))
 #+end_src
 
 #+begin_src rust
-use spaik::spaik::Spaik;
-use spaik::error::Error;
+use spaik::{Spaik, EnumCall, Promise, Fissile, spaikfn};
+use serde::Deserialize;
 
-fn api_func_call() -> Result<(), Error> {
+#[derive(EnumCall)]
+enum Command {
+    Funky(i32),
+}
+
+#[derive(Deserialize)]
+enum Response {
+    HowLoud,
+}
+
+struct Fns;
+
+#[derive(Fissile)]
+struct History {
+    tracks: Vec<String>
+}
+
+#[spaikfn(Fns)]
+fn add_to_history(hist: &mut History, item: String) {
+    hist.tracks.push(item);
+}
+
+#[spaikfn(Fns)]
+fn new_history() -> History {
+    History { tracks: vec![] }
+}
+
+fn api_func_call() -> Result<(), Box<dyn std::error::Error>> {
     let mut vm = Spaik::new()?;
-    vm.load("plus")?;
-    let (x, y, z) = (1, 2, 3);
-    let result: i32 = vm.call("plus", (x, y, z, 4, 5))?;
-    assert_eq!(result, 15);
+    vm.register(Fns::add_to_history)?;
+    vm.register(Fns::new_history)?;
+    vm.add_load_path("examples")?;
+    vm.load("funk.lisp")?;
+
+    // Reference to heap-allocated SPAIK objects
+    let hist: Gc<History> = vm.get("history")?;
+
+    // Call-by-enum, and get a continuation
+    let cont: Promise<Response> vm.query(Command::Funky(60))?;
+
+    // Fulfil promise
+    let res: String = vm.fulfil(cont, String::from("funky.mp3"))?;
+    assert_eq!(&*res, "Playing funky.mp3 loudly");
+
+    // Set history to nil and make sure the GC notices
+    vm.set("history", ());
+    vm.gc();
+    // The Gc<History> smart-pointer makes sure the object is not deallocated
+    // Access is done using `.with()` because of Rusts strict aliasing rules.
+    assert!(hist.with(|h| h.tracks.last() == Some("funky.mp3")));
+
+    // Gc<History> gets dropped here, but it could outlive `vm` if we wanted to.
 }
 #+end_src
 
 *SPAIK* compiles to bytecode which is executed by its VM, and uses a moving
 garbage collector. In addition to standard affairs like loops and conditionals
 it has iterators, continuations, and of course macros.
-
-When using *SPAIK* you should rely only on the ~spaik::spaik~ module, which is
-the public API. This will eventually become the top-level crate of *SPAIK*, but
-the repository has not yet been split into multiple crates.
 
 * What can I use this for?
 *SPAIK* is designed as an embedded scripting language. Its goal is to be
@@ -39,12 +86,6 @@ and simple API.
 
 In short, use it for things like scripting behavior in games, or automating
 applications.
-
-*SPAIK* is not designed to be sandboxed. Strictly speaking there is nothing
-preventing you from creating a *SPAIK* environment without any access to the
-outside world by removing built-in IO functions. But because the *SPAIK*
-implementation does things like implementing its own garbage collector, it
-contains unaudited unsafe code.
 
 * More Examples
 See ~lisp/test.lisp~ and the ~tests/*.lisp~ files for an example of a non-trivial
