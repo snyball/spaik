@@ -98,7 +98,9 @@ fn api_func_call() -> Result<(), Box<dyn std::error::Error>> {
 * What can I use this for?
 *SPAIK* is designed as an embedded scripting language. Its goal is to be
 reasonably performant, like PUC Lua, but unlike PUC Lua it aims to have a safe
-and simple API.
+and simple API. There are already other embedded scripting languages for Rust
+with this same goal, use *SPAIK* if you like its API or performance better than
+the alternatives.
 
 In short, use it for things like scripting behavior in games, or automating
 applications.
