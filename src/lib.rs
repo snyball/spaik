@@ -858,4 +858,26 @@ mod tests {
         let pr: Result<Promise<String>, _> = vm.call("test-yield", ());
         assert!(pr.is_err());
     }
+
+    #[test]
+    fn test_load_path() {
+        let mut vm = Spaik::new();
+        assert!(vm.load("self").is_err());
+        vm.add_load_path("lisp");
+        vm.load("self").unwrap();
+        vm.add_load_path("/usr/share/spaik/lib");
+        let path: Vec<String> = vm.get("sys/load-path").unwrap();
+        assert_eq!(&path, &["lisp", "/usr/share/spaik/lib"]);
+        vm.set("sys/load-path", ());
+        assert!(vm.get::<()>("sys/load-path").is_ok());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_load_path_illegal_value() {
+        let mut vm = Spaik::new();
+        vm.set("sys/load-path", ());
+        assert!(vm.get::<()>("sys/load-path").is_ok());
+        vm.add_load_path("lmao");
+    }
 }
