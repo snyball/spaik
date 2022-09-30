@@ -9,7 +9,6 @@ use crate::sym_db::{SymDB, SYM_DB};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::mem::{self, size_of, align_of};
-use std::ops::{Deref, DerefMut};
 use std::ptr::{drop_in_place, self};
 use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
@@ -21,7 +20,7 @@ use std::time::SystemTime;
 use fnv::FnvHashMap;
 use std::sync::Mutex;
 use std::collections::hash_map::Entry;
-use std::alloc::{Layout, alloc, dealloc, realloc};
+use std::alloc::{Layout, alloc, dealloc};
 use std::sync::atomic;
 
 macro_rules! with_atom {
@@ -284,6 +283,8 @@ impl Iterator for Iter {
 pub struct VTable {
     /// Result of `Any::type_name`
     type_name: &'static str,
+    /// Get reference count
+    get_rc: unsafe fn(*const u8) -> u32,
     /// `Traceable::trace`
     trace: unsafe fn(*const u8, gray: &mut Vec<*mut NkAtom>),
     /// `Traceable::update_ptrs`
@@ -403,6 +404,10 @@ impl Object {
                             drop_ud::<T>(obj);
                         }
                     },
+                    get_rc: |obj| unsafe {
+                        let rc_mem = obj as *mut RcMem<T>;
+                        (*rc_mem).rc.0.load(atomic::Ordering::SeqCst)
+                    },
                     trace: delegate! { trace(gray) },
                     update_ptrs: delegate! { update_ptrs(reloc) },
                     lisp_fmt: delegate! { lisp_fmt(db, visited, f) },
@@ -423,16 +428,19 @@ impl Object {
         }
     }
 
+    pub fn rc(&self) -> u32 {
+        unsafe { (self.vt.get_rc)(self.mem) }
+    }
+
     pub fn cast_mut_ptr<T: Userdata>(&self) -> Result<*mut T, Error> {
         if TypeId::of::<T>() != self.type_id {
             let expect_t = type_name::<T>();
             let actual_t = self.vt.type_name;
             let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
-            return err!(STypeError,
+            return Err(error!(STypeError,
                         expect: format!("(object {expect_t})"),
-                        got: format!("(object {actual_t})"),
-                        op: Builtin::Nil.sym(),
-                        argn: 0)
+                        got: format!("(object {actual_t})"),)
+                        .argn(0).op(Builtin::Nil.sym()))
         }
         Ok(self.mem as *mut T)
     }
@@ -591,8 +599,8 @@ impl Traceable for Continuation {
     }
 
     fn update_ptrs(&mut self, reloc: &PtrMap) {
-        if let Some(ref stack) = self.stack {
-            for pv in self.stack.iter_mut() {
+        if let Some(ref mut stack) = self.stack {
+            for pv in stack.iter_mut() {
                 pv.update_ptrs(reloc)
             }
         }

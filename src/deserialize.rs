@@ -354,18 +354,16 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             if let Some(ident) = ident.strip_prefix(':') {
                 visitor.visit_str(ident)
             } else {
-                err!(TypeError,
+                Err(error!(TypeError,
                      expect: Builtin::Keyword.sym(),
-                     got: Builtin::Symbol.sym(),
-                     op: Builtin::Unknown.sym(),
-                     argn: 0)
+                     got: Builtin::Symbol.sym(),)
+                     .argn(0).op(Builtin::Unknown.sym()))
             }
         } else {
-            err!(TypeError,
+            Err(error!(TypeError,
                  expect: Builtin::Symbol.sym(),
-                 got: self.input.type_of(),
-                 op: Builtin::Unknown.sym(),
-                 argn: 0)
+                 got: self.input.type_of(),)
+                 .argn(0).op(Builtin::Unknown.sym()))
         }
     }
 

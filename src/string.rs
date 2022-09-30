@@ -108,8 +108,8 @@ impl AsRef<str> for Str {
 }
 
 impl Traceable for Str {
-    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {}
-    fn update_ptrs(&mut self, reloc: &PtrMap) {}
+    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 impl LispFmt for Str {

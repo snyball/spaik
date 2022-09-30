@@ -1,11 +1,10 @@
 //! ChASM /ˈkæz(ə)m/, an assembler
 
-use crate::nkgc::{SymID, SymIDInt};
+use crate::nkgc::SymID;
 use std::{collections::HashMap, io::{Read, Write}};
 use std::fmt;
 use crate::error::{Error, ErrorKind};
 use ErrorKind::*;
-use serde::de::IntoDeserializer;
 use std::convert::{TryInto, TryFrom};
 use fnv::FnvHashMap;
 
@@ -365,6 +364,7 @@ mod tests {
         let v_big: Result<u8, _> = pv_big.try_into();
         assert_eq!(v_big, Err(Error {
             src: None,
+            meta: Default::default(),
             ty: ConversionError {
                 from: "u32",
                 to: "u8",

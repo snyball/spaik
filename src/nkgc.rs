@@ -84,10 +84,8 @@ macro_rules! __with_ref_common {
                     $($crate::nuke::NkT::$t.into()),+
                 ],
                 got: $pv.type_of(),
-                argn: 1,
-                op: Default::default()
             },
-            src: None
+            meta: Default::default(),
         };
         match $pv {
             #[allow(unused_unsafe)]
@@ -274,9 +272,7 @@ impl TryFrom<PV> for f64 {
         } else {
             err!(TypeError,
                  expect: Builtin::Float.sym(),
-                 got: value.type_of(),
-                 op: Builtin::Unknown.sym(),
-                 argn: 0)
+                 got: value.type_of())
         }
     }
 }
@@ -290,9 +286,7 @@ impl TryFrom<PV> for SymID {
         } else {
             err!(TypeError,
                  expect: Builtin::Symbol.sym(),
-                 got: value.type_of(),
-                 op: Builtin::Unknown.sym(),
-                 argn: 0)
+                 got: value.type_of())
         }
     }
 }
@@ -336,11 +330,10 @@ macro_rules! num_op {
                 (Int(x), Int(y)) => Int(x $op y),
                 (Real(x), Int(y)) => Real(x $op *y as f32),
                 (Real(x), Real(y)) => Real(x $op y),
-                (x, y) => return err!(ArgTypeError,
-                                      op: Builtin::$sym.sym(),
-                                      expect: vec![Builtin::Number.sym(),
-                                                   Builtin::Number.sym()],
+                (x, y) =>
+                    return Err(error!(IfaceNotImplemented,
                                       got: vec![x.type_of(), y.type_of()])
+                               .op(Builtin::$sym.sym()))
             })
         }
     };
@@ -351,17 +344,10 @@ macro_rules! cmp_op {
         pub fn $name(&self, o: &PV) -> Result<PV, Error> {
             use Ordering::*;
             match self.partial_cmp(o) {
-                None => err!(ArgTypeError,
-                             op: Builtin::$sym.sym(),
-                             // NOTE: Comparisons are *only* implemented for
-                             // numbers, when this is no longer true you'll have
-                             // to change this (FIXME)
-                             expect: vec![Builtin::Number.sym(),
-                                          Builtin::Number.sym()],
-                             got: vec![self.type_of(), o.type_of()]),
-                $(
-                    Some($ordering) => Ok(PV::Bool(true)),
-                )*
+                None => return Err(error!(IfaceNotImplemented,
+                                          got: vec![self.type_of(), o.type_of()])
+                                   .op(Builtin::$sym.sym())),
+                $(Some($ordering) => Ok(PV::Bool(true)),)*
                 _ => Ok(PV::Bool(false))
             }           
         }
@@ -724,11 +710,11 @@ impl PV {
             (Int(x), Int(y)) => Int(x.pow(*y as u32)),
             (Real(x), Int(y)) => Real(x.powi(*y as i32)),
             (Real(x), Real(y)) => Real(x.powf(*y)),
-            (x, y) => return err!(ArgTypeError,
-                                  op: Builtin::Pow.sym(),
-                                  expect: vec![Builtin::Number.sym(),
-                                               Builtin::Number.sym()],
-                                  got: vec![x.type_of(), y.type_of()])
+            (x, y) => return Err(error!(ArgTypeError,
+                                        expect: vec![Builtin::Number.sym(),
+                                                     Builtin::Number.sym()],
+                                        got: vec![x.type_of(), y.type_of()])
+                                 .op(Builtin::Pow.sym()))
         })
     }
 
@@ -736,11 +722,11 @@ impl PV {
         use PV::*;
         Ok(match (self, o) {
             (Int(x), Int(y)) => Int(x % y),
-            (x, y) => return err!(ArgTypeError,
-                                  op: Builtin::Modulo.sym(),
-                                  expect: vec![Builtin::Integer.sym(),
-                                               Builtin::Integer.sym()],
-                                  got: vec![x.type_of(), y.type_of()])
+            (x, y) => return Err(error!(ArgTypeError,
+                                        expect: vec![Builtin::Number.sym(),
+                                                     Builtin::Number.sym()],
+                                        got: vec![x.type_of(), y.type_of()])
+                                 .op(Builtin::Modulo.sym()))
         })
     }
 
@@ -1260,8 +1246,7 @@ impl Arena {
             Ok(())
         } else {
             Err(ErrorKind::NotEnough { expect: 1,
-                                       got: 0,
-                                       op: "dup" }.into())
+                                       got: 0 }.into())
         }
     }
 
@@ -1369,13 +1354,23 @@ impl Arena {
               ar: self.extdrop_send.clone() }
     }
 
+    pub fn has_mut_extrefs(&self) -> bool {
+        for val in self.nuke.iter() {
+            if let NkRef::Struct(s) = val.match_ref() {
+                if s.rc() > 1 {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn pop_spv(&mut self) -> Result<SPV, Error> {
         if let Some(res) = self.stack.pop() {
             Ok(self.make_extref(res))
         } else {
             Err(ErrorKind::NotEnough { expect: 1
-                                     , got: 0
-                                     , op: "pop" }.into())
+                                     , got: 0 }.into())
         }
     }
 
@@ -1383,7 +1378,6 @@ impl Arena {
         self.stack.pop().ok_or_else(|| ErrorKind::NotEnough {
             got: 0,
             expect: 1,
-            op: "pop"
         }.into())
     }
 

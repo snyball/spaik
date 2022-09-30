@@ -398,10 +398,10 @@ fn raise_inner(op: SymID, v: Value) -> Result<Value, Error> {
     let nargs = v.nargs();
     match v.into_args().next() {
         Some(arg) if nargs == 1 => Ok(arg),
-        _ => err_src!(src, ArgError,
-                      expect: ArgSpec::normal(1),
-                      got_num: nargs as u32,
-                      op)
+        _ => Err(error!(ArgError,
+                        expect: ArgSpec::normal(1),
+                        got_num: nargs as u32)
+                 .op(op).src(src))
     }
 }
 
@@ -680,11 +680,10 @@ impl<'a> R8Compiler<'a> {
             let args: Vec<_> = code.args().collect();
             match &args[..] {
                 [head] => code = head,
-                _ => return err_src!(code.src.clone(),
-                                     ArgError,
-                                     expect: ArgSpec::normal(1),
-                                     got_num: args.len() as u32,
-                                     op),
+                _ => return Err(error!(ArgError,
+                                       expect: ArgSpec::normal(1),
+                                       got_num: args.len() as u32)
+                                .op(op).src(code.src.clone()))
             }
             flipped = !flipped;
         }
@@ -696,11 +695,10 @@ impl<'a> R8Compiler<'a> {
         let (cond, if_true, if_false) = match &args[..] {
             [cond, if_true, if_false] => (cond, if_true, Some(if_false)),
             [cond, if_true] => (cond, if_true, None),
-            _ => return err_src!(code.src.clone(),
-                                 ArgError,
-                                 expect: ArgSpec::opt(2, 1),
-                                 got_num: args.len() as u32,
-                                 op: Builtin::If.sym())
+            _ => return Err(error!(ArgError,
+                                   expect: ArgSpec::opt(2, 1),
+                                   got_num: args.len() as u32)
+                            .op(Builtin::If.sym()).src(code.src.clone()))
         };
         let (flipped, cond) = R8Compiler::argument_clinic(cond)?;
         use ValueKind::*;
@@ -903,10 +901,10 @@ impl<'a> R8Compiler<'a> {
                     self.asm_op(chasm!(POPA 1, 1));
                     self.env_pop(1)?;
                 }
-                _ => return err_src!(code.src.clone(), ArgError,
-                                     expect: ArgSpec::opt(0, 1),
-                                     op: Builtin::Next.sym(),
-                                     got_num: args.len() as u32)
+                _ => return Err(error!(ArgError,
+                                       expect: ArgSpec::opt(0, 1),
+                                       got_num: args.len() as u32)
+                                .src(code.src.clone()).op(Builtin::Next.sym()))
             };
             if !ret {
                 self.asm_op(chasm!(POP 1));
@@ -1055,11 +1053,10 @@ impl<'a> R8Compiler<'a> {
                     r8c::OpName::MUL | r8c::OpName::ADD =>
                         return self.compile(true, fst),
                     _ =>
-                        return err_src!(code.src.clone(),
-                                        ArgError,
-                                        expect: ArgSpec::rest(2, 0),
-                                        op,
-                                        got_num: 1)
+                        return Err(error!(ArgError,
+                                          expect: ArgSpec::rest(2, 0),
+                                          got_num: 1)
+                                   .src(code.src.clone()).op(op))
                 }
                 self.with_env(|env| env.anon())?;
                 self.compile(true, fst)?;
@@ -1076,11 +1073,10 @@ impl<'a> R8Compiler<'a> {
             match bop.0 {
                 r8c::OpName::ADD => { self.asm.op(chasm!(PUSH 0)); },
                 r8c::OpName::MUL => { self.asm.op(chasm!(PUSH 1)); },
-                _ => return err_src!(code.src.clone(),
-                                     ArgError,
-                                     expect: ArgSpec::rest(1, 0),
-                                     op,
-                                     got_num: 0)
+                _ => return Err(error!(ArgError,
+                                       expect: ArgSpec::rest(1, 0),
+                                       got_num: 0)
+                                .src(code.src.clone()).op(op))
             }
         }
         Ok(())
@@ -1198,16 +1194,18 @@ impl<'a> R8Compiler<'a> {
                 self.asm_op(chasm!(VSET));
                 Ok(())
             } else {
-                err_src!(obj.src.clone(), TypeError,
-                         op: Builtin::Set.sym(),
-                         expect: Builtin::Symbol.sym(),
-                         argn: 1,
-                         got: obj.type_of())
+                Err(error!(TypeError,
+                           expect: Builtin::Symbol.sym(),
+                           got: obj.type_of())
+                    .op(Builtin::Set.sym())
+                    .src(obj.src.clone(), )
+                    .argn(1))
             },
-            _ => err_src!(code.src.clone(), ArgError,
-                          expect: ArgSpec::normal(2),
-                          op: Builtin::Set.sym(),
-                          got_num: args.len() as u32)
+            _ => Err(error!(ArgError,
+                            expect: ArgSpec::normal(2),
+                            got_num: args.len() as u32)
+                     .src(code.src.clone())
+                     .op(Builtin::Set.sym()))
         }
     }
 
@@ -1242,15 +1240,16 @@ impl<'a> R8Compiler<'a> {
         match &args[..] {
             [Value { kind: ValueKind::Symbol(dst), .. }, src] =>
                 self.define_static(ret, *dst, src),
-            [obj, _] => err_src!(obj.src.clone(), TypeError,
-                                 op: Builtin::DefineStatic.sym(),
-                                 expect: Builtin::Symbol.sym(),
-                                 argn: 1,
-                                 got: obj.type_of()),
-            _ => err_src!(code.src.clone(), ArgError,
-                          expect: ArgSpec::normal(2),
-                          op: Builtin::DefineStatic.sym(),
-                          got_num: args.len() as u32)
+            [obj, _] => Err(error!(TypeError,
+                                   expect: Builtin::Symbol.sym(),
+                                   got: obj.type_of())
+                            .src(obj.src.clone())
+                            .op(Builtin::DefineStatic.sym()).argn(1)),
+            _ => Err(error!(ArgError,
+                            expect: ArgSpec::normal(2),
+                            got_num: args.len() as u32)
+                     .src(code.src.clone())
+                     .op(Builtin::DefineStatic.sym()))
         }
     }
 
@@ -1284,10 +1283,10 @@ impl<'a> R8Compiler<'a> {
         let args = code.args().collect::<Vec<_>>();
         match &args[..] {
             [obj] => self.compile_value(obj),
-            _ => return err_src!(code.src.clone(), ArgError,
-                                 expect: ArgSpec::normal(1),
-                                 op: Builtin::Quote.sym(),
-                                 got_num: args.len() as u32)
+            _ => return Err(error!(ArgError,
+                                   expect: ArgSpec::normal(1),
+                                   got_num: args.len() as u32)
+                            .src(code.src.clone()).op(Builtin::Quote.sym()))
         }
         Ok(())
     }
@@ -1317,24 +1316,22 @@ impl<'a> R8Compiler<'a> {
         let when = it.next()
                      .ok_or(error_src!(code.src.clone(), ArgError,
                                        expect: ArgSpec::rest(1, 0),
-                                       got_num: 0,
-                                       op: EvalWhen.sym()))?;
+                                       got_num: 0)
+                            .op(EvalWhen.sym()))?;
         let when_src = when.src.clone();
         let when = when.sym()
                        .ok_or(error_src!(when_src.clone(), TypeError,
                                          expect: Builtin::Symbol.sym(),
-                                         got: when.type_of(),
-                                         argn: 1,
-                                         op: EvalWhen.sym()))?;
+                                         got: when.type_of())
+                              .argn(1).op(EvalWhen.sym()))?;
         let expect = vec![KwCompile.sym(), KwLoad.sym()];
         match Builtin::from_sym(when) {
             Some(KwCompile) => self.eval_when_compile(it),
             Some(KwLoad) => unimplemented!("eval-when :load is not implemented yet."),
-            _ => err_src!(when_src, EnumError,
-                          expect,
-                          op: EvalWhen.sym(),
-                          argn: 1,
-                          got: when)
+            _ => Err(error!(EnumError,
+                            expect,
+                            got: when)
+                     .src(when_src).argn(1).op(EvalWhen.sym()))
         }
     }
 
@@ -1409,11 +1406,10 @@ impl<'a> R8Compiler<'a> {
                 self.asm_op(chasm!(PUSH idx));
                 self.asm_op(chasm!(CONS));
             }
-            [x] => return err_src!(code.src.clone(), TypeError,
+            [x] => return Err(error!(TypeError,
                                    expect: Builtin::Symbol.sym(),
-                                   got: x.type_of(),
-                                   argn: 1,
-                                   op: Builtin::DebugVarIdx.sym()),
+                                   got: x.type_of())
+                              .src(code.src.clone()).argn(1).op(Builtin::DebugVarIdx.sym())),
             _ => return ArgSpec::normal(1).check(Builtin::DebugVarIdx.sym(),
                                                  args.len() as u16)
         }
@@ -1462,8 +1458,8 @@ impl<'a> R8Compiler<'a> {
     fn bt_char(&mut self, code: &Value) -> Result<(), Error> {
         let v = code.args().next().ok_or(error!(ArgError,
                                                 expect: ArgSpec::normal(1),
-                                                got_num: 0,
-                                                op: Builtin::Char.sym()))?;
+                                                got_num: 0)
+                                         .op(Builtin::Char.sym()))?;
         if let Value { kind: ValueKind::Symbol(s), .. } = v {
             let mut it = self.vm.sym_name(*s).chars();
             let c = it.next().ok_or(error!(CharSpecError, spec: *s))?;
@@ -1474,11 +1470,11 @@ impl<'a> R8Compiler<'a> {
             self.asm_op(chasm!(CHAR u));
             Ok(())
         } else {
-            err!(TypeError,
-                 expect: Builtin::Symbol.sym(),
-                 got: code.type_of(),
-                 op: Builtin::Char.sym(),
-                 argn: 1)
+            Err(error!(TypeError,
+                       expect: Builtin::Symbol.sym(),
+                       got: code.type_of())
+                .op(Builtin::Char.sym())
+                .argn(1))
         }
     }
 
@@ -1634,11 +1630,10 @@ impl<'a> R8Compiler<'a> {
             let mut it = code.iter();
             let op = it.next().unwrap();
             if op.is_atom() {
-                return err_src!(op.src.clone(), TypeError,
-                                expect: Builtin::Lambda.sym(),
-                                got: op.type_of(),
-                                argn: 0,
-                                op: Builtin::Apply.sym())
+                return Err(error!(TypeError,
+                                  expect: Builtin::Lambda.sym(),
+                                  got: op.type_of(),)
+                           .src(op.src.clone()).argn(0).op(Builtin::Apply.sym()))
             }
             self.compile(true, op)?;
             self.with_env(|env| env.anon())?; // closure

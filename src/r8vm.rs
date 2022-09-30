@@ -7,7 +7,7 @@ use crate::{
     ast::{Value, ValueKind},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
-    error::{Error, ErrorKind, Source},
+    error::{Error, ErrorKind, Source, OpName, Meta},
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
     nuke::*,
@@ -18,7 +18,7 @@ use crate::{
     sym_db::SymDB, FmtErr,
 };
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, fs::File, io::prelude::*, mem, ptr, slice, sync::Mutex, path::PathBuf};
+use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem, ptr, slice, sync::Mutex};
 
 chasm_def! {
     r8c:
@@ -264,10 +264,10 @@ macro_rules! subr_args {
             [$($arg),*] => {
                 $body
             },
-            _ => err!(ArgError,
-                      expect: ArgSpec::normal(count_args!($($arg),*)),
-                      got_num: $args.len() as u32,
-                      op: $vm.sym_id($self.name()))
+            _ => Err(error!(ArgError,
+                            expect: ArgSpec::normal(count_args!($($arg),*)),
+                            got_num: $args.len() as u32)
+                     .op($vm.sym_id($self.name())))
         }
     };
 }
@@ -282,9 +282,7 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, convert::Infallible, borrow::Cow};
 
-    use spaik_proc_macros::spaikfn;
-
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, SymID}, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String
@@ -351,26 +349,29 @@ mod sysfns {
             if let PV::Sym(name) = *x {
                 err!(LibError, name)
             } else {
-                err!(TypeError,
-                     expect: Builtin::Symbol.sym(),
-                     got: x.type_of(),
-                     argn: 1,
-                     op: Builtin::Error.sym())
+                Err(error!(TypeError,
+                           expect: Builtin::Symbol.sym(),
+                           got: x.type_of())
+                    .op(Builtin::Error.sym())
+                    .argn(1))
             }
         }
 
         fn join(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+            let emap = |e: Error| e.op(Builtin::Join.sym()).argn(1);
             let (it, sep) = match args {
-                [xs, PV::Char(s)] => (xs.make_iter()?, Cow::from(s.to_string())),
-                [xs, PV::Sym(s)] => (xs.make_iter()?, Cow::from(vm.sym_name(*s))),
-                [xs, o] => (xs.make_iter()?, with_ref!(*o, String(s) => {
+                [xs, PV::Char(s)] => (xs.make_iter().map_err(emap)?,
+                                      Cow::from(s.to_string())),
+                [xs, PV::Sym(s)] => (xs.make_iter().map_err(emap)?,
+                                     Cow::from(vm.sym_name(*s))),
+                [xs, o] => (xs.make_iter().map_err(emap)?, with_ref!(*o, String(s) => {
                     Ok(Cow::from(s))
                 }).map_err(|e| e.op(Builtin::Join.sym()).argn(2))?),
                 [xs] => (xs.make_iter()?, Cow::from("")),
-                _ => return err!(ArgError,
-                                 expect: ArgSpec::opt(1, 1),
-                                 got_num: args.len() as u32,
-                                 op: Builtin::Join.sym())
+                _ => return Err(error!(ArgError,
+                                       expect: ArgSpec::opt(1, 1),
+                                       got_num: args.len() as u32)
+                                .op(Builtin::Join.sym()))
             };
             join_str(vm, it, sep).into_pv(&mut vm.mem)
         }
@@ -386,7 +387,7 @@ mod sysfns {
             Err(Error { ty: ErrorKind::Exit {
                 status: status.try_into().map_err(|e: Error|
                                                   e.argn(1).op(Builtin::Exit.sym()))?
-            }, src: None })
+            }, meta: Default::default() })
         }
 
         fn instant(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
@@ -462,10 +463,10 @@ mod sysfns {
                 [r] => with_ref!(*r, String(s) => {
                     Ok(PV::Sym(vm.mem.symdb.put_ref(s)))
                 }),
-                _ => err!(ArgError,
-                          expect: ArgSpec::normal(1),
-                          got_num: args.len() as u32,
-                          op: Builtin::MakeSymbol.sym())
+                _ => Err(error!(ArgError,
+                                expect: ArgSpec::normal(1),
+                                got_num: args.len() as u32)
+                         .op(Builtin::MakeSymbol.sym()))
             }
         }
         fn name(&self) -> &'static str { "make-symbol" }
@@ -493,11 +494,11 @@ mod sysfns {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
             match args {
                 [PV::Sym(id)] => Ok(PV::Int((*id).try_into()?)),
-                [x] => err!(TypeError,
-                            expect: Builtin::Symbol.sym(),
-                            got: x.type_of(),
-                            op: Builtin::SymID.sym(),
-                            argn: 1),
+                [x] => Err(error!(TypeError,
+                                  expect: Builtin::Symbol.sym(),
+                                  got: x.type_of(),)
+                           .op(Builtin::SymID.sym(),)
+                           .argn(1)),
                 _ => ArgSpec::normal(1).check(Builtin::SymID.sym(), args.len() as u16)
                                        .map(|_| unreachable!())
             }
@@ -526,8 +527,8 @@ mod sysfns {
             let mut it = args.iter();
             let mut s = it.next().ok_or(error!(ArgError,
                                                expect: ArgSpec::rest(1, 0),
-                                               got_num: 0,
-                                               op: Builtin::Sub.sym()))
+                                               got_num: 0)
+                                        .op(Builtin::Sub.sym()))
                                  .copied()?;
             for i in it {
                 s = s.sub(i)?;
@@ -563,8 +564,8 @@ mod sysfns {
             let mut it = args.iter();
             let mut s = it.next().ok_or(error!(ArgError,
                                                expect: ArgSpec::rest(1, 0),
-                                               got_num: 0,
-                                               op: Builtin::Div.sym()))
+                                               got_num: 0)
+                                        .op(Builtin::Div.sym()))
                                  .copied()?;
             for i in it {
                 s = s.div(i)?;
@@ -681,10 +682,10 @@ impl ArgSpec {
         if self.is_valid_num(nargs) {
             Ok(())
         } else {
-            err!(ArgError,
-                 expect: *self,
-                 got_num: nargs.into(),
-                 op: fn_sym)
+            Err(error!(ArgError,
+                       expect: *self,
+                       got_num: nargs.into())
+                .op(fn_sym))
         }
     }
 }
@@ -1087,6 +1088,10 @@ impl R8VM {
         vm.call(entry, ()).fmt_unwrap(&vm);
 
         vm
+    }
+
+    pub fn has_mut_extrefs(&self) -> bool {
+        self.mem.has_mut_extrefs()
     }
 
     pub fn call_by_enum(&mut self, enm: impl EnumCall) -> Result<PV, Error> {
@@ -1669,7 +1674,10 @@ impl R8VM {
                 self.mem.push(pv);
                 Ok(self.ret_to(dip))
             } else {
-                err!(NotEnough, got: 0, expect: 1, op: "continuation")
+                Err(error!(NotEnough,
+                           got: 0,
+                           expect: 1)
+                    .amend(Meta::Op(OpName::OpStr("continuation"))))
             };
 
             cont.put_stack(stack);
@@ -1758,11 +1766,9 @@ impl R8VM {
                     let op = Builtin::Get.sym();
                     let idx = match self.mem.pop()? {
                         PV::Int(x) => x as usize,
-                        x => return err!(TypeError,
-                                         expect: Builtin::Integer.sym(),
-                                         got: x.type_of(),
-                                         argn: 2,
-                                         op)
+                        x => return Err(error!(TypeError,
+                                               expect: Builtin::Integer.sym(),
+                                               got: x.type_of()).op(op).argn(2))
                     };
                     let vec = self.mem.pop()?;
                     let elem = with_ref!(vec, Vector(v) => {
@@ -1775,11 +1781,9 @@ impl R8VM {
                     let op = Builtin::Set.sym();
                     let idx = match self.mem.pop()? {
                         PV::Int(x) => x as usize,
-                        x => return err!(TypeError,
-                                         expect: Builtin::Integer.sym(),
-                                         got: x.type_of(),
-                                         argn: 2,
-                                         op)
+                        x => return Err(error!(TypeError,
+                                               expect: Builtin::Integer.sym(),
+                                               got: x.type_of()).op(op).argn(2))
                     };
                     let vec = self.mem.pop()?;
                     let val = self.mem.pop()?;
@@ -1991,7 +1995,7 @@ impl R8VM {
             Ok(_) => Ok(dip),
             Err(e) => {
                 let er: Error = e;
-                Err((dip, er.with_src(self.get_source(dip))))
+                Err((dip, er.src(self.get_source(dip))))
             }
         }
     }

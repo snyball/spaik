@@ -61,10 +61,8 @@ macro_rules! pv_convert {
                         ty: ErrorKind::TypeError {
                             expect: PV::$pvt(Default::default()).type_of(),
                             got: v.type_of(),
-                            op: Default::default(),
-                            argn: 0
                         },
-                        src: None
+                        meta: Default::default(),
                     })
                 }
             }
@@ -108,10 +106,8 @@ impl TryFrom<PV> for () {
                 ty: ErrorKind::TypeError {
                     expect: PV::Nil.type_of(),
                     got: v.type_of(),
-                    op: Default::default(),
-                    argn: 0
                 },
-                src: None
+                meta: Default::default(),
             })
         }
     }

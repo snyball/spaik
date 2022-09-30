@@ -415,6 +415,10 @@ impl Spaik {
         where T: DeserializeOwned + Send + Debug + Clone + 'static,
               Cmd: EnumCall + Send + 'static
     {
+        if self.vm.has_mut_extrefs() {
+            panic!("Cannot fork vm with existing mutable Gc reference");
+        }
+
         let (rx_send, tx_send) = channel::<Promise<T>>();
         let (rx_run, tx_run) = channel();
         let handle = thread::spawn(move || {
@@ -519,9 +523,7 @@ impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
             if cont.type_of() != Builtin::Continuation.sym() {
                 return err!(TypeError,
                             expect: Builtin::Continuation.sym(),
-                            got: cont.type_of(),
-                            op: Builtin::Unknown.sym(),
-                            argn: 2);
+                            got: cont.type_of());
             }
             let cont = Some(mem.make_extref(*cont));
             Ok(Promise { msg, cont })
@@ -584,7 +586,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
     where Cmd: EnumCall + Send, T: Send
 {
     #[inline]
-    pub fn recv(&mut self) -> Option<Promise<T>>
+    pub fn recv(&self) -> Option<Promise<T>>
         where T: DeserializeOwned
     {
         match self.promises.try_recv() {
@@ -596,8 +598,12 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
         }
     }
 
+    pub fn cmd(&self, cmd: Cmd) {
+        self.events.send(Event::Command(cmd)).unwrap();
+    }
+
     #[inline]
-    pub fn recv_timeout(&mut self, timeout: Duration) -> Option<Promise<T>>
+    pub fn recv_timeout(&self, timeout: Duration) -> Option<Promise<T>>
         where T: DeserializeOwned
     {
         match self.promises.recv_timeout(timeout) {
@@ -610,7 +616,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
     }
 
     #[inline]
-    pub fn send<V, A>(&mut self, name: V, args: A)
+    pub fn send<V, A>(&self, name: V, args: A)
         where V: AsSym + Send + 'static,
               A: Args + Send + 'static
     {
@@ -619,7 +625,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
     }
 
     #[inline]
-    pub fn fulfil<R>(&mut self, promise: Promise<T>, ans: R)
+    pub fn fulfil<R>(&self, promise: Promise<T>, ans: R)
         where R: IntoLisp + Clone + Send + 'static
     {
         if let Some(cont) = promise.cont {
@@ -664,7 +670,7 @@ mod tests {
         vm.exec("(defvar init-var nil)").unwrap();
         vm.exec("(defun init () (set init-var 'init))").unwrap();
         vm.exec("(defun event-0 (x) (set init-var (+ x 1)))").unwrap();
-        let mut vm = vm.fork::<i32, ()>();
+        let vm = vm.fork::<i32, ()>();
         vm.send("event-0", (123,));
         let mut vm = vm.join();
         let init_var: i32 = vm.eval("init-var").unwrap();
@@ -685,7 +691,7 @@ mod tests {
         vm.exec(r#"(defun event-0 (x)
                      (let ((res (await '(test :id 1337))))
                        (set init-var (+ res x 1))))"#).unwrap();
-        let mut vm = vm.fork::<Msg, ()>();
+        let vm = vm.fork::<Msg, ()>();
         let ev0_arg = 123;
         vm.send("event-0", (ev0_arg,));
         let p = vm.recv_timeout(Duration::from_secs(1)).expect("timeout");
@@ -788,7 +794,7 @@ mod tests {
         vm.set("src-obj", src_obj.clone());
         vm.set("dst-obj", dst_obj.clone());
         let mut perst_ref: Gc<TestObj> = vm.get("dst-obj").unwrap();
-        let mut perst_ref_2: Gc<TestObj> = vm.get("dst-obj").unwrap();
+        let _perst_ref_2: Gc<TestObj> = vm.get("dst-obj").unwrap();
         vm.exec("(my-function 1 1 src-obj dst-obj)").unwrap();
         vm.exec("(println dst-obj)").unwrap();
         let x: f32 = vm.eval("(obj-x dst-obj)").unwrap();
@@ -879,5 +885,20 @@ mod tests {
         vm.set("sys/load-path", ());
         assert!(vm.get::<()>("sys/load-path").is_ok());
         vm.add_load_path("lmao");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_illegal_fork() {
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        pub struct TestObj {
+            x: f32,
+            y: f32,
+        }
+
+        let mut vm = Spaik::new();
+        vm.set("test-obj", TestObj { x: 10.0, y: 20.0 });
+        let _rf: Gc<TestObj> = vm.get("test-obj").unwrap();
+        let mut _vm = vm.fork::<(), ()>();
     }
 }

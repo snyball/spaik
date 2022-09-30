@@ -8,6 +8,7 @@ use crate::ast::Value;
 use crate::fmt::LispFmt;
 use crate::sym_db::{SymDB, SYM_DB};
 use std::borrow::Cow;
+use std::mem::{discriminant, replace};
 use std::result;
 use std::error;
 use std::fmt::{self, Debug};
@@ -49,16 +50,128 @@ pub struct SourceRef<'a> {
     pub col: u32,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum OpName {
+    OpSym(SymID),
+    OpStr(&'static str),
+}
+
+impl OpName {
+    fn name<'a>(&self, db: &'a dyn SymDB) -> Cow<'a, str> {
+        match self {
+            OpName::OpStr(s) => Cow::Borrowed(s),
+            OpName::OpSym(s) => db.name(*s),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct LineCol {
+    line: u32,
+    col: u32,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[repr(u8)]
+pub enum Meta {
+    Op(OpName),
+    OpArgn(u32),
+    OpArgName(OpName),
+    SourceFile(Cow<'static, str>),
+    Source(LineCol),
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct MetaSet {
+    meta: Vec<Meta>,
+}
+
+macro_rules! get_inner_meta {
+    ($name:ident, $meta_name:ident, $inner_t:ty) => {
+        fn $name(&self) -> Option<$inner_t> {
+            self.meta.iter().find_map(|m| if let Meta::$meta_name(name) = m {
+                Some(name)
+            } else {
+                None
+            }).cloned()
+        }
+    }
+}
+
+impl MetaSet {
+    /// Add metadata which should replace previous metadata of the same type.
+    ///
+    /// # Returns
+    /// Returns the previous metadata, if it exists.
+    fn amend(&mut self, data: Meta) -> Option<Meta> {
+        let pos = self.meta.iter()
+                           .position(|m| discriminant(m) == discriminant(&data));
+        if let Some(idx) = pos {
+            Some(replace(&mut self.meta[idx], data))
+        } else {
+            self.meta.push(data);
+            None
+        }
+    }
+
+    /// Add metadata which should function as a fallback, but should not replace
+    /// metadata of the same kind if it exists.
+    fn fallback(&mut self, data: Meta) {
+        if !self.meta.iter().any(|m| discriminant(m) == discriminant(&data)) {
+            self.meta.push(data);
+        }
+    }
+
+    get_inner_meta!(op, Op, OpName);
+    get_inner_meta!(op_argn, OpArgn, u32);
+    get_inner_meta!(op_arg_name, OpArgName, OpName);
+    get_inner_meta!(src_line_col, Source, LineCol);
+    get_inner_meta!(src_file, SourceFile, Cow<'static, str>);
+
+    fn src(&self) -> Option<Source> {
+        let line_col = self.src_line_col()?;
+        let file = self.src_file();
+        Some(Source {
+            file,
+            line: line_col.line,
+            col: line_col.col,
+        })
+    }
+}
+
+pub struct FmtArgnOp<'a, 'b> {
+    pre: &'static str,
+    post: &'static str,
+    meta: &'a MetaSet,
+    db: &'b dyn SymDB,
+}
+
+impl fmt::Display for FmtArgnOp<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        if let Some(op) = self.meta.op() {
+            write!(f, "{}", self.pre)?;
+            if let Some(argn) = self.meta.op_argn() {
+                write!(f, "for argument {argn} of ({} ...)", op.name(self.db))?;
+            } else {
+                write!(f, "in {}", op.name(self.db))?;
+            }
+            write!(f, "{}", self.post)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     SendError { obj_dbg: String },
     IllegalInstruction { inst: R8C },
-    STypeError { expect: String, got: String, op: SymID, argn: u32 },
-    TypeError { expect: SymID, got: SymID, op: SymID, argn: u32 },
-    TypeNError { expect: Vec<SymID>, got: SymID, op: SymID, argn: u32 },
-    ArgTypeError { expect: Vec<SymID>, got: Vec<SymID>, op: SymID },
-    EnumError { expect: Vec<SymID>, got: SymID, op: SymID, argn: u32 },
-    ArgError { expect: ArgSpec, got_num: u32, op: SymID },
+    STypeError { expect: String, got: String },
+    TypeError { expect: SymID, got: SymID },
+    TypeNError { expect: Vec<SymID>, got: SymID },
+    ArgTypeError { expect: Vec<SymID>, got: Vec<SymID> },
+    IfaceNotImplemented { got: Vec<SymID> },
+    EnumError { expect: Vec<SymID>, got: SymID },
+    ArgError { expect: ArgSpec, got_num: u32 },
     OutsideContext { op: SymID, ctx: SymID },
     SyntaxError { msg: String },
     LinkError { dst: String, src: usize },
@@ -67,8 +180,7 @@ pub enum ErrorKind {
                       to: &'static str,
                       val: String },
     NotEnough { expect: usize,
-                got: usize,
-                op: &'static str },
+                got: usize },
     SomeError { msg: String },
     UndefinedFunction { name: SymID },
     UndefinedVariable { var: SymID },
@@ -89,47 +201,56 @@ pub enum ErrorKind {
 
 impl From<std::io::Error> for Error {
     fn from(v: std::io::Error) -> Self {
-        Error { src: None, ty: ErrorKind::IOError { kind: v.kind() } }
+        Error { ty: ErrorKind::IOError { kind: v.kind() },
+                meta: Default::default() }
     }
 }
 
 impl From<ErrorKind> for Error {
     fn from(v: ErrorKind) -> Self {
-        Error { src: None, ty: v }
+        Error { ty: v, meta: Default::default() }
     }
 }
 
 impl From<Traceback> for Error {
     fn from(v: Traceback) -> Self {
-        Error { src: v.err.src.clone(),
-                ty: ErrorKind::Traceback { tb: Box::new(v) } }
+        let src = v.err.meta.src();
+        let e = Error { ty: ErrorKind::Traceback { tb: Box::new(v) },
+                        meta: Default::default() };
+        if let Some(src) = src {
+            e.src(src)
+        } else {
+            e
+        }
     }
 }
 
 impl From<String> for Error {
     fn from(msg: String) -> Self {
-        Error { src: None, ty: ErrorKind::SomeError { msg } }
+        Error { ty: ErrorKind::SomeError { msg },
+                meta: Default::default() }
     }
 }
 
 impl From<&str> for Error {
     fn from(msg: &str) -> Self {
-        Error { src: None,
-                ty: ErrorKind::SomeError { msg: msg.to_string() } }
+        Error { ty: ErrorKind::SomeError { msg: msg.to_string() },
+                meta: Default::default() }
     }
 }
 
 impl From<RuntimeError> for Error {
     fn from(v: RuntimeError) -> Self {
-        Error { src: Some(Source { line: v.line, col: 0, file: None }),
-                ty: ErrorKind::SomeError { msg: v.msg } }
+        Error { ty: ErrorKind::SomeError { msg: v.msg },
+                meta: Default::default()
+        }
     }
 }
 
 impl From<Error> for RuntimeError {
     fn from(v: Error) -> Self {
         let msg = format!("{}", &v);
-        RuntimeError { line: v.src.map(|src| src.line).unwrap_or(0),
+        RuntimeError { line: v.meta.src().map(|src| src.line).unwrap_or(0),
                        msg }
     }
 }
@@ -144,7 +265,7 @@ impl From<ErrorKind> for RuntimeError {
 /// Structural Error Type
 #[derive(Debug, Clone, PartialEq)]
 pub struct Error {
-    pub src: Option<Source>,
+    pub meta: MetaSet,
     pub ty: ErrorKind,
 }
 
@@ -156,27 +277,31 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
     match &err.ty {
         IllegalInstruction { inst } =>
             write!(f, "Illegal instruction: <{}>", inst)?,
-        TypeError { expect, got, op, argn } =>
-            write!(f, "Type Error: Expected {} for argument {} of ({} ...), but got {}",
-                   nameof(*expect), argn, nameof(*op), nameof(*got))?,
-        STypeError { expect, got, op, argn } =>
-            write!(f, "Type Error: Expected {} for argument {} of ({} ...), but got {}",
-                   expect, argn, nameof(*op), got)?,
-        TypeNError { expect, got, op, argn } =>
-            write!(f, "Type Error: Expected one of {} for argument {} of ({} ...), but got {}",
-                   {
-                       expect.iter()
-                             .map(|v| nameof(*v))
-                             .collect::<Vec<_>>()
-                             .join(", ")
-                   },
-                   argn, nameof(*op), nameof(*got))?,
-        EnumError { expect, got, op, argn } =>
-            write!(f, "Argument Error: Expected one of {:?} for argument {} of ({} ...), but got {}",
+        TypeError { expect, got } =>
+            write!(f, "Type Error: Expected {} {}but got {}",
+                   nameof(*expect),
+                   FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta },
+                   nameof(*got))?,
+        STypeError { expect, got } =>
+            write!(f, "Type Error: Expected {} {}but got {}",
+                   expect,
+                   FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta },
+                   got)?,
+        TypeNError { expect, got } =>
+            write!(f, "Type Error: Expected one of ({}) {}but got {}",
+                   expect.iter().map(|v| nameof(*v)).collect::<Vec<_>>().join(", "),
+                   FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta},
+                   nameof(*got))?,
+        EnumError { expect, got } =>
+            write!(f, "Type Error: Expected {:?} {}but got {}",
                    expect.iter().copied().map(nameof).collect::<Vec<_>>(),
-                   argn, nameof(*op), nameof(*got))?,
-        ArgError { expect, got_num, op } => {
-            write!(f, "Argument Error: ({} ...) ", nameof(*op))?;
+                   FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta},
+                   nameof(*got))?,
+        ArgError { expect, got_num } => {
+            write!(f, "Argument Error: ")?;
+            if let Some(op) = err.meta.op() {
+                write!(f, "{} ", op.name(db))?
+            }
             match expect {
                 ArgSpec { nargs, nopt: 0, rest: false, .. } =>
                     write!(f, "expected {} arguments, but got {}",
@@ -189,11 +314,27 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                             nargs, got_num)?,
             }
         }
-        ArgTypeError {  expect, got, op  } =>
-            write!(f, "Argument Error: ({} ...) expected ({}) but got ({})",
-                   nameof(*op),
+        IfaceNotImplemented { got } => {
+            write!(f, "Operation Not Supported: (")?;
+            if let Some(op) = err.meta.op() {
+                write!(f, "{}", op.name(db))?;
+            } else {
+                write!(f, "?")?;
+            }
+            for arg in got.iter() {
+                write!(f, " {}", nameof(*arg))?;
+            }
+            write!(f, ")")?;
+        }
+        ArgTypeError {  expect, got } => {
+            write!(f, "Argument Error: ")?;
+            if let Some(op) = err.meta.op() {
+                write!(f, "{} ", op.name(db))?
+            }
+            write!(f, "expected ({}) but got ({})",
                    expect.iter().copied().map(nameof).collect::<Vec<_>>().join(" "),
-                   got.iter().copied().map(nameof).collect::<Vec<_>>().join(" "))?,
+                   got.iter().copied().map(nameof).collect::<Vec<_>>().join(" "))?;
+        }
         OutsideContext { op, ctx } =>
             write!(f, "Syntax Error: Operator {} not allowed outside of {} context",
                    nameof(*op), nameof(*ctx))?,
@@ -204,9 +345,13 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         ConversionError { from, to, val } =>
             write!(f, "Conversion Error: Could not convert the {} value `{}' into {}",
                     from, val, to)?,
-        NotEnough { expect, got, op } =>
-            write!(f, "Stack Error: Operation `{}' expected {} elements, but got {}",
-                    op, expect, got)?,
+        NotEnough { expect, got } => {
+            write!(f, "Stack Error: ")?;
+            if let Some(op) = err.meta.op() {
+                write!(f, "Operation `{}' ", op.name(db))?
+            }
+            write!(f, "expected {} stack elements, but got {}", expect, got)?;
+        }
         SomeError { msg } => write!(f, "Error: {}", msg)?,
         UndefinedFunction { name } =>
             write!(f, "Undefined Function: Virtual call to undefined function {}",
@@ -259,41 +404,41 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         x => unimplemented!("{:?}", x),
     }
 
-    if let Some(src) = &err.src {
-        if !src.is_none() {
-            write!(f, " {}", src)?;
-        }
+    if let Some(src) = err.meta.src() {
+        write!(f, " {}", src)?;
     }
     Ok(())
 }
 
 impl Error {
-    pub fn with_src(mut self, src: Source) -> Error {
-        self.src = Some(src);
+    pub fn src(mut self, src: Source) -> Error {
+        self.meta.amend(Meta::Source(LineCol {
+            line: src.line,
+            col: src.col
+        }));
+        if let Some(file) = src.file {
+            self.meta.amend(Meta::SourceFile(file));
+        }
+        self
+    }
+
+    pub fn amend(mut self, meta: Meta) -> Self {
+        self.meta.amend(meta);
+        self
+    }
+
+    pub fn fallback(mut self, meta: Meta) -> Self {
+        self.meta.fallback(meta);
         self
     }
 
     pub fn op(mut self, new_op: SymID) -> Error {
-        match &mut self.ty {
-            ErrorKind::TypeError { ref mut op, .. } => *op = new_op,
-            ErrorKind::STypeError { ref mut op, .. } => *op = new_op,
-            ErrorKind::TypeNError { ref mut op, .. } => *op = new_op,
-            ErrorKind::ArgTypeError { ref mut op, .. } => *op = new_op,
-            ErrorKind::EnumError { ref mut op, .. } => *op = new_op,
-            ErrorKind::ArgError { ref mut op, .. } => *op = new_op,
-            ErrorKind::OutsideContext { ref mut op, .. } => *op = new_op,
-            _ => (),
-        }
+        self.meta.amend(Meta::Op(OpName::OpSym(new_op)));
         self
     }
 
     pub fn argn(mut self, n: u32) -> Error {
-        match &mut self.ty {
-            ErrorKind::TypeError { ref mut argn, .. } => *argn = n,
-            ErrorKind::STypeError { ref mut argn, .. } => *argn = n,
-            ErrorKind::TypeNError { ref mut argn, .. } => *argn = n,
-            _ => ()
-        }
+        self.meta.amend(Meta::OpArgn(n));
         self
     }
 
@@ -335,7 +480,7 @@ impl serde::ser::Error for Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
         Error {
             ty: ErrorKind::SomeError { msg: msg.to_string() },
-            src: None,
+            meta: Default::default(),
         }
     }
 }
@@ -344,14 +489,17 @@ impl serde::de::Error for Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
         Error {
             ty: ErrorKind::SomeError { msg: msg.to_string() },
-            src: None,
+            meta: Default::default(),
         }
     }
 }
 
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
-        fmt_error(&Error { ty: self.clone(), src: None }, f, &SYM_DB)
+        fmt_error(&Error {
+            ty: self.clone(),
+            meta: Default::default(),
+        }, f, &SYM_DB)
     }
 }
 
@@ -387,7 +535,7 @@ impl error::Error for Error {
 impl<T> From<SendError<T>> for Error where T: Debug {
     fn from(err: SendError<T>) -> Self {
         Error {
-            src: None,
+            meta: Default::default(),
             ty: ErrorKind::SendError {
                 obj_dbg: format!("{:?}", err.0)
             }
@@ -398,7 +546,7 @@ impl<T> From<SendError<T>> for Error where T: Debug {
 impl From<TryFromIntError> for Error {
     fn from(err: TryFromIntError) -> Self {
         Error {
-            src: None,
+            meta: Default::default(),
             ty: ErrorKind::SomeError { msg: err.to_string() }
         }
     }
@@ -413,13 +561,9 @@ impl From<std::convert::Infallible> for Error {
 impl From<ParseErr> for Error {
     fn from(perr: ParseErr) -> Self {
         Error {
-            src: Some(Source {
-                file: None,
-                line: perr.line as u32,
-                col: perr.col as u32,
-            }),
+            meta: Default::default(),
             ty: ErrorKind::SyntaxError { msg: perr.msg }
-        }
+        }.amend(Meta::Source(LineCol { line: perr.line, col: perr.col }))
     }
 }
 
@@ -432,7 +576,7 @@ macro_rules! err {
 macro_rules! error {
     ($kind:ident, $($init:tt)* ) => {
         crate::error::Error {
-            src: None,
+            meta: Default::default(),
             ty: crate::error::ErrorKind::$kind { $($init)* },
         }
     };
@@ -440,12 +584,18 @@ macro_rules! error {
 
 macro_rules! err_src {
     ($src:expr, $kind:ident, $($init:tt)* ) => {
-        Err(crate::error::Error { src: Some($src), ty: (crate::error::ErrorKind::$kind { $($init)* }) })
+        Err(crate::error::Error {
+            meta: Default::default(),
+            ty: (crate::error::ErrorKind::$kind { $($init)* }),
+        }.src($src))
     };
 }
 
 macro_rules! error_src {
     ($src:expr, $kind:ident, $($init:tt)* ) => {
-        crate::error::Error { src: Some($src), ty: (crate::error::ErrorKind::$kind { $($init)* }) }
+        crate::error::Error {
+            meta: Default::default(),
+            ty: (crate::error::ErrorKind::$kind { $($init)* }),
+        }.src($src)
     };
 }

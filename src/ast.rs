@@ -169,11 +169,11 @@ impl Value {
                     }).collect::<Result<Vec<_>, Error>>()?;
             Ok(Let(pairs, it.head()))
         } else {
-            err_src!(self.src.clone(),
-                     ArgError,
-                     expect: ArgSpec::rest(1, 0),
-                     got_num: 0,
-                     op: Builtin::Let.sym())
+            Err(error!(ArgError,
+                       expect: ArgSpec::rest(1, 0),
+                       got_num: 0)
+                .op(Builtin::Let.sym())
+                .src(self.src.clone()))
         }
     }
 
@@ -185,7 +185,7 @@ impl Value {
         match it.next() {
             Some(Value { kind: ValueKind::Symbol(var), .. }) => {
                 let init = it.next().ok_or(
-                    error_src!(src, ArgError, op, expect, got_num: 1)
+                    error!(ArgError, expect, got_num: 1).op(op).src(src)
                 )?;
                 Ok(Define::Var(*var, init))
             }
@@ -194,20 +194,20 @@ impl Value {
                 let name = match def_it.next() {
                     Some(Value { kind: ValueKind::Symbol(name), .. }) =>
                         Ok(name),
-                    Some(x) => err_src!(fn_def.src.clone(), TypeError, op,
-                                        expect: Builtin::Symbol.sym(),
-                                        got: x.type_of(),
-                                        argn: 1),
+                    Some(x) => Err(error!(TypeError,
+                                          expect: Builtin::Symbol.sym(),
+                                          got: x.type_of())
+                                   .op(op).argn(1).src(fn_def.src.clone())),
                     _ => unreachable!(),
                 }?;
                 let (syms, spec) = arg_parse(def_it.head())?;
                 Ok(Define::Func(*name, ArgList(spec, syms), it.head()))
             }
-            None => err_src!(src, ArgError, op, expect, got_num: 0),
-            Some(x) => err_src!(src, TypeError, op,
-                                expect: Builtin::Symbol.sym(),
-                                got: x.type_of(),
-                                argn: 1),
+            None => Err(error!(ArgError, expect, got_num: 0).op(op).src(src)),
+            Some(x) => Err(error!(TypeError,
+                                  expect: Builtin::Symbol.sym(),
+                                  got: x.type_of())
+                           .op(op).src(src).argn(1))
         }
     }
 
@@ -261,10 +261,11 @@ impl Value {
         let (args, spec) = if let Some(args) = it.next() {
             arg_parse(args)?
         } else {
-            return err_src!(self.src.clone(), ArgError,
-                            expect: ArgSpec::rest(1, 0),
-                            got_num: 0,
-                            op: Builtin::Lambda.sym())
+            return Err(error!(ArgError,
+                              expect: ArgSpec::rest(1, 0),
+                              got_num: 0)
+                       .op(Builtin::Lambda.sym())
+                       .src(self.src.clone()))
         };
         Ok(Lambda(ArgList(spec, args), it.head()))
     }
