@@ -372,11 +372,16 @@
           (push out elem))
     out))
 
+(defmacro yield (expr)
+  (let ((k (gensym)))
+    `(call/cc (lambda (,k)
+                (throw (cons ,expr ,k))))))
+
 (defmacro await (expr)
   (let ((k (gensym)))
     `(call/cc (lambda (,k)
                 (<ζ>::send-message ,expr ,k)
-                (throw '<ζ>::await)))))
+                (throw '<ζ>::yield-await)))))
 
 (defmacro send (expr)
   `(<ζ>::send-message ,expr))

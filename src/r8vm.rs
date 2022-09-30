@@ -2055,7 +2055,7 @@ impl R8VM {
         Ok(self.mem.make_extref(res))
     }
 
-    pub fn apply_spv(&mut self, f: SPV, args: impl AsArgs) -> Result<(), Error> {
+    pub fn apply_spv(&mut self, f: SPV, args: impl AsArgs) -> Result<PV, Error> {
         let frame = self.frame;
         self.frame = self.mem.stack.len();
         self.mem.push(PV::UInt(0));
@@ -2066,8 +2066,7 @@ impl R8VM {
         unsafe {
             self.run_from_unwind(pos)?;
         }
-        self.mem.pop()?;
-        Ok(())
+        self.mem.pop()
     }
 
     pub fn raw_call(&mut self, sym: SymID, args: &[PV]) -> Result<PV, Error> {

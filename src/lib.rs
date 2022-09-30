@@ -72,6 +72,7 @@ pub use nkgc::{SPV, SymID, ObjRef};
 pub use nuke::Gc;
 pub use string::Str;
 use subrs::FromLisp;
+use nkgc::Cons;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
 
@@ -114,6 +115,7 @@ use std::fmt::Debug;
 use std::sync::mpsc::{Sender, channel, Receiver, TryRecvError, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+use std::ops::{Deref, DerefMut};
 
 use serde::de::DeserializeOwned;
 
@@ -374,6 +376,23 @@ impl Spaik {
         self.vm.mem.full_collection()
     }
 
+    /// Fulfil a `Promise<T>` by running its continuation with value `ans`
+    pub fn fulfil<R,A,T>/*🐀*/(&mut self,
+                               pr: Promise<T>,
+                               ans: A) -> Result<R, Error>
+        where PV: FromLisp<R>,
+              A: IntoLisp + Clone + Send + 'static,
+    {
+        if let Some(cont) = pr.cont {
+            self.vm.apply_spv(cont, (ans,))
+                   .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
+
+        } else {
+            PV::Nil.from_lisp(&mut self.vm.mem)
+        }
+        .map_err(|e| Error::from_source(e, self))
+    }
+
     /// Add to load path, this influences where `Spaik::load` will search for
     /// spaik files.
     ///
@@ -478,6 +497,36 @@ pub enum Event<Cmd: EnumCall + Send> {
 pub struct Promise<T> {
     msg: Box<T>,
     cont: Option<SPV>,
+}
+
+impl<T> Deref for Promise<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &*self.msg
+    }
+}
+
+impl<T> DerefMut for Promise<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.msg
+    }
+}
+
+impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
+    fn from_lisp(self, mem: &mut nkgc::Arena) -> Result<Promise<T>, IError> {
+        with_ref!(self, Cons(Cons { car: msg, cdr: cont }) => {
+            let msg = deserialize::from_pv(*msg, mem)?;
+            if cont.type_of() != Builtin::Continuation.sym() {
+                return err!(TypeError,
+                            expect: Builtin::Continuation.sym(),
+                            got: cont.type_of(),
+                            op: Builtin::Unknown.sym(),
+                            argn: 2);
+            }
+            let cont = Some(mem.make_extref(*cont));
+            Ok(Promise { msg, cont })
+        })
+    }
 }
 
 impl<T> Promise<T> {
@@ -790,5 +839,23 @@ mod tests {
         vm.cmd(CallSome::FuncB { arg0: 0, arg1: 0, arg2: "lmao" }).unwrap();
         let s: String = vm.get("global").unwrap();
         assert_eq!("lmao", &s);
+    }
+
+    #[test]
+    fn test_yield() {
+        let mut vm = Spaik::new();
+        vm.exec(r#"(defun test-yield () (+ (yield "value") 2))"#).unwrap();
+        let pr: Promise<String> = vm.call("test-yield", ()).unwrap();
+        assert_eq!(&*pr, "value");
+        let res: i32 = vm.fulfil(pr, 5).unwrap();
+        assert_eq!(res, 2 + 5);
+    }
+
+    #[test]
+    fn test_yield_type_err() {
+        let mut vm = Spaik::new();
+        vm.exec(r#"(defun test-yield () (+ (yield 1) 2))"#).unwrap();
+        let pr: Result<Promise<String>, _> = vm.call("test-yield", ());
+        assert!(pr.is_err());
     }
 }
