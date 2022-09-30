@@ -64,11 +64,16 @@ fn api_func_call() -> Result<(), Box<dyn std::error::Error>> {
     vm.add_load_path("examples")?;
     vm.load("funk.lisp")?;
 
-    // Reference to heap-allocated SPAIK objects
+    // Reference to heap-allocated SPAIK objects are made using `Gc<T>`
     let hist: Gc<History> = vm.get("history")?;
 
-    // Call-by-enum, and get a continuation
-    let cont: Promise<Response> vm.query(Command::Funky(60))?;
+    // Call-by-enum, and get a continuation.
+    let cont: Promise<Response> = vm.query(Command::Funky(60))?;
+
+    // You'll notice that a lot of the calls follow the pattern:
+    //   `let resp: ExpectedType = vm.method(...)?`
+    // Here `ExpectedType` is a type-guard, and `vm.method(...)` will return an
+    // error if it can't convert the SPAIK value to the expected Rust type.
 
     // Fulfil promise
     let res: String = vm.fulfil(cont, String::from("funky.mp3"))?;
@@ -81,7 +86,7 @@ fn api_func_call() -> Result<(), Box<dyn std::error::Error>> {
     // Access is done using `.with()` because of Rusts strict aliasing rules.
     assert!(hist.with(|h| h.tracks.last() == Some("funky.mp3")));
 
-    // Gc<History> gets dropped here, but it could outlive `vm` if we wanted to.
+    // Gc<History> gets dropped here, but it could outlive `vm` if we wanted it to.
 }
 #+end_src
 
