@@ -356,14 +356,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             } else {
                 Err(error!(TypeError,
                      expect: Builtin::Keyword.sym(),
-                     got: Builtin::Symbol.sym(),)
-                     .argn(0).op(Builtin::Unknown.sym()))
+                     got: Builtin::Symbol.sym()))
             }
         } else {
             Err(error!(TypeError,
                  expect: Builtin::Symbol.sym(),
-                 got: self.input.type_of(),)
-                 .argn(0).op(Builtin::Unknown.sym()))
+                 got: self.input.type_of()))
         }
     }
 
