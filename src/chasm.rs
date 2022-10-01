@@ -363,7 +363,6 @@ mod tests {
         let pv_big = ASMPV::u32(260);
         let v_big: Result<u8, _> = pv_big.try_into();
         assert_eq!(v_big, Err(Error {
-            src: None,
             meta: Default::default(),
             ty: ConversionError {
                 from: "u32",
