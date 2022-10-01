@@ -66,6 +66,7 @@ pub mod repl;
 pub mod deserialize;
 pub mod scratch;
 pub mod string;
+mod math;
 
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};

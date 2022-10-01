@@ -88,6 +88,7 @@ pub struct MetaSet {
 
 macro_rules! get_inner_meta {
     ($name:ident, $meta_name:ident, $inner_t:ty) => {
+        #[allow(dead_code)]
         fn $name(&self) -> Option<$inner_t> {
             self.meta.iter().find_map(|m| if let Meta::$meta_name(name) = m {
                 Some(name)

@@ -140,7 +140,7 @@ macro_rules! fissile_types {
         fn minimal_fissile_sz() -> NkSz {
             const LEN: usize = count_args!($($t),+);
             const SIZES: [usize; LEN] = [
-                $(mem::size_of::<$path>() /*- mem::align_of::<$path>()*/),+
+                $(mem::size_of::<$path>()),+
             ];
             *SIZES.iter().min().unwrap() as NkSz
         }
@@ -638,6 +638,10 @@ fissile_types! {
     // (Str, Builtin::String.sym(), crate::string::Str),
     (PV, Builtin::Ref.sym(), crate::nkgc::PV),
     (Vector, Builtin::Vector.sym(), Vec<PV>),
+    (Vec4, Builtin::Vec4.sym(), glam::Vec4),
+    (Mat2, Builtin::Mat2.sym(), glam::Mat2),
+    (Mat3, Builtin::Mat3.sym(), glam::Mat3),
+    (Mat4, Builtin::Mat4.sym(), glam::Mat4),
     (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),
     (Struct, Builtin::Struct.sym(), crate::nuke::Object),
     (Iter, Builtin::Struct.sym(), crate::nuke::Iter),
@@ -668,6 +672,17 @@ impl fmt::Display for PtrMap {
         write!(f, "]")
     }
 }
+
+macro_rules! trivial_trace {
+    ($($t:ty),*) => {$(impl Traceable for $t {
+        fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
+        fn update_ptrs(&mut self, _reloc: &PtrMap) {}
+    })*};
+}
+
+trivial_trace!(glam::Vec2, glam::Vec3, glam::Vec4,
+               glam::Mat2, glam::Mat3, glam::Mat4,
+               glam::Quat);
 
 impl NkAtom {
     #[inline]
@@ -812,17 +827,10 @@ pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
 #[cfg(target_pointer_width = "32")]
 const ALIGNMENT: isize = 4;
 #[cfg(target_pointer_width = "64")]
-const ALIGNMENT: isize = 8;
+const ALIGNMENT: isize = 16;
 
-pub struct RelocateToken {
-    p: PhantomData<u8>,
-}
-
-impl RelocateToken {
-    fn new() -> RelocateToken {
-        RelocateToken { p: Default::default() }
-    }
-}
+#[must_use = "Relocation must be confirmed"]
+pub struct RelocateToken;
 
 impl Nuke {
     pub fn new(sz: usize) -> Nuke {
@@ -867,7 +875,6 @@ impl Nuke {
         nk
     }
 
-    #[must_use = "Relocation must be confirmed"]
     pub unsafe fn compact(&mut self) -> RelocateToken {
         let mut node = self.fst();
         let mut npos;
@@ -893,7 +900,7 @@ impl Nuke {
         self.last = npos;
         self.free = start;
 
-        RelocateToken::new()
+        RelocateToken
     }
 
     pub unsafe fn destroy_the_world(&mut self) {
@@ -907,7 +914,6 @@ impl Nuke {
         self.num_atoms = 1;
     }
 
-    #[must_use = "Relocation must be confirmed"]
     pub unsafe fn sweep_compact(&mut self) -> RelocateToken {
         let mut node = self.fst();
         let mut npos;
@@ -956,10 +962,9 @@ impl Nuke {
         (*self.fst()).set_color(Color::Black);
         self.free = start;
 
-        RelocateToken::new()
+        RelocateToken
     }
 
-    #[must_use = "Relocation must be confirmed"]
     pub unsafe fn grow(&mut self, fit: usize) -> RelocateToken {
         let new_sz = (self.sz << 1).max(self.sz + fit);
         self.sz = new_sz;
@@ -995,10 +1000,9 @@ impl Nuke {
         debug_assert!(num_atoms == self.num_atoms, "Number of atoms did not match");
         debug_assert!(used == self.used, "Usage count did not match");
 
-        RelocateToken::new()
+        RelocateToken
     }
 
-    #[must_use = "Relocation must be confirmed"]
     pub unsafe fn make_room(&mut self, fit: usize) -> RelocateToken {
         if self.used + fit > self.load_max {
             self.grow(fit)
