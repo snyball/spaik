@@ -307,7 +307,8 @@ pub struct Object {
     vt: &'static VTable,
     /// This indirection allows us to safely pass references to the underlying T
     /// to user code, without having to worry about updating the pointer when
-    /// the GC compacts.
+    /// the GC compacts. Of course, this also sacrifices some of the utility of
+    /// the compacting process.
     ///
     /// See RcMem<T> for the actual layout of this memory.
     mem: *mut u8,
@@ -331,7 +332,7 @@ impl GcRc {
 #[repr(C)]
 pub struct RcMem<T> {
     /// `obj` *must* be the first item of this struct, the `Object`
-    /// implementation relies on being able to coerce an `*mut RcMem<T>` into a
+    /// implementation relies on being able to coerce a `*mut RcMem<T>` into a
     /// `*mut T`.
     obj: T,
     rc: GcRc
