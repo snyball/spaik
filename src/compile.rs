@@ -178,6 +178,7 @@ builtins! {
     (AyyLmao, "ayy-lmao"),
     (Unwind, "unwind"),
     (SysLoadPath, "sys/load-path"),
+    (SysLoad, "sys/load"),
     (KwUnwind, ":unwind"),
     (If, "if"),
     (Compile, "compile"),

@@ -1203,7 +1203,7 @@ impl R8VM {
         let mut path = String::new();
         let it = self.var(Builtin::SysLoadPath.sym())?
                      .make_iter()
-                     .map_err(|e| e.op(Builtin::SysLoadPath.sym()))?;
+                     .map_err(|e| e.op(Builtin::SysLoad.sym()))?;
         for (i, p) in it.enumerate() {
             path.push_str(with_ref!(p, String(s) => {Ok(&*s)})
                           .map_err(|e| e.argn(i as u32)

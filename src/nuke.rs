@@ -796,12 +796,7 @@ pub struct Nuke {
 /// This function is an optimized method of computing the next valid memory
 /// address starting at `p`, where a storage class of alignment `a` can be
 /// placed (Note that T is arbtrary and is not used in the calculation, see
-/// Layout::* for getting the alignment for a type.) For all intents and
-/// purposes as far as SPAIK is concerned, `a` will *always* be 8 on
-/// x86_64/arm64/wasm64 and 4 on i686/arm32/wasm32. See `ALIGNMENT`.
-///
-/// We don't make use of more granularity than that, but might choose to do so
-/// in the future to avoid having to pad when not necessary.
+/// Layout::* for getting the alignment for a type.)
 fn align<T>(p: *mut T, a: isize) -> *mut T {
     (((p as isize) + a - 1) & !(a - 1)) as *mut T
 }
@@ -826,8 +821,10 @@ pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
 
 #[cfg(target_pointer_width = "32")]
 const ALIGNMENT: isize = 4;
+
+// FIXME: It's not fair to make *all* types 16-byte aligned just because `Vec4` is
 #[cfg(target_pointer_width = "64")]
-const ALIGNMENT: isize = 16;
+const ALIGNMENT: isize = 8;
 
 #[must_use = "Relocation must be confirmed"]
 pub struct RelocateToken;
@@ -1027,11 +1024,15 @@ impl Nuke {
     }
 
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
-        let full_sz = mem::size_of::<T>() + mem::size_of::<NkAtom>();
+        let cur = align(self.free as *mut NkAtom, ALIGNMENT);
+        let p = (cur as *mut u8).add(mem::size_of::<NkAtom>()) as *mut T;
+        let pa = align(p, align_of::<T>() as isize);
+        let full_sz = mem::size_of::<T>()
+                    + mem::size_of::<NkAtom>()
+                    + ((pa as *const u8).sub(p as *const u8 as usize)) as usize;
         let ret = (self.free.add(full_sz) >= self.offset(self.sz))
                   .then(|| self.make_room(full_sz));
 
-        let cur = align(self.free as *mut NkAtom, ALIGNMENT);
         let last = self.last;
         self.last = cur;
 
@@ -1047,8 +1048,7 @@ impl Nuke {
 
         (*last).next = cur;
 
-        let p = (cur as *mut u8).add(mem::size_of::<NkAtom>()) as *mut T;
-        (p, ret)
+        (pa, ret)
     }
 
     #[inline]
@@ -1209,16 +1209,7 @@ const META_TYPE_MASK: u8 = 0xfc;
 
 pub struct AtomMeta(u8);
 
-#[cfg(target_pointer_width = "32")]
-#[repr(C, align(4))]
-pub struct NkAtom {
-    next: *mut NkAtom,
-    sz: NkSz,
-    meta: AtomMeta,
-}
-
-#[cfg(target_pointer_width = "64")]
-#[repr(C, align(8))]
+#[repr(C)]
 pub struct NkAtom {
     next: *mut NkAtom,
     sz: NkSz,
