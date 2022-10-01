@@ -1022,13 +1022,12 @@ impl Nuke {
         }
     }
 
-    #[must_use = "Relocation must be confirmed"]
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
         let full_sz = mem::size_of::<T>() + mem::size_of::<NkAtom>();
         let ret = (self.free.add(full_sz) >= self.offset(self.sz))
                   .then(|| self.make_room(full_sz));
 
-        let cur = self.free as *mut NkAtom;
+        let cur = align(self.free as *mut NkAtom, ALIGNMENT);
         let last = self.last;
         self.last = cur;
 
