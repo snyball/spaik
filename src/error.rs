@@ -67,8 +67,8 @@ impl OpName {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct LineCol {
-    line: u32,
-    col: u32,
+    pub line: u32,
+    pub col: u32,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -198,6 +198,9 @@ pub enum ErrorKind {
     MissingFeature { flag: &'static str },
     CharSpecError { spec: SymID },
     LibError { name: SymID },
+    TrailingDelimiter { close: &'static str },
+    UnclosedDelimiter { open: &'static str },
+    TrailingModifiers { mods: String },
 }
 
 impl From<std::io::Error> for Error {
@@ -402,6 +405,12 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                    nameof(*spec))?,
         LibError { name } =>
             write!(f, "Error: {}", nameof(*name))?,
+        TrailingDelimiter { close } =>
+            write!(f, "Trailing Delimiter: Found trailing `{}' in input", close)?,
+        UnclosedDelimiter { open } =>
+            write!(f, "Unclosed Delimiter: Found `{}' which was not closed in input", open)?,
+        TrailingModifiers { mods } =>
+            write!(f, "Trailing Modifiers: Unexpected end of input at: {}", mods)?,
         x => unimplemented!("{:?}", x),
     }
 

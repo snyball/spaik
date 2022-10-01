@@ -1,5 +1,7 @@
 //! S-Expression Parser
 
+use crate::Builtin;
+use crate::SymID;
 use crate::error::SourceFileName;
 use crate::perr::*;
 use crate::tok::*;
@@ -89,7 +91,7 @@ pub fn find_pairs(pairs: &[(&str, &str)], toks: &[Token]) -> PResult<FnvHashMap<
     Ok(map)
 }
 
-fn sexpr_modifier(tok: &str) -> Option<&'static str> {
+pub fn sexpr_modifier(tok: &str) -> Option<&'static str> {
     Some(match tok {
         "'" => "quote",
         "#" => "sys::hash",
@@ -99,6 +101,26 @@ fn sexpr_modifier(tok: &str) -> Option<&'static str> {
         "@" => "sys::deref",
         ",@" => "sys::usplice",
         "¬" => "not",
+        _ => return None,
+    })
+}
+
+pub fn sexpr_modifier_bt(tok: &str) -> Option<Builtin> {
+    Some(match tok {
+        "'" => Builtin::Quote,
+        "`" => Builtin::Quasi,
+        "," => Builtin::Unquote,
+        ",@" => Builtin::USplice,
+        _ => return None,
+    })
+}
+
+pub fn sexpr_modified_sym_to_str(m: Builtin) -> Option<&'static str> {
+    Some(match m {
+        Builtin::Quote => "'",
+        Builtin::Quasi => "`",
+        Builtin::Unquote => ",",
+        Builtin::USplice => ",@",
         _ => return None,
     })
 }

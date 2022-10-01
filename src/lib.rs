@@ -107,8 +107,6 @@ pub mod raw {
     pub mod fmt { pub use crate::fmt::*; }
     /// # SymDB
     pub mod sym_db { pub use crate::sym_db::*; }
-    /// # S-Expression parser
-    pub mod sexpr_parse { pub use crate::sexpr_parse::*; }
 }
 
 use std::borrow::Cow;

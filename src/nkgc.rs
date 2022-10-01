@@ -4,13 +4,16 @@ use crate::compile::{Builtin, BUILTIN_SYMBOLS};
 use crate::ast::{Value, ValueKind};
 use crate::r8vm::{RuntimeError, ArgSpec, ArgInt, R8VM};
 use crate::nuke::{*, self};
-use crate::error::{ErrorKind, Error, Source};
+use crate::error::{ErrorKind, Error, Source, Meta, LineCol};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::subrs::FromLisp;
 use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
+use crate::sexpr_parse::{tokenize, Fragment, standard_lisp_tok_tree, sexpr_modifier, string_parse, sexpr_modifier_bt, sexpr_modified_sym_to_str};
+use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::mem::replace;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
@@ -1391,6 +1394,83 @@ impl Arena {
         } else {
             Ok(self.stack[self.stack.len() - 1])
         }
+    }
+
+    pub fn read(&mut self, sexpr: &str) -> Result<(), Error> {
+        lazy_static! {
+            static ref TREE: Fragment = standard_lisp_tok_tree();
+        }
+        let toks = tokenize(sexpr, &TREE)?;
+        let mut mods: Vec<Builtin> = vec![];
+        let mut close = vec![];
+        let mut pmods = vec![];
+        let mut num = 0;
+        macro_rules! wrap {
+            ($push:expr) => {
+                $push;
+                while let Some(m) = mods.pop() {
+                    let p = self.pop().expect("No expr to wrap");
+                    self.push(PV::Sym(m.sym()));
+                    self.push(p);
+                    self.list(2);
+                }
+            };
+        }
+        macro_rules! assert_no_trailing {
+            ($($meta:expr),*) => {
+                if !mods.is_empty() {
+                    let mods = mods.into_iter()
+                                   .map(sexpr_modified_sym_to_str)
+                                   .collect::<Option<Vec<_>>>()
+                                   .unwrap()
+                                   .join("");
+                    return Err(error!(TrailingModifiers, mods)
+                               $(.amend($meta))*);
+                }
+            };
+        }
+        for tok in toks.into_iter() {
+            let Token { line, col, text } = tok;
+            match text {
+                "(" => {
+                    pmods.push(replace(&mut mods, vec![]));
+                    close.push(num + 1);
+                    num = 0;
+                }
+                ")" => {
+                    assert_no_trailing!(Meta::Source(LineCol { line, col }));
+                    mods = pmods.pop().expect("Unable to wrap expr");
+                    wrap!(self.list(num));
+                    num = close.pop()
+                               .ok_or_else(
+                                   || error!(TrailingDelimiter, close: ")")
+                                       .amend(Meta::Source(LineCol { line, col })))?;
+                }
+                _ => {
+                    let pv = if let Some(m) = sexpr_modifier_bt(text) {
+                        mods.push(m);
+                        continue;
+                    } else if let Ok(int) = text.parse() {
+                        PV::Int(int)
+                    } else if let Ok(num) = text.parse() {
+                        PV::Real(num)
+                    } else if let Some(strg) = tok.inner_str() {
+                        self.put(string_parse(&strg)?)
+                    } else if text == "true" {
+                        PV::Bool(true)
+                    } else if text == "false" {
+                        PV::Bool(false)
+                    } else {
+                        PV::Sym(self.put_sym(text))
+                    };
+                    wrap!(self.push(pv));
+                    num += 1;
+                }
+            }
+        }
+        assert_no_trailing!();
+        self.list(num);
+        Ok(())
     }
 
     pub fn untag_ast(&mut self, v: PV) {
