@@ -1,7 +1,6 @@
 //! S-Expression Parser
 
 use crate::Builtin;
-use crate::SymID;
 use crate::error::SourceFileName;
 use crate::perr::*;
 use crate::tok::*;

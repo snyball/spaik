@@ -9,7 +9,7 @@ use crate::fmt::{LispFmt, VisitSet};
 use crate::subrs::FromLisp;
 use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
-use crate::sexpr_parse::{tokenize, Fragment, standard_lisp_tok_tree, sexpr_modifier, string_parse, sexpr_modifier_bt, sexpr_modified_sym_to_str};
+use crate::sexpr_parse::{tokenize, Fragment, standard_lisp_tok_tree, string_parse, sexpr_modifier_bt, sexpr_modified_sym_to_str};
 use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -608,7 +608,10 @@ impl PV {
             UInt(_) => true,
             Real(_) => true,
             Sym(_) => true,
-            Ref(p) => match_gcell!(p, {String(_) => {}}).is_ok(),
+            Ref(p) => match unsafe{(*p).type_of()} {
+                NkT::Cons => false,
+                _ => true,
+            }
             _ => false,
         }
     }
@@ -652,11 +655,23 @@ impl PV {
         self.iter().map(|v| v.pair())
     }
 
-    pub fn setcdr(&mut self, new_val: &PV) -> Result<(), RuntimeError> {
-        gcell!(mut *self, {
-            Cons(Cons { ref mut car, .. }) => { *car = *new_val }
-        })
-    }
+    // #[inline]
+    // pub fn setcar(&mut self, new: PV) -> Result<PV, Error> {
+    //     with_ref_mut!(self, Cons(Cons { ref mut car, .. }) => {
+    //         let prev = *car;
+    //         *car = new;
+    //         Ok(prev)
+    //     })
+    // }
+
+    // #[inline]
+    // pub fn setcdr(&mut self, new: PV) -> Result<PV, Error> {
+    //     with_ref_mut!(self, Cons(Cons { ref mut cdr, .. }) => {
+    //         let prev = *cdr;
+    //         *cdr = new;
+    //         Ok(prev)
+    //     })
+    // }
 
     pub fn append(&mut self, new_tail: &PV) -> Result<(), RuntimeError> {
         let cell = gcell!(mut *self, { Cons(cell) => { cell } })?;
@@ -1388,6 +1403,10 @@ impl Arena {
         self.stack[self.stack.len() - 1]
     }
 
+    pub fn from_top(&self, d: usize) -> PV {
+        self.stack[self.stack.len() - 1 - d]
+    }
+
     pub fn peek(&self) -> Result<PV, RuntimeError> {
         if self.stack.is_empty() {
             RuntimeError::err("Stack was empty.".to_string())
@@ -1424,8 +1443,7 @@ impl Arena {
                                    .collect::<Option<Vec<_>>>()
                                    .unwrap()
                                    .join("");
-                    return Err(error!(TrailingModifiers, mods)
-                               $(.amend($meta))*);
+                    return Err(error!(TrailingModifiers, mods)$(.amend($meta))*);
                 }
             };
         }

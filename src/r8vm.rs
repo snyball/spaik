@@ -7,18 +7,17 @@ use crate::{
     ast::{Value, ValueKind},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
-    error::{Error, ErrorKind, Source, OpName, Meta},
+    error::{Error, ErrorKind, Source, OpName, Meta, LineCol},
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
     nuke::*,
     nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
-    perr::PResult,
-    sexpr_parse::Parser,
+    sexpr_parse::{Parser, sexpr_modified_sym_to_str, sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr},
-    sym_db::SymDB, FmtErr,
+    sym_db::SymDB, FmtErr, tok::Token,
 };
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem, ptr, slice, sync::Mutex};
+use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace}, ptr, slice, sync::Mutex};
 
 chasm_def! {
     r8c:
@@ -282,7 +281,7 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, convert::Infallible, borrow::Cow};
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Source}, fmt::{LispFmt, FmtWrap}, compile::{Builtin, pv_to_value}};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind}, fmt::{LispFmt, FmtWrap}, compile::Builtin};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String
@@ -428,10 +427,7 @@ mod sysfns {
         }
 
         fn macroexpand(&mut self, vm: &mut R8VM, args: (ast)) -> Result<PV, Error> {
-            let mut ast = unsafe { pv_to_value(*ast, &Source::none()) };
-            let v = vm.macroexpand(&mut ast)?;
-            vm.push_ast(v);
-            vm.mem.pop()
+            vm.macroexpand_pv(*ast)
         }
 
         fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV, Error> {
@@ -1238,10 +1234,8 @@ impl R8VM {
     }
 
     /// Reads LISP code into an AST.
-    pub fn read(&mut self, lisp: &str) -> PResult<()> {
-        let ast = Parser::parse(self, lisp, None)?;
-        self.push_ast(&ast);
-        Ok(())
+    pub fn read(&mut self, lisp: &str) -> Result<(), Error> {
+        self.mem.read(lisp)
     }
 
     pub fn eval_macroexpand<'z>(&mut self,
@@ -1278,6 +1272,73 @@ impl R8VM {
             self.macroexpand(v)?;
         }
         Ok(v)
+    }
+
+    pub fn macroexpand_pv(&mut self, mut v: PV) -> Result<PV, Error> {
+        if let Some(m) = v.op().and_then(|op| self.macros.get(&op.into())).copied() {
+            let func = self.funcs.get(&m.into()).ok_or("No such function")?;
+            let mut nargs = 0;
+            let frame = self.frame;
+            self.frame = self.mem.stack.len();
+            for arg in v.args() {
+                self.mem.push(arg);
+                nargs += 1;
+            }
+            if let Err(e) = func.args.check(m.into(), nargs) {
+                self.mem.popn(nargs as usize);
+                self.frame = frame;
+                return Err(e);
+            }
+
+            self.mem.push(PV::UInt(0));
+            self.mem.push(PV::UInt(frame));
+
+            let pos = func.pos;
+            unsafe { self.run_from_unwind(pos)?; }
+            let res = self.mem.pop().expect(
+                "Function did not return a value"
+            );
+
+            self.macroexpand_pv(res)
+        } else if let Some(Builtin::EvalWhen) = v.bt_op() {
+            todo!()
+        } else if v.is_atom() {
+            Ok(v)
+        } else {
+            self.mem.push(v);
+            loop {
+                if let PV::Ref(p) = v {
+                    let rf = unsafe{(*p).match_ref()};
+                    if let NkRef::Cons(Cons { car, .. }) = rf {
+                        self.mem.push(v);
+                        let ncar = self.macroexpand_pv(*car);
+                        v = self.mem.pop().unwrap();
+                        if let PV::Ref(p) = v {
+                            let rf = unsafe{(*p).match_mut()};
+                            if let NkMut::Cons(Cons { ref mut car, cdr }) = rf {
+                                *car = match ncar {
+                                    Ok(x) => x,
+                                    Err(e) => {
+                                        self.mem.pop()?;
+                                        return Err(e);
+                                    }
+                                };
+                                v = *cdr;
+                            } else {
+                                unreachable!(); // not
+                            }
+                        } else {
+                            unreachable!() // my
+                        }
+                    } else {
+                        break; // proudest
+                    }
+                } else {
+                    break; // moment
+                }
+            }
+            self.mem.pop()
+        }
     }
 
     /**
