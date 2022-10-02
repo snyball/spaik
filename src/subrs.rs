@@ -82,7 +82,8 @@ pv_convert!(Int,
             i16, u16,
             i32, u32,
             i64, u64,
-            i128, u128);
+            i128, u128,
+            isize, usize);
 
 pv_convert!(Real,
             f32);

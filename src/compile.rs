@@ -179,6 +179,7 @@ builtins! {
     (Unwind, "unwind"),
     (SysLoadPath, "sys/load-path"),
     (SysLoad, "sys/load"),
+    (LimitsMacroexpandRecursion, "limits/macroexpand-recursion"),
     (KwUnwind, ":unwind"),
     (If, "if"),
     (Compile, "compile"),

@@ -1,7 +1,11 @@
 //! Abstract Syntax Tree Tools
 
+use crate::nkgc::Arena;
+use crate::nkgc::Cons;
+use crate::nkgc::PV;
 use crate::nkgc::SymID;
 use crate::error::*;
+use crate::nuke::NkRef;
 use crate::tok::*;
 use crate::perr::*;
 use crate::sexpr_parse::string_parse;
@@ -79,6 +83,7 @@ pub struct LetBinding<'a>(pub SymID,
 pub struct Let<'a>(pub Vec<LetBinding<'a>>,
                    pub &'a Value);
 
+#[derive(Debug)]
 pub struct ArgList(pub ArgSpec,
                    pub Vec<SymID>);
 pub struct Lambda<'a>(pub ArgList,
@@ -635,6 +640,210 @@ macro_rules! lisp_qq {
     () => { Value::new_nil() };
 }
 
+#[derive(Debug)]
+enum AST2Kind {
+    If(Box<AST2>, Box<AST2>, Option<Box<AST2>>),
+    Atom(PV),
+    Progn(Vec<AST2>),
+    SymApp(SymID, Vec<AST2>),
+    App(Box<AST2>, Vec<AST2>),
+    Lambda(ArgList, Box<AST2>),
+    Defvar(SymID, Box<AST2>),
+    Set(SymID, Box<AST2>),
+    Defun(SymID, ArgList, Box<AST2>),
+    Let(Vec<(SymID, Box<AST2>)>, Box<AST2>),
+    Loop(Vec<AST2>),
+
+    // Builtin ops
+    Not(Box<AST2>),
+    And(Vec<AST2>),
+    Or(Vec<AST2>),
+    Gt(Box<AST2>, Box<AST2>),
+    Gte(Box<AST2>, Box<AST2>),
+    Lt(Box<AST2>, Box<AST2>),
+    Lte(Box<AST2>, Box<AST2>),
+    Add(Vec<AST2>),
+    Sub(Vec<AST2>),
+    Mul(Vec<AST2>),
+    Div(Vec<AST2>),
+}
+
+#[derive(Debug)]
+struct AST2 {
+    src: Source,
+    kind: AST2Kind,
+}
+
+struct Excavator<'a> {
+    mem: &'a Arena,
+}
+
+impl Excavator<'_> {
+    fn cav(&self, v: PV) -> Result<AST2, Error> {
+        let src = if let PV::Ref(p) = v {
+            self.mem.get_tag(p).cloned().unwrap_or_else(|| Source::none())
+        } else {
+            Source::none()
+        };
+        self.cavr(v, src)
+    }
+
+    fn wrap_one_arg<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
+        where F: Fn(Box<AST2>) -> AST2Kind
+    {
+        let mut it = args.iter();
+        let arg = it.next().ok_or_else(|| error!(ArgError,
+                                                 expect: ArgSpec::normal(1),
+                                                 got_num: 0)
+                                       .src(src.clone()))?;
+        let extra = it.count() as u32;
+        if extra > 0 {
+            Err(error!(ArgError,
+                       expect: ArgSpec::normal(1),
+                       got_num: 1 + extra)
+                .src(src))
+        } else {
+            self.cavr(arg, src)
+        }
+    }
+
+    fn wrap_any_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
+        where F: FnOnce(Vec<AST2>) -> AST2Kind
+    {
+        let args: Result<_,_> = args.into_iter().map(|a| self.cavr(a, src.clone()))
+                                                .collect();
+        Ok(AST2 {
+            kind: wrap(args?),
+            src,
+        })
+    }
+
+    fn two_and_maybe_one_arg(&self, args: PV, src: Source)
+                             -> Result<(Box<AST2>, Box<AST2>, Option<Box<AST2>>),
+                                       Error>
+    {
+        let expect = ArgSpec::opt(2, 1);
+        let err = |n| {
+            let src = &src;
+            move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
+        };
+        let mut it = args.iter();
+        let arg0 = Box::new(self.cavr(it.next().ok_or_else(err(0))?, src.clone())?);
+        let arg1 = Box::new(self.cavr(it.next().ok_or_else(err(1))?, src.clone())?);
+        let arg2 = if let Some(v) = it.next() {
+            Some(Box::new(self.cavr(v, src.clone())?))
+        } else {
+            None
+        };
+        let extra = it.count() as u32;
+        if extra > 0 {
+            Err(err(3 + extra)())
+        } else {
+            Ok((arg0, arg1, arg2))
+        }
+    }
+
+    fn two_args(&self, args: PV, src: Source)
+                -> Result<(Box<AST2>, Box<AST2>), Error>
+    {
+        let expect = ArgSpec::normal(2);
+        let err = |n| {
+            let src = &src;
+            move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
+        };
+        let mut it = args.iter();
+        let arg0 = Box::new(self.cavr(it.next().ok_or_else(err(0))?, src.clone())?);
+        let arg1 = Box::new(self.cavr(it.next().ok_or_else(err(1))?, src.clone())?);
+        let extra = it.count() as u32;
+        if extra > 0 {
+            Err(err(2 + extra)())
+        } else {
+            Ok((arg0, arg1))
+        }
+    }
+
+    fn bt_if(&self, args: PV, src: Source) -> Result<AST2, Error> {
+        let (cond, if_true, if_false) = self.two_and_maybe_one_arg(args, src.clone())?;
+        Ok(AST2 {
+            kind: AST2Kind::If(cond, if_true, if_false),
+            src,
+        })
+    }
+
+    fn bt_set(&self, args: PV, src: Source) -> Result<AST2, Error> {
+        let expect = ArgSpec::normal(2);
+        let err = |n| {
+            let src = &src;
+            move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
+        };
+        let mut it = args.iter();
+        let name = match it.next().ok_or_else(err(0))? {
+            PV::Sym(name) => name,
+            e => return Err(error!(TypeError,
+                                   expect: Builtin::Symbol.sym(),
+                                   got: e.type_of()).argn(1))
+        };
+        let init = Box::new(self.cavr(it.next().ok_or_else(err(1))?, src.clone())?);
+        let extra = it.count() as u32;
+        if extra > 0 {
+            Err(err(2 + extra)())
+        } else {
+            Ok(AST2 { kind: AST2Kind::Set(name, init), src })
+        }
+    }
+
+    // (not (< a b)) => (>= a b)
+    // (not (< a b c)) => (not (and (< a b) (< b c))) => (or (>= a b) (>= b c))
+    fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2, Error> {
+        match bt {
+            Builtin::Not => self.wrap_one_arg(AST2Kind::Not, args, src),
+            Builtin::And => self.wrap_any_args(AST2Kind::And, args, src),
+            Builtin::Or => self.wrap_any_args(AST2Kind::Or, args, src),
+            Builtin::Add => self.wrap_any_args(AST2Kind::Add, args, src),
+            Builtin::Sub => self.wrap_any_args(AST2Kind::Sub, args, src),
+            Builtin::Mul => self.wrap_any_args(AST2Kind::Mul, args, src),
+            Builtin::Div => self.wrap_any_args(AST2Kind::Div, args, src),
+            Builtin::Progn => self.wrap_any_args(AST2Kind::Progn, args, src),
+            Builtin::Loop => self.wrap_any_args(AST2Kind::Loop, args, src),
+            Builtin::If => self.bt_if(args, src),
+            Builtin::Set => self.bt_set(args, src),
+            Builtin::Quote => Ok(AST2 { src, kind: AST2Kind::Atom(args) }),
+            _ => self.sapp(bt.sym(), args, src),
+        }.map_err(|e| e.op(bt.sym()))
+    }
+
+    fn sapp(&self, op: SymID, args: PV, src: Source) -> Result<AST2, Error> {
+        self.wrap_any_args(|a| AST2Kind::SymApp(op, a), args, src)
+    }
+
+    fn gapp(&self, op: PV, args: PV, src: Source) -> Result<AST2, Error> {
+        let op = Box::new(self.cavr(op, src.clone())?);
+        self.wrap_any_args(|a| AST2Kind::App(op, a), args, src)
+    }
+
+    fn cons(&self, Cons { car, cdr }: Cons, src: Source) -> Result<AST2, Error> {
+        if let Some(bt) = car.bt_op() {
+            self.bapp(bt, cdr, src)
+        } else if let Some(op) = car.op() {
+            self.sapp(op, cdr, src)
+        } else {
+            self.gapp(car, cdr, src)
+        }
+    }
+
+    fn cavr(&self, v: PV, src: Source) -> Result<AST2, Error> {
+        match v {
+            PV::Ref(p) => match unsafe {(*p).match_ref()} {
+                NkRef::Cons(cell) => {
+                    let src = self.mem.get_tag(p).cloned().unwrap_or(src);
+                    self.cons(*cell, src)
+                },
+                _ => Ok(AST2 { src, kind: AST2Kind::Atom(v) })
+            }
+            _ => Ok(AST2 { src, kind: AST2Kind::Atom(v) })
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

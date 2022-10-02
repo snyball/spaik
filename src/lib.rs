@@ -61,12 +61,14 @@ pub(crate) mod sexpr_parse;
 pub(crate) mod tok;
 pub(crate) mod nuke;
 pub(crate) mod module;
+pub(crate) mod string;
+pub(crate) mod deserialize;
+pub(crate) mod limits;
+pub(crate) mod math;
+
 #[cfg(feature = "repl")]
 pub mod repl;
-pub mod deserialize;
 pub mod scratch;
-pub mod string;
-mod math;
 
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};

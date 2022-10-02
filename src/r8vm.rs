@@ -13,8 +13,8 @@ use crate::{
     nuke::*,
     nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
     sexpr_parse::{Parser, sexpr_modified_sym_to_str, sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
-    subrs::{IntoLisp, Subr, IntoSubr},
-    sym_db::SymDB, FmtErr, tok::Token,
+    subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
+    sym_db::SymDB, FmtErr, tok::Token, limits,
 };
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace}, ptr, slice, sync::Mutex};
@@ -1274,8 +1274,139 @@ impl R8VM {
         Ok(v)
     }
 
+    pub fn read_expand(&mut self, sexpr: &str) -> Result<PV, Error> {
+        lazy_static! {
+            static ref TREE: Fragment = standard_lisp_tok_tree();
+        }
+        let toks = tokenize(sexpr, &TREE)?;
+        let mut mods: Vec<Builtin> = vec![];
+        let mut close = vec![];
+        let mut pmods = vec![];
+        let mut num = 0;
+        macro_rules! wrap {
+            ($push:expr) => {
+                $push;
+                while let Some(m) = mods.pop() {
+                    let p = self.mem.pop().expect("No expr to wrap");
+                    self.mem.push(PV::Sym(m.sym()));
+                    self.mem.push(p);
+                    self.mem.list(2);
+                }
+            };
+        }
+        macro_rules! assert_no_trailing {
+            ($($meta:expr),*) => {
+                if !mods.is_empty() {
+                    let mods = mods.into_iter()
+                                   .map(sexpr_modified_sym_to_str)
+                                   .collect::<Option<Vec<_>>>()
+                                   .unwrap()
+                                   .join("");
+                    return Err(error!(TrailingModifiers, mods)$(.amend($meta))*);
+                }
+            };
+        }
+        for tok in toks.into_iter() {
+            let Token { line, col, text } = tok;
+            match text {
+                "(" => {
+                    pmods.push(replace(&mut mods, vec![]));
+                    close.push(num + 1);
+                    num = 0;
+                }
+                ")" => {
+                    assert_no_trailing!(Meta::Source(LineCol { line, col }));
+                    mods = pmods.pop().expect("Unable to wrap expr");
+                    if close.len() == 1 {
+                        let v = self.expand_from_stack(num)?;
+                        self.mem.push(v)
+                    } else {
+                        wrap!(self.mem.list(num));
+                    }
+
+                    num = close.pop()
+                               .ok_or_else(
+                                   || error!(TrailingDelimiter, close: ")")
+                                       .amend(Meta::Source(LineCol { line, col })))?;
+                }
+                _ => {
+                    let pv = if let Some(m) = sexpr_modifier_bt(text) {
+                        mods.push(m);
+                        continue;
+                    } else if let Ok(int) = text.parse() {
+                        PV::Int(int)
+                    } else if let Ok(num) = text.parse() {
+                        PV::Real(num)
+                    } else if let Some(strg) = tok.inner_str() {
+                        self.mem.put(string_parse(&strg)?)
+                    } else if text == "true" {
+                        PV::Bool(true)
+                    } else if text == "false" {
+                        PV::Bool(false)
+                    } else {
+                        PV::Sym(self.put_sym(text))
+                    };
+                    wrap!(self.mem.push(pv));
+                    num += 1;
+                }
+            }
+        }
+        assert_no_trailing!();
+        self.mem.list(num);
+        self.mem.pop()
+    }
+
+    pub fn expand_from_stack(&mut self, n: u32) -> Result<PV, Error> {
+        let op = self.mem.from_top(n as usize);
+        let v = if let Some(m) = op.op().and_then(|op| self.macros.get(&op.into())).copied() {
+            let func = self.funcs.get(&m.into()).ok_or("No such function")?;
+            if let Err(e) = func.args.check(m.into(), (n - 1) as u16) {
+                self.mem.popn(n as usize);
+                return Err(e);
+            }
+            let frame = self.frame;
+            self.frame = self.mem.stack.len() - (n as usize) + 1;
+            self.mem.push(PV::UInt(0));
+            self.mem.push(PV::UInt(frame));
+            let pos = func.pos;
+            unsafe { self.run_from_unwind(pos)?; }
+            let res = self.mem.pop().expect("Function did not return a value");
+            self.mem.pop().expect("op name missing from stack");
+            res
+        } else {
+            let top = self.mem.stack.len();
+            for i in top - (n as usize) .. top {
+                let v = self.mem.stack[i];
+                match self.macroexpand_pv(v) {
+                    Ok(nv) => self.mem.stack[i] = nv,
+                    Err(e) => {
+                        self.mem.popn(n as usize);
+                        return Err(e)
+                    }
+                }
+            }
+            self.mem.list(n);
+            self.mem.pop().unwrap()
+        };
+        self.macroexpand_pv(v)
+    }
+
+    pub fn varor<T>(&mut self, name: SymID, or_default: T) -> Result<T, Error>
+        where PV: FromLisp<T>
+    {
+        if let Ok(var) = self.var(name) {
+            var.from_lisp(&mut self.mem)
+               .map_err(|e| e.amend(Meta::VarName(OpName::OpSym(name))))
+        } else {
+            Ok(or_default)
+        }
+    }
+
     pub fn macroexpand_pv(&mut self, mut v: PV) -> Result<PV, Error> {
-        if let Some(m) = v.op().and_then(|op| self.macros.get(&op.into())).copied() {
+        let ind_lim = self.varor(Builtin::LimitsMacroexpandRecursion.sym(),
+                                 limits::MACROEXPAND_RECURSION)?;
+        let mut inds = 0;
+        while let Some(m) = v.op().and_then(|op| self.macros.get(&op.into())).copied() {
             let func = self.funcs.get(&m.into()).ok_or("No such function")?;
             let mut nargs = 0;
             let frame = self.frame;
@@ -1295,12 +1426,14 @@ impl R8VM {
 
             let pos = func.pos;
             unsafe { self.run_from_unwind(pos)?; }
-            let res = self.mem.pop().expect(
-                "Function did not return a value"
-            );
+            v = self.mem.pop().expect("Function did not return a value");
+            inds += 1;
+            if inds > ind_lim {
+                return err!(MacroexpandRecursionLimit, lim: ind_lim);
+            }
+        }
 
-            self.macroexpand_pv(res)
-        } else if let Some(Builtin::EvalWhen) = v.bt_op() {
+        if v.bt_op() == Some(Builtin::EvalWhen) {
             todo!()
         } else if v.is_atom() {
             Ok(v)
@@ -1331,10 +1464,10 @@ impl R8VM {
                             unreachable!() // my
                         }
                     } else {
-                        break; // proudest
+                        break;        // proudest
                     }
                 } else {
-                    break; // moment
+                    break;       // moment
                 }
             }
             self.mem.pop()

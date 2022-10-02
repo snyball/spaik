@@ -77,6 +77,7 @@ pub enum Meta {
     Op(OpName),
     OpArgn(u32),
     OpArgName(OpName),
+    VarName(OpName),
     SourceFile(Cow<'static, str>),
     Source(LineCol),
 }
@@ -128,6 +129,7 @@ impl MetaSet {
     get_inner_meta!(op_arg_name, OpArgName, OpName);
     get_inner_meta!(src_line_col, Source, LineCol);
     get_inner_meta!(src_file, SourceFile, Cow<'static, str>);
+    get_inner_meta!(var_name, VarName, OpName);
 
     fn src(&self) -> Option<Source> {
         let line_col = self.src_line_col()?;
@@ -157,6 +159,9 @@ impl fmt::Display for FmtArgnOp<'_, '_> {
                 write!(f, "in {}", op.name(self.db))?;
             }
             write!(f, "{}", self.post)?;
+        } else if let Some(var) = self.meta.var_name() {
+            write!(f, "{}for special variable `{}'{}",
+                   self.pre, var.name(self.db), self.post)?;
         }
         Ok(())
     }
@@ -201,6 +206,7 @@ pub enum ErrorKind {
     TrailingDelimiter { close: &'static str },
     UnclosedDelimiter { open: &'static str },
     TrailingModifiers { mods: String },
+    MacroexpandRecursionLimit { lim: usize },
 }
 
 impl From<std::io::Error> for Error {
@@ -411,6 +417,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             write!(f, "Unclosed Delimiter: Found `{}' which was not closed in input", open)?,
         TrailingModifiers { mods } =>
             write!(f, "Trailing Modifiers: Unexpected end of input at: {}", mods)?,
+        MacroexpandRecursionLimit { lim } =>
+            write!(f, "Macro Recursion Error: Macro expansion was recursive beyond {} levels", lim)?,
         x => unimplemented!("{:?}", x),
     }
 
