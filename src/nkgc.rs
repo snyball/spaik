@@ -521,7 +521,7 @@ impl PV {
         Ok(nuke::Iter::new(*self, it))
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = PV> {
+    pub fn iter(&self) -> PVIter {
         PVIter { item: *self }
     }
 
@@ -641,18 +641,6 @@ impl PV {
             }
         }
         Ok(args)
-    }
-
-    pub fn pair(&self) -> Option<(PV, PV)> {
-        let this = self.iter().collect::<Vec<_>>();
-        match this[..] {
-            [x, y] => Some((x, y)),
-            _ => None,
-        }
-    }
-
-    pub fn pairs(&self) -> impl Iterator<Item = Option<(PV, PV)>> {
-        self.iter().map(|v| v.pair())
     }
 
     // #[inline]
@@ -964,9 +952,15 @@ impl Iterator for ConsIter {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct PVIter {
     item: PV,
+}
+
+impl Into<PV> for PVIter {
+    fn into(self) -> PV {
+        self.item
+    }
 }
 
 impl Traceable for PVIter {

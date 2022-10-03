@@ -209,6 +209,7 @@ builtins! {
     (Car, "car"),
     (Cons, "cons"),
     (List, "list"),
+    (ArgList, "arg-list"),
     (Append, "append"),
     (Vector, "vec"),
     (Get, "get"),

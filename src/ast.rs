@@ -83,7 +83,7 @@ pub struct LetBinding<'a>(pub SymID,
 pub struct Let<'a>(pub Vec<LetBinding<'a>>,
                    pub &'a Value);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ArgList(pub ArgSpec,
                    pub Vec<SymID>);
 pub struct Lambda<'a>(pub ArgList,
@@ -640,19 +640,24 @@ macro_rules! lisp_qq {
     () => { Value::new_nil() };
 }
 
-#[derive(Debug)]
-enum AST2Kind {
+#[derive(Debug, Clone)]
+pub enum M {
     If(Box<AST2>, Box<AST2>, Option<Box<AST2>>),
     Atom(PV),
     Progn(Vec<AST2>),
+    BecomeSelf(Vec<AST2>),
+    Become(SymID, Vec<AST2>),
     SymApp(SymID, Vec<AST2>),
     App(Box<AST2>, Vec<AST2>),
-    Lambda(ArgList, Box<AST2>),
+    Lambda(ArgList, Vec<AST2>),
     Defvar(SymID, Box<AST2>),
     Set(SymID, Box<AST2>),
-    Defun(SymID, ArgList, Box<AST2>),
+    Defun(SymID, ArgList, Vec<AST2>),
     Let(Vec<(SymID, Box<AST2>)>, Box<AST2>),
     Loop(Vec<AST2>),
+    Break,
+    Next,
+    Throw(Box<AST2>),
 
     // Builtin ops
     Not(Box<AST2>),
@@ -662,23 +667,103 @@ enum AST2Kind {
     Gte(Box<AST2>, Box<AST2>),
     Lt(Box<AST2>, Box<AST2>),
     Lte(Box<AST2>, Box<AST2>),
+    Eq(Box<AST2>, Box<AST2>),
+    Eqp(Box<AST2>, Box<AST2>),
     Add(Vec<AST2>),
     Sub(Vec<AST2>),
     Mul(Vec<AST2>),
     Div(Vec<AST2>),
+    NextIter(Box<AST2>),
+    Car(Box<AST2>),
+    Cdr(Box<AST2>),
+    Cons(Box<AST2>, Box<AST2>),
+    List(Vec<AST2>),
+    Append(Vec<AST2>),
+    Vector(Vec<AST2>),
+    Push(Box<AST2>, Box<AST2>),
+    Get(Box<AST2>, Box<AST2>),
+    Pop(Box<AST2>),
+    CallCC(Box<AST2>),
 }
 
-#[derive(Debug)]
-struct AST2 {
-    src: Source,
-    kind: AST2Kind,
+impl M {
+    pub fn boxed(self, src: Source) -> Box<AST2> {
+        Box::new(AST2 { kind: self, src })
+    }
+
+    pub fn ast(self, src: Source) -> AST2 {
+        AST2 { kind: self, src }
+    }
 }
 
-struct Excavator<'a> {
+#[derive(Debug, Clone)]
+pub struct AST2 {
+    pub src: Source,
+    pub kind: M,
+}
+
+pub struct Excavator<'a> {
     mem: &'a Arena,
 }
 
-impl Excavator<'_> {
+pub fn arg_parse_pv(args: PV) -> Result<ArgList, Error> {
+    let mut syms = Vec::new();
+    let mut spec = ArgSpec::default();
+    let mut it = args.iter();
+    let mut modifier = None;
+    let mut had_opt = false;
+
+    for arg in it.by_ref() {
+        if let PV::Sym(sym) = arg {
+            use Builtin::*;
+            match Builtin::from_sym(sym) {
+                Some(x @ ArgOptional) => {
+                    modifier = Some(x);
+                    had_opt = true;
+                }
+                Some(x @ ArgRest) => modifier = Some(x),
+                Some(ArgBody) => modifier = Some(ArgRest),
+                _ => {
+                    match modifier.take() {
+                        Some(ArgOptional) => spec.nopt += 1,
+                        Some(ArgRest) => {
+                            spec.rest = true;
+                            syms.push(sym);
+                            break;
+                        }
+                        None if had_opt => return Err(ErrorKind::SyntaxError {
+                            msg: "Normal argument follows &?".to_string()
+                        }.into()),
+                        None | Some(_) => spec.nargs += 1,
+                    }
+                    syms.push(sym);
+                }
+            }
+        } else {
+            return Err(ErrorKind::SyntaxError {
+                msg: format!("Did not expect: {}", arg),
+            }.into());
+        }
+    }
+
+    if it.next().is_some() {
+        return Err(ErrorKind::SyntaxError {
+            msg: "Additional argument follows &rest".to_string(),
+        }.into());
+    }
+
+    Ok(ArgList(spec, syms))
+}
+
+impl<'a> Excavator<'a> {
+    pub fn new(mem: &'a Arena) -> Self {
+        Excavator { mem }
+    }
+
+    pub fn to_ast(&self, v: PV) -> Result<AST2, Error> {
+        self.cav(v)
+    }
+
     fn cav(&self, v: PV) -> Result<AST2, Error> {
         let src = if let PV::Ref(p) = v {
             self.mem.get_tag(p).cloned().unwrap_or_else(|| Source::none())
@@ -689,7 +774,7 @@ impl Excavator<'_> {
     }
 
     fn wrap_one_arg<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
-        where F: Fn(Box<AST2>) -> AST2Kind
+        where F: Fn(Box<AST2>) -> M
     {
         let mut it = args.iter();
         let arg = it.next().ok_or_else(|| error!(ArgError,
@@ -708,7 +793,7 @@ impl Excavator<'_> {
     }
 
     fn wrap_any_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
-        where F: FnOnce(Vec<AST2>) -> AST2Kind
+        where F: FnOnce(Vec<AST2>) -> M
     {
         let args: Result<_,_> = args.into_iter().map(|a| self.cavr(a, src.clone()))
                                                 .collect();
@@ -716,6 +801,35 @@ impl Excavator<'_> {
             kind: wrap(args?),
             src,
         })
+    }
+
+    fn chain_cmp_op<F>(&self, cmp: F, args: PV, src: Source) -> Result<AST2, Error>
+        where F: Fn(Box<AST2>, Box<AST2>) -> M
+    {
+        let expect = ArgSpec::rest(2, 0);
+        let err = |n| {
+            let src = &src;
+            move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
+        };
+        let mut it = args.iter();
+        let fst = Box::new(self.cavr(it.next().ok_or_else(err(0))?, src.clone())?);
+        let prev = Box::new(self.cavr(it.next().ok_or_else(err(0))?, src.clone())?);
+        let icmp = cmp(fst, prev.clone());
+        if let Some(nx) = it.next() {
+            let nx = Box::new(self.cavr(nx, src.clone())?);
+            let jcmp = cmp(prev, nx.clone());
+            let mut prev = nx;
+            let mut cmps = vec![AST2 { src: src.clone(), kind: icmp },
+                                AST2 { src: src.clone(), kind: jcmp }];
+            while let Some(nx) = it.next() {
+                let nx = Box::new(self.cavr(nx, src.clone())?);
+                cmps.push(AST2 { src: src.clone(), kind: cmp(prev, nx.clone()) });
+                prev = nx;
+            }
+            Ok(AST2 { src, kind: M::And(cmps) })
+        } else {
+            Ok(AST2 { src, kind: icmp })
+        }
     }
 
     fn two_and_maybe_one_arg(&self, args: PV, src: Source)
@@ -743,6 +857,15 @@ impl Excavator<'_> {
         }
     }
 
+    fn wrap_no_args(&self, kind: M, args: PV, src: Source) -> Result<AST2, Error> {
+        let got_num = args.iter().count() as u32;
+        if got_num == 0 {
+            Ok(AST2 { kind, src })
+        } else {
+            Err(error!(ArgError, expect: ArgSpec::normal(0), got_num))
+        }
+    }
+
     fn two_args(&self, args: PV, src: Source)
                 -> Result<(Box<AST2>, Box<AST2>), Error>
     {
@@ -762,10 +885,17 @@ impl Excavator<'_> {
         }
     }
 
+    fn wrap_two_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
+        where F: FnOnce(Box<AST2>, Box<AST2>) -> M
+    {
+        let (u, v) = self.two_args(args, src.clone())?;
+        Ok(AST2 { kind: wrap(u, v), src })
+    }
+
     fn bt_if(&self, args: PV, src: Source) -> Result<AST2, Error> {
         let (cond, if_true, if_false) = self.two_and_maybe_one_arg(args, src.clone())?;
         Ok(AST2 {
-            kind: AST2Kind::If(cond, if_true, if_false),
+            kind: M::If(cond, if_true, if_false),
             src,
         })
     }
@@ -788,44 +918,115 @@ impl Excavator<'_> {
         if extra > 0 {
             Err(err(2 + extra)())
         } else {
-            Ok(AST2 { kind: AST2Kind::Set(name, init), src })
+            Ok(AST2 { kind: M::Set(name, init), src })
         }
     }
 
-    // (not (< a b)) => (>= a b)
-    // (not (< a b c)) => (not (and (< a b) (< b c))) => (or (>= a b) (>= b c))
+    fn bt_lambda(&self, args: PV, src: Source) -> Result<AST2, Error> {
+        let expect = ArgSpec::rest(1, 0);
+        let err = |n| {
+            let src = &src;
+            move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
+        };
+        let mut it = args.iter();
+        let arglist = arg_parse_pv(it.next().ok_or_else(err(0))?)?;
+        let body: Result<_,_> = it.map(|a| self.cavr(a, src.clone())).collect();
+        Ok(AST2 { src, kind: M::Lambda(arglist, body?) })
+    }
+
+    fn bt_define(&self, args: PV, src: Source) -> Result<AST2, Error> {
+        let expect = ArgSpec::rest(1, 1);
+        let err = |n| {
+            let src = &src;
+            move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
+        };
+        let mut it = args.iter();
+        let lhs = it.next().ok_or_else(err(0))?;
+        if let PV::Sym(name) = lhs {
+            let init = Box::new(self.cavr(it.next().ok_or_else(err(1))?, src.clone())?);
+            let extra = it.count() as u32;
+            if extra > 0 {
+                Err(error!(ArgError, expect: ArgSpec::normal(2), got_num: extra + 2))
+            } else {
+                Ok(AST2 { kind: M::Defvar(name, init), src })
+            }
+        } else if lhs.is_list() {
+            let body: Result<_,_> = it.map(|v| self.cavr(v, src.clone())).collect();
+            let mut it = lhs.iter();
+            let name = it.next().ok_or_else(|| error!(ArgError,
+                                                      expect: ArgSpec::rest(1, 0),
+                                                      got_num: 0)
+                                            .op(Builtin::ArgList.sym()))?;
+            let name = name.sym()
+                           .ok_or_else(|| error!(TypeError,
+                                                 expect: Builtin::Symbol.sym(),
+                                                 got: name.type_of())
+                                       .argn(1).op(Builtin::ArgList.sym()))?;
+            let arglist = arg_parse_pv(it.into())?;
+            Ok(AST2 { kind: M::Defun(name, arglist, body?),
+                      src })
+        } else {
+            Err(error!(TypeNError,
+                       expect: vec![Builtin::Symbol.sym(),
+                                    Builtin::ArgList.sym()],
+                       got: lhs.type_of()).argn(1))
+        }
+    }
+
     fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2, Error> {
         match bt {
-            Builtin::Not => self.wrap_one_arg(AST2Kind::Not, args, src),
-            Builtin::And => self.wrap_any_args(AST2Kind::And, args, src),
-            Builtin::Or => self.wrap_any_args(AST2Kind::Or, args, src),
-            Builtin::Add => self.wrap_any_args(AST2Kind::Add, args, src),
-            Builtin::Sub => self.wrap_any_args(AST2Kind::Sub, args, src),
-            Builtin::Mul => self.wrap_any_args(AST2Kind::Mul, args, src),
-            Builtin::Div => self.wrap_any_args(AST2Kind::Div, args, src),
-            Builtin::Progn => self.wrap_any_args(AST2Kind::Progn, args, src),
-            Builtin::Loop => self.wrap_any_args(AST2Kind::Loop, args, src),
+            Builtin::Not => self.wrap_one_arg(M::Not, args, src),
+            Builtin::And => self.wrap_any_args(M::And, args, src),
+            Builtin::Or => self.wrap_any_args(M::Or, args, src),
+            Builtin::Add => self.wrap_any_args(M::Add, args, src),
+            Builtin::Sub => self.wrap_any_args(M::Sub, args, src),
+            Builtin::Mul => self.wrap_any_args(M::Mul, args, src),
+            Builtin::Div => self.wrap_any_args(M::Div, args, src),
+            Builtin::Progn => self.wrap_any_args(M::Progn, args, src),
+            Builtin::Loop => self.wrap_any_args(M::Loop, args, src),
+            Builtin::Eq => self.chain_cmp_op(M::Eq, args, src),
+            Builtin::Eqp => self.chain_cmp_op(M::Eqp, args, src),
+            Builtin::Gt => self.chain_cmp_op(M::Gt, args, src),
+            Builtin::Gte => self.chain_cmp_op(M::Gte, args, src),
+            Builtin::Lt => self.chain_cmp_op(M::Lt, args, src),
+            Builtin::Lte => self.chain_cmp_op(M::Lte, args, src),
             Builtin::If => self.bt_if(args, src),
+            Builtin::Define => self.bt_define(args, src),
             Builtin::Set => self.bt_set(args, src),
-            Builtin::Quote => Ok(AST2 { src, kind: AST2Kind::Atom(args) }),
+            Builtin::Lambda => self.bt_lambda(args, src),
+            Builtin::Quote => Ok(AST2 { src, kind: M::Atom(args) }),
+            Builtin::Break => self.wrap_no_args(M::Break, args, src),
+            Builtin::Car => self.wrap_one_arg(M::Car, args, src),
+            Builtin::Cdr => self.wrap_one_arg(M::Cdr, args, src),
+            Builtin::Pop => self.wrap_one_arg(M::Pop, args, src),
+            Builtin::CallCC => self.wrap_one_arg(M::CallCC, args, src),
+            Builtin::Cons => self.wrap_two_args(M::Cons, args, src),
+            Builtin::List => self.wrap_any_args(M::List, args, src),
+            Builtin::Append => self.wrap_any_args(M::Append, args, src),
+            Builtin::Vector => self.wrap_any_args(M::Vector, args, src),
+            Builtin::Push => self.wrap_two_args(M::Push, args, src),
+            Builtin::Get => self.wrap_two_args(M::Get, args, src),
+            Builtin::Throw => self.wrap_one_arg(M::Throw, args, src),
             _ => self.sapp(bt.sym(), args, src),
-        }.map_err(|e| e.op(bt.sym()))
+        }.map_err(|e| e.fallback(Meta::Op(OpName::OpSym(bt.sym()))))
     }
 
     fn sapp(&self, op: SymID, args: PV, src: Source) -> Result<AST2, Error> {
-        self.wrap_any_args(|a| AST2Kind::SymApp(op, a), args, src)
+        self.wrap_any_args(|a| M::SymApp(op, a), args, src)
     }
 
     fn gapp(&self, op: PV, args: PV, src: Source) -> Result<AST2, Error> {
         let op = Box::new(self.cavr(op, src.clone())?);
-        self.wrap_any_args(|a| AST2Kind::App(op, a), args, src)
+        self.wrap_any_args(|a| M::App(op, a), args, src)
     }
 
     fn cons(&self, Cons { car, cdr }: Cons, src: Source) -> Result<AST2, Error> {
-        if let Some(bt) = car.bt_op() {
-            self.bapp(bt, cdr, src)
-        } else if let Some(op) = car.op() {
-            self.sapp(op, cdr, src)
+        if let PV::Sym(op) = car{
+            if let Some(bt) = Builtin::from_sym(op) {
+                self.bapp(bt, cdr, src)
+            } else {
+                self.sapp(op, cdr, src)
+            }
         } else {
             self.gapp(car, cdr, src)
         }
@@ -838,9 +1039,9 @@ impl Excavator<'_> {
                     let src = self.mem.get_tag(p).cloned().unwrap_or(src);
                     self.cons(*cell, src)
                 },
-                _ => Ok(AST2 { src, kind: AST2Kind::Atom(v) })
+                _ => Ok(AST2 { src, kind: M::Atom(v) })
             }
-            _ => Ok(AST2 { src, kind: AST2Kind::Atom(v) })
+            _ => Ok(AST2 { src, kind: M::Atom(v) })
         }
     }
 }

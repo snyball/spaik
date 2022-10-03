@@ -4,7 +4,7 @@
 use comfy_table::Table;
 
 use crate::{
-    ast::{Value, ValueKind},
+    ast::{Value, ValueKind, Excavator},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol},
@@ -428,6 +428,10 @@ mod sysfns {
 
         fn macroexpand(&mut self, vm: &mut R8VM, args: (ast)) -> Result<PV, Error> {
             vm.macroexpand_pv(*ast)
+        }
+
+        fn read_compile(&mut self, vm: &mut R8VM, args: (code)) -> Result<PV, Error> {
+            with_ref_mut!(*code, String(s) => { vm.read_compile(s) })
         }
 
         fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV, Error> {
@@ -1043,6 +1047,7 @@ impl R8VM {
         addfn!(read);
         addfn!(macroexpand);
         addfn!("make-symbol", make_symbol);
+        addfn!("read-compile", read_compile);
         addfn!("type-of", type_of);
         addfn!("sym-id", sym_id);
         addfn!("set-macro", set_macro);
@@ -1274,7 +1279,7 @@ impl R8VM {
         Ok(v)
     }
 
-    pub fn read_expand(&mut self, sexpr: &str) -> Result<PV, Error> {
+    pub fn read_compile(&mut self, sexpr: &str) -> Result<PV, Error> {
         lazy_static! {
             static ref TREE: Fragment = standard_lisp_tok_tree();
         }
@@ -1319,6 +1324,9 @@ impl R8VM {
                     mods = pmods.pop().expect("Unable to wrap expr");
                     if close.len() == 1 {
                         let v = self.expand_from_stack(num)?;
+                        let excv = Excavator::new(&self.mem);
+                        let ast = excv.to_ast(v)?;
+                        dbg!(ast);
                         self.mem.push(v)
                     } else {
                         wrap!(self.mem.list(num));
