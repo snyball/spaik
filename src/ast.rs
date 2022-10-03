@@ -642,7 +642,7 @@ macro_rules! lisp_qq {
 
 #[derive(Debug, Clone)]
 pub enum M {
-    If(Box<AST2>, Box<AST2>, Option<Box<AST2>>),
+    If(Box<AST2>, Option<Box<AST2>>, Option<Box<AST2>>),
     Atom(PV),
     Progn(Vec<AST2>),
     BecomeSelf(Vec<AST2>),
@@ -895,7 +895,7 @@ impl<'a> Excavator<'a> {
     fn bt_if(&self, args: PV, src: Source) -> Result<AST2, Error> {
         let (cond, if_true, if_false) = self.two_and_maybe_one_arg(args, src.clone())?;
         Ok(AST2 {
-            kind: M::If(cond, if_true, if_false),
+            kind: M::If(cond, Some(if_true), if_false),
             src,
         })
     }

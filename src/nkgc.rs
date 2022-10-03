@@ -14,6 +14,7 @@ use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::mem::replace;
+use std::ops::Add;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};

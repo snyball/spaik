@@ -52,6 +52,7 @@ pub(crate) mod nkgc;
 pub(crate) mod r8vm;
 #[macro_use]
 pub(crate) mod ast;
+pub(crate) mod opt;
 pub(crate) mod sintern;
 pub(crate) mod fmt;
 pub(crate) mod sym_db;
