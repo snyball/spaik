@@ -1055,7 +1055,7 @@ impl<'a> Excavator<'a> {
             let init = Box::new(init.car().and_then(|v| self.cavr(v, src.clone()))?);
             binds.push(VarDecl(sym, src.clone(), init));
             argn += 1;
-            if argn > spec.nopt() {
+            if argn >= spec.nopt() {
                 if spec.rest { break }
                 return Err(error!(ArgError,
                                   expect: spec,
