@@ -1,5 +1,7 @@
 //! Structured Errors
 
+use num::Integer;
+
 use crate::perr::ParseErr;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use crate::r8vm::r8c::Op as R8C;
@@ -286,6 +288,14 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
     let nameof = |sym| db.name(sym);
     let tostring = |v: &Value| v.to_string(db);
 
+    fn plurs(num: impl Integer) -> &'static str {
+        if num.is_one() {""} else {"s"}
+    }
+
+    fn plur(one: &'static str, many: &'static str, num: impl Integer) -> &'static str {
+        if num.is_one() {one} else {many}
+    }
+
     match &err.ty {
         IllegalInstruction { inst } =>
             write!(f, "Illegal instruction: <{}>", inst)?,
@@ -322,14 +332,14 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             }
             match expect {
                 ArgSpec { nargs, nopt: 0, rest: false, .. } =>
-                    write!(f, "expected {} arguments, but got {}",
-                            nargs, got_num)?,
+                    write!(f, "expected {} argument{}, but got {}",
+                            nargs, plurs(*got_num), got_num)?,
                 ArgSpec { nargs, nopt, rest: false, .. } =>
-                    write!(f, "expected from {} to {} arguments, but got {}",
-                            nargs, nargs+nopt, got_num)?,
+                    write!(f, "expected from {} to {} argument{}, but got {}",
+                            nargs, nargs+nopt, plurs(*got_num), got_num)?,
                 ArgSpec { nargs, rest: true, .. } =>
-                    write!(f, "expected at least {} arguments, but got {}",
-                            nargs, got_num)?,
+                    write!(f, "expected at least {} argument{}, but got {}",
+                            nargs, plurs(*got_num), got_num)?,
             }
         }
         IfaceNotImplemented { got } => {
@@ -368,7 +378,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             if let Some(op) = err.meta.op() {
                 write!(f, "Operation `{}' ", op.name(db))?
             }
-            write!(f, "expected {} stack elements, but got {}", expect, got)?;
+            write!(f, "expected {} stack element{}, but got {}",
+                   expect, plurs(*got), got)?;
         }
         SomeError { msg } => write!(f, "Error: {}", msg)?,
         UndefinedFunction { name } =>
