@@ -635,6 +635,14 @@ impl ArgSpec {
         self.nopt > 0
     }
 
+    pub const fn nopt(&self) -> usize {
+        (self.nargs + self.nopt) as usize
+    }
+
+    pub const fn nargs(&self) -> usize {
+        self.nargs as usize
+    }
+
     pub const fn has_body(&self) -> bool {
         self.rest
     }
@@ -1361,7 +1369,7 @@ impl R8VM {
         }
         assert_no_trailing!();
         self.mem.list(num);
-        self.mem.pop()
+        Ok(self.mem.pop().expect("Unable to pop finalized list"))
     }
 
     pub fn expand_from_stack(&mut self, n: u32) -> Result<PV, Error> {

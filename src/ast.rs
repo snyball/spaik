@@ -640,50 +640,76 @@ macro_rules! lisp_qq {
     () => { Value::new_nil() };
 }
 
+pub type Progn = Vec<AST2>;
+pub type Prog = Box<AST2>;
+
+#[derive(Debug, Clone)]
+pub struct VarDecl(SymID, Source, Prog);
+
+fn nil(src: Source) -> Prog {
+    Box::new(AST2 { src, kind: M::Atom(PV::Nil) })
+}
+
+fn list(xs: Vec<AST2>, src: Source) -> Prog {
+    if xs.is_empty() {
+        nil(src)
+    } else {
+        M::List(xs).boxed(src)
+    }
+}
+
+fn nilp(src: Source) -> Progn {
+    vec![AST2 { src, kind: M::Atom(PV::Nil) }]
+}
+
+#[derive(Debug, Clone)]
+pub struct ArgList2(pub ArgSpec,
+                    pub Vec<(SymID, Source)>);
+
 #[derive(Debug, Clone)]
 pub enum M {
-    If(Box<AST2>, Option<Box<AST2>>, Option<Box<AST2>>),
+    If(Prog, Option<Prog>, Option<Prog>),
     Atom(PV),
-    Progn(Vec<AST2>),
-    BecomeSelf(Vec<AST2>),
-    Become(SymID, Vec<AST2>),
-    SymApp(SymID, Vec<AST2>),
-    App(Box<AST2>, Vec<AST2>),
-    Lambda(ArgList, Vec<AST2>),
-    Defvar(SymID, Box<AST2>),
-    Set(SymID, Box<AST2>),
-    Defun(SymID, ArgList, Vec<AST2>),
-    Let(Vec<(SymID, Box<AST2>)>, Box<AST2>),
-    Loop(Vec<AST2>),
+    Progn(Progn),
+    BecomeSelf(Progn),
+    Become(SymID, Progn),
+    SymApp(SymID, Progn),
+    App(Prog, Progn),
+    Lambda(ArgList2, Progn),
+    Defvar(SymID, Prog),
+    Set(SymID, Prog),
+    Defun(SymID, ArgList2, Progn),
+    Let(Vec<VarDecl>, Progn),
+    Loop(Progn),
     Break,
     Next,
-    Throw(Box<AST2>),
+    Throw(Prog),
 
     // Builtin ops
-    Not(Box<AST2>),
-    And(Vec<AST2>),
-    Or(Vec<AST2>),
-    Gt(Box<AST2>, Box<AST2>),
-    Gte(Box<AST2>, Box<AST2>),
-    Lt(Box<AST2>, Box<AST2>),
-    Lte(Box<AST2>, Box<AST2>),
-    Eq(Box<AST2>, Box<AST2>),
-    Eqp(Box<AST2>, Box<AST2>),
-    Add(Vec<AST2>),
-    Sub(Vec<AST2>),
-    Mul(Vec<AST2>),
-    Div(Vec<AST2>),
-    NextIter(Box<AST2>),
-    Car(Box<AST2>),
-    Cdr(Box<AST2>),
-    Cons(Box<AST2>, Box<AST2>),
-    List(Vec<AST2>),
-    Append(Vec<AST2>),
-    Vector(Vec<AST2>),
-    Push(Box<AST2>, Box<AST2>),
-    Get(Box<AST2>, Box<AST2>),
-    Pop(Box<AST2>),
-    CallCC(Box<AST2>),
+    Not(Prog),
+    And(Progn),
+    Or(Progn),
+    Gt(Prog, Prog),
+    Gte(Prog, Prog),
+    Lt(Prog, Prog),
+    Lte(Prog, Prog),
+    Eq(Prog, Prog),
+    Eqp(Prog, Prog),
+    Add(Progn),
+    Sub(Progn),
+    Mul(Progn),
+    Div(Progn),
+    NextIter(Prog),
+    Car(Prog),
+    Cdr(Prog),
+    Cons(Prog, Prog),
+    List(Progn),
+    Append(Progn),
+    Vector(Progn),
+    Push(Prog, Prog),
+    Get(Prog, Prog),
+    Pop(Prog),
+    CallCC(Prog),
 }
 
 impl M {
@@ -706,58 +732,59 @@ pub struct Excavator<'a> {
     mem: &'a Arena,
 }
 
-pub fn arg_parse_pv(args: PV) -> Result<ArgList, Error> {
-    let mut syms = Vec::new();
-    let mut spec = ArgSpec::default();
-    let mut it = args.iter();
-    let mut modifier = None;
-    let mut had_opt = false;
-
-    for arg in it.by_ref() {
-        if let PV::Sym(sym) = arg {
-            use Builtin::*;
-            match Builtin::from_sym(sym) {
-                Some(x @ ArgOptional) => {
-                    modifier = Some(x);
-                    had_opt = true;
-                }
-                Some(x @ ArgRest) => modifier = Some(x),
-                Some(ArgBody) => modifier = Some(ArgRest),
-                _ => {
-                    match modifier.take() {
-                        Some(ArgOptional) => spec.nopt += 1,
-                        Some(ArgRest) => {
-                            spec.rest = true;
-                            syms.push(sym);
-                            break;
-                        }
-                        None if had_opt => return Err(ErrorKind::SyntaxError {
-                            msg: "Normal argument follows &?".to_string()
-                        }.into()),
-                        None | Some(_) => spec.nargs += 1,
-                    }
-                    syms.push(sym);
-                }
-            }
-        } else {
-            return Err(ErrorKind::SyntaxError {
-                msg: format!("Did not expect: {}", arg),
-            }.into());
-        }
-    }
-
-    if it.next().is_some() {
-        return Err(ErrorKind::SyntaxError {
-            msg: "Additional argument follows &rest".to_string(),
-        }.into());
-    }
-
-    Ok(ArgList(spec, syms))
-}
-
 impl<'a> Excavator<'a> {
     pub fn new(mem: &'a Arena) -> Self {
         Excavator { mem }
+    }
+
+    pub fn arg_parse(&self, args: PV, src: Source) -> Result<ArgList2, Error> {
+        let mut syms = Vec::new();
+        let mut spec = ArgSpec::default();
+        let mut it = args.iter_src(self.mem, src);
+        let mut modifier = None;
+        let mut had_opt = false;
+
+        for (item, src) in it.by_ref() {
+            let arg = item.car()?;
+            if let PV::Sym(sym) = arg {
+                use Builtin::*;
+                match Builtin::from_sym(sym) {
+                    Some(x @ ArgOptional) => {
+                        modifier = Some(x);
+                        had_opt = true;
+                    }
+                    Some(x @ ArgRest) => modifier = Some(x),
+                    Some(ArgBody) => modifier = Some(ArgRest),
+                    _ => {
+                        match modifier.take() {
+                            Some(ArgOptional) => spec.nopt += 1,
+                            Some(ArgRest) => {
+                                spec.rest = true;
+                                syms.push((sym, src));
+                                break;
+                            }
+                            None if had_opt => return Err(ErrorKind::SyntaxError {
+                                msg: "Normal argument follows &?".to_string()
+                            }.into()),
+                            None | Some(_) => spec.nargs += 1,
+                        }
+                        syms.push((sym, src));
+                    }
+                }
+            } else {
+                return Err(ErrorKind::SyntaxError {
+                    msg: format!("Did not expect: {}", arg),
+                }.into());
+            }
+        }
+
+        if it.next().is_some() {
+            return Err(ErrorKind::SyntaxError {
+                msg: "Additional argument follows &rest".to_string(),
+            }.into());
+        }
+
+        Ok(ArgList2(spec, syms))
     }
 
     pub fn to_ast(&self, v: PV) -> Result<AST2, Error> {
@@ -788,7 +815,7 @@ impl<'a> Excavator<'a> {
                        got_num: 1 + extra)
                 .src(src))
         } else {
-            self.cavr(arg, src)
+            Ok(wrap(Box::new(self.cavr(arg, src.clone())?)).ast(src))
         }
     }
 
@@ -929,7 +956,7 @@ impl<'a> Excavator<'a> {
             move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
         };
         let mut it = args.iter();
-        let arglist = arg_parse_pv(it.next().ok_or_else(err(0))?)?;
+        let arglist = self.arg_parse(it.next().ok_or_else(err(0))?, src.clone())?;
         let body: Result<_,_> = it.map(|a| self.cavr(a, src.clone())).collect();
         Ok(AST2 { src, kind: M::Lambda(arglist, body?) })
     }
@@ -962,7 +989,7 @@ impl<'a> Excavator<'a> {
                                                  expect: Builtin::Symbol.sym(),
                                                  got: name.type_of())
                                        .argn(1).op(Builtin::ArgList.sym()))?;
-            let arglist = arg_parse_pv(it.into())?;
+            let arglist = self.arg_parse(it.into(), src.clone())?;
             Ok(AST2 { kind: M::Defun(name, arglist, body?),
                       src })
         } else {
@@ -1015,9 +1042,58 @@ impl<'a> Excavator<'a> {
         self.wrap_any_args(|a| M::SymApp(op, a), args, src)
     }
 
+    fn lambda_app(&self,
+                  ArgList2(spec, syms): ArgList2,
+                  body: Progn, args: PV, src: Source) -> Result<AST2, Error>
+    {
+        let orig_src = src.clone();
+        let mut binds = vec![];
+        let mut it = args.iter_src(self.mem, src);
+        let mut argn = 0;
+        while let Some((init, src)) = it.next() {
+            let (sym, _) = syms[argn];
+            let init = Box::new(init.car().and_then(|v| self.cavr(v, src.clone()))?);
+            binds.push(VarDecl(sym, src.clone(), init));
+            argn += 1;
+            if argn > spec.nopt() {
+                if spec.rest { break }
+                return Err(error!(ArgError,
+                                  expect: spec,
+                                  got_num: (argn + it.count()) as u32)
+                           .op(Builtin::Apply.sym())
+                           .src(src)
+                           .see_also("lambda", orig_src))
+            }
+        }
+        let rest = it.map(|(v, src)| self.cavr(v.car()?, src))
+                     .collect::<Result<Vec<_>,_>>()?;
+        if argn < spec.nargs() {
+            let (sym, src) = syms[argn].clone();
+            return Err(error!(ArgError,
+                              expect: spec,
+                              got_num: argn as u32)
+                       .src(orig_src)
+                       .see_also_sym(sym, src)
+                       .op(Builtin::Apply.sym()));
+        }
+        for i in argn..spec.nopt() {
+            let (sym, src) = syms[i].clone();
+            binds.push(VarDecl(sym, src.clone(), nil(src)))
+        }
+        if spec.rest {
+            let (sym, src) = syms.last().cloned().unwrap();
+            binds.push(VarDecl(sym, src.clone(), list(rest, src)))
+        }
+        Ok(AST2 { src: orig_src, kind: M::Let(binds, body) })
+    }
+
     fn gapp(&self, op: PV, args: PV, src: Source) -> Result<AST2, Error> {
-        let op = Box::new(self.cavr(op, src.clone())?);
-        self.wrap_any_args(|a| M::App(op, a), args, src)
+        let op = self.cavr(op, src.clone())?;
+        if let M::Lambda(syms, body) = op.kind {
+            self.lambda_app(syms, body, args, src)
+        } else {
+            self.wrap_any_args(|a| M::App(Box::new(op), a), args, src)
+        }
     }
 
     fn cons(&self, Cons { car, cdr }: Cons, src: Source) -> Result<AST2, Error> {

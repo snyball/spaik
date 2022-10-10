@@ -11,38 +11,39 @@ enum ConstValue<T> {
 
 impl AST2 {
     fn eval(&mut self, force: bool) -> Result<bool, Error> {
+        let mut change = false;
+        macro_rules! eval {
+            ($item:expr) => { change = change || $item.eval(force)? }
+        }
         match &mut self.kind {
             M::If(cond, ifa, ifb) => {
-                cond.eval(force)?;
+                eval!(cond);
                 if let Some(b) = cond.bool() {
                     if b {
                         let mut ifa = ifa.take().expect("illegal if-expr");
-                        ifa.eval(force)?;
+                        eval!(ifa);
                         *self = *ifa;
                     } else {
                         *self = if let Some(mut ifb) = ifb.take() {
-                            ifb.eval(force)?;
+                            eval!(ifb);
                             *ifb
                         } else {
                             M::Atom(PV::Nil).ast(self.src.clone())
                         }
                     }
                 } else {
-                    if let Some(ifa) = ifa { ifa.eval(force)?; }
-                    if let Some(ifb) = ifb { ifb.eval(force)?; }
+                    if let Some(ifa) = ifa { eval!(ifa); }
+                    if let Some(ifb) = ifb { eval!(ifb); }
                 }
             }
             M::Progn(pr) => if pr.len() == 1 {
+                change = true;
                 *self = pr.pop().unwrap();
-                self.eval(force)?;
-                return Ok(true);
+                eval!(self);
             } else {
-                let mut change = false;
                 for arg in pr.iter_mut() {
-                    change = arg.eval(force)?;
+                    eval!(arg);
                 }
-                // Only the last value of progn will change the value of the expression
-                return Ok(change);
             }
             M::Add(xs) => {
                 if xs.len() == 1 {
@@ -76,7 +77,7 @@ impl AST2 {
             }
             _ => ()
         }
-        Ok(false)
+        Ok(change)
     }
 
     fn atom(&self) -> Option<(PV, &Source)> {

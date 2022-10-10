@@ -80,6 +80,7 @@ pub enum Meta {
     VarName(OpName),
     SourceFile(Cow<'static, str>),
     Source(LineCol),
+    Related(Option<OpName>, Source),
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -172,6 +173,7 @@ pub enum ErrorKind {
     SendError { obj_dbg: String },
     IllegalInstruction { inst: R8C },
     STypeError { expect: String, got: String },
+    UnexpectedDottedList,
     TypeError { expect: SymID, got: SymID },
     TypeNError { expect: Vec<SymID>, got: SymID },
     ArgTypeError { expect: Vec<SymID>, got: Vec<SymID> },
@@ -307,6 +309,12 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                    expect.iter().copied().map(nameof).collect::<Vec<_>>(),
                    FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta},
                    nameof(*got))?,
+        UnexpectedDottedList => {
+            write!(f, "Type Error: Unexpected dotted list")?;
+            if let Some(op) = err.meta.op() {
+                write!(f, " given to {}", op.name(db))?
+            }
+        }
         ArgError { expect, got_num } => {
             write!(f, "Argument Error: ")?;
             if let Some(op) = err.meta.op() {
@@ -437,6 +445,16 @@ impl Error {
         if let Some(file) = src.file {
             self.meta.amend(Meta::SourceFile(file));
         }
+        self
+    }
+
+    pub fn see_also(mut self, what: &'static str, src: Source) -> Self {
+        self.meta.amend(Meta::Related(Some(OpName::OpStr(what)), src));
+        self
+    }
+
+    pub fn see_also_sym(mut self, what: SymID, src: Source) -> Self {
+        self.meta.amend(Meta::Related(Some(OpName::OpSym(what)), src));
         self
     }
 

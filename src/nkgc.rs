@@ -14,7 +14,6 @@ use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::mem::replace;
-use std::ops::Add;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
@@ -526,6 +525,10 @@ impl PV {
         PVIter { item: *self }
     }
 
+    pub fn iter_src<'a, 'b>(&'a self, nk: &'b Arena, src: Source) -> PVIterSrc<'b> {
+        PVIterSrc { item: *self, src, nk }
+    }
+
     pub fn iter_ref(&self) -> PVRefIter<'_> {
         PVRefIter {
             done: false,
@@ -948,6 +951,63 @@ impl Iterator for ConsIter {
             x => {
                 self.item = PV::Nil;
                 ConsElem::Tail(x)
+            }
+        })
+    }
+}
+
+pub enum ConsItem {
+    Car(PV),
+    Cdr(PV),
+}
+
+impl ConsItem {
+    pub fn any(self) -> PV {
+        match self {
+            ConsItem::Car(pv) => pv,
+            ConsItem::Cdr(pv) => pv,
+        }
+    }
+
+    pub fn car(self) -> Result<PV, Error> {
+        match self {
+            ConsItem::Car(pv) => Ok(pv),
+            ConsItem::Cdr(_) => err!(UnexpectedDottedList,),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PVIterSrc<'a> {
+    item: PV,
+    nk: &'a Arena,
+    src: Source,
+}
+
+impl Into<PV> for PVIterSrc<'_> {
+    fn into(self) -> PV {
+        self.item
+    }
+}
+
+impl Iterator for PVIterSrc<'_> {
+    type Item = (ConsItem, Source);
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(match self.item {
+            PV::Nil => return None,
+            PV::Ref(r) => {
+                let src = self.nk.get_tag(r).cloned().unwrap_or(self.src.clone());
+                if let NkRef::Cons(Cons { car, cdr }) = unsafe{(*r).match_ref()} {
+                    self.item = *cdr;
+                    (ConsItem::Car(*car), src)
+                } else {
+                    self.item = PV::Nil;
+                    (ConsItem::Cdr(PV::Ref(r)), src)
+                }
+            }
+            x => {
+                self.item = PV::Nil;
+                (ConsItem::Cdr(x), self.src.clone())
             }
         })
     }
