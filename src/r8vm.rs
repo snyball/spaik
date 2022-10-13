@@ -1090,6 +1090,11 @@ impl R8VM {
         // Iter
         addfn!(iter);
 
+        vm.eval("(define (<ξ>::set-macro! macro fn) (set-macro macro fn) nil)")
+          .unwrap();
+        vm.eval("(set-macro 'set-macro! '<ξ>::set-macro!)")
+          .unwrap();
+
         let core_sym = vm.sym_id("<ζ>::core");
         let core = include_str!("../lisp/core.lisp");
         let entry = vm.load_with("<ζ>::core", core_sym, core)

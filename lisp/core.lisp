@@ -2,18 +2,15 @@
 
 (define (<ξ>::defun name args &body body)
   `(define (,name ,@args) ,@body))
-(eval-when :compile
-  (set-macro 'defun '<ξ>::defun))
+(set-macro! defun <ξ>::defun)
 
 (defun <ξ>::defmacro (name args &body body)
   (let ((mac-fn-name (make-symbol (concat '<ξ>:: name))))
     `(progn
        (define (,mac-fn-name ,@args)
          ,@body)
-       (eval-when :compile
-         (set-macro ',name ',mac-fn-name)))))
-(eval-when :compile
-  (set-macro 'defmacro '<ξ>::defmacro))
+       (set-macro! ,name ,mac-fn-name))))
+(set-macro! defmacro <ξ>::defmacro)
 
 (defun head (x)
   (car x))
@@ -157,6 +154,11 @@
        (loop (if (iter-end? (set ,name (next ,it)))
                (break))
              ,@body))))
+
+(defun member? (x xs)
+  (dolist (y xs)
+    (when (eq? x y)
+      (break true))))
 
 ;; FIXME: (next) doesn't work in range. In order for (next) to work there needs
 ;; to be a special loop constrct like (s-loop (a..) (b..)) where (next) in (a..)
@@ -315,7 +317,7 @@
     ,@(map (lambda (x)
              (if (= (car x) '_)
                  `(break ,@(cdr x))
-                 `(if (= ,this ,(car x))
+                 `(if (eq? ,this ,(car x))
                       (break ,@(cdr x)))))
            is)
     (break nil)))
@@ -360,6 +362,33 @@
   (if (string? w)
       `(_print (fmt ,w ,@in))
       `(_print ,w ,@in)))
+
+(defun find-first-duplicate (xs)
+  (when xs
+    (let ((x (car xs))
+          (ys (cdr xs)))
+      (if (member? x ys)
+          x
+          (find-first-duplicate ys)))))
+
+(defmacro if-let (decl &body b)
+  (let ((name (car decl))
+        (init (cadr decl)))
+    `(let ((,name ,init))
+       (if ,name (progn ,@b)))))
+
+(defmacro m-eval-when (conds &body b)
+  (if-let (dup (find-first-duplicate conds))
+    (error 'duplicate-eval-when-condition))
+  (when (symbol? conds)
+    (set conds `(,conds)))
+  (let ((ret nil)
+        (body `(progn ,@b)))
+    (dolist (cnd conds)
+      (case cnd
+        (:compile (progn (println "evaling") (eval body)))
+        (:eval (set ret body))))
+    ret))
 
 (defmacro dbg (obj)
   `(_println (concat ',obj ": " ,obj)))
