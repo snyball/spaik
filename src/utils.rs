@@ -1,6 +1,11 @@
 //! Miscellaneous Utilities
 
 #[macro_export]
+macro_rules! sym {
+    ($arg:ident) => { crate::compile::Builtin::$arg.sym() };
+}
+
+#[macro_export]
 macro_rules! map {
     ( $($k:expr => $v:expr),* $(,)* ) => {{
         let mut m = HashMap::new();
