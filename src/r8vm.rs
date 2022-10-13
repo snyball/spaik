@@ -1336,7 +1336,22 @@ impl R8VM {
                     assert_no_trailing!(Meta::Source(LineCol { line, col }));
                     mods = pmods.pop().expect("Unable to wrap expr");
                     if close.len() == 1 {
-                        let v = self.expand_from_stack(num)?;
+                        // let v = self.expand_from_stack(num)?;
+
+                        let v = if mods.is_empty() {
+                            self.expand_from_stack(num)?
+                        } else {
+                            self.mem.list(num);
+                            while let Some(m) = mods.pop() {
+                                let p = self.mem.pop().expect("No expr to wrap");
+                                self.mem.push(PV::Sym(m.sym()));
+                                self.mem.push(p);
+                                self.mem.list(2);
+                            }
+                            let pv = self.mem.pop().unwrap();
+                            self.macroexpand_pv(pv)?
+                        };
+
                         let excv = Excavator::new(&self.mem);
                         let ast = excv.to_ast(v)?;
                         dbg!(ast);
