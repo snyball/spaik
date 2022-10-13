@@ -14,6 +14,7 @@ use crate::compile::Builtin;
 use crate::compile::arg_parse;
 use crate::sym_db::{SymDB, SYM_DB};
 use std::fmt;
+use std::iter;
 use std::ptr;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -671,8 +672,8 @@ pub enum M {
     If(Prog, Option<Prog>, Option<Prog>),
     Atom(PV),
     Progn(Progn),
-    BecomeSelf(Progn),
-    Become(SymID, Progn),
+    // BecomeSelf(Progn),
+    // Become(SymID, Progn),
     SymApp(SymID, Progn),
     App(Prog, Progn),
     Lambda(ArgList2, Progn),
@@ -722,6 +723,12 @@ impl M {
     }
 }
 
+impl From<PV> for M {
+    fn from(pv: PV) -> Self {
+        M::Atom(pv)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AST2 {
     pub src: Source,
@@ -729,7 +736,7 @@ pub struct AST2 {
 }
 
 pub struct Excavator<'a> {
-    mem: &'a Arena,
+    mem: &'a Arena, // Arena is read-only while excavating an AST
 }
 
 impl<'a> Excavator<'a> {
@@ -797,7 +804,7 @@ impl<'a> Excavator<'a> {
         } else {
             Source::none()
         };
-        self.cavr(v, src)
+        self.dig(v, src)
     }
 
     fn wrap_one_arg<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
@@ -815,14 +822,14 @@ impl<'a> Excavator<'a> {
                        got_num: 1 + extra)
                 .src(src))
         } else {
-            Ok(wrap(Box::new(self.cavr(arg, src.clone())?)).ast(src))
+            Ok(wrap(Box::new(self.dig(arg, src.clone())?)).ast(src))
         }
     }
 
     fn wrap_any_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
         where F: FnOnce(Vec<AST2>) -> M
     {
-        let args: Result<_,_> = args.into_iter().map(|a| self.cavr(a, src.clone()))
+        let args: Result<_,_> = args.into_iter().map(|a| self.dig(a, src.clone()))
                                                 .collect();
         Ok(AST2 {
             kind: wrap(args?),
@@ -839,17 +846,17 @@ impl<'a> Excavator<'a> {
             move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
         };
         let mut it = args.iter();
-        let fst = Box::new(self.cavr(it.next().ok_or_else(err(0))?, src.clone())?);
-        let prev = Box::new(self.cavr(it.next().ok_or_else(err(0))?, src.clone())?);
+        let fst = Box::new(self.dig(it.next().ok_or_else(err(0))?, src.clone())?);
+        let prev = Box::new(self.dig(it.next().ok_or_else(err(0))?, src.clone())?);
         let icmp = cmp(fst, prev.clone());
         if let Some(nx) = it.next() {
-            let nx = Box::new(self.cavr(nx, src.clone())?);
+            let nx = Box::new(self.dig(nx, src.clone())?);
             let jcmp = cmp(prev, nx.clone());
             let mut prev = nx;
             let mut cmps = vec![AST2 { src: src.clone(), kind: icmp },
                                 AST2 { src: src.clone(), kind: jcmp }];
             while let Some(nx) = it.next() {
-                let nx = Box::new(self.cavr(nx, src.clone())?);
+                let nx = Box::new(self.dig(nx, src.clone())?);
                 cmps.push(AST2 { src: src.clone(), kind: cmp(prev, nx.clone()) });
                 prev = nx;
             }
@@ -869,10 +876,10 @@ impl<'a> Excavator<'a> {
             move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
         };
         let mut it = args.iter();
-        let arg0 = Box::new(self.cavr(it.next().ok_or_else(err(0))?, src.clone())?);
-        let arg1 = Box::new(self.cavr(it.next().ok_or_else(err(1))?, src.clone())?);
+        let arg0 = Box::new(self.dig(it.next().ok_or_else(err(0))?, src.clone())?);
+        let arg1 = Box::new(self.dig(it.next().ok_or_else(err(1))?, src.clone())?);
         let arg2 = if let Some(v) = it.next() {
-            Some(Box::new(self.cavr(v, src.clone())?))
+            Some(Box::new(self.dig(v, src.clone())?))
         } else {
             None
         };
@@ -902,8 +909,8 @@ impl<'a> Excavator<'a> {
             move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
         };
         let mut it = args.iter();
-        let arg0 = Box::new(self.cavr(it.next().ok_or_else(err(0))?, src.clone())?);
-        let arg1 = Box::new(self.cavr(it.next().ok_or_else(err(1))?, src.clone())?);
+        let arg0 = Box::new(self.dig(it.next().ok_or_else(err(0))?, src.clone())?);
+        let arg1 = Box::new(self.dig(it.next().ok_or_else(err(1))?, src.clone())?);
         let extra = it.count() as u32;
         if extra > 0 {
             Err(err(2 + extra)())
@@ -940,7 +947,7 @@ impl<'a> Excavator<'a> {
                                    expect: Builtin::Symbol.sym(),
                                    got: e.type_of()).argn(1))
         };
-        let init = Box::new(self.cavr(it.next().ok_or_else(err(1))?, src.clone())?);
+        let init = Box::new(self.dig(it.next().ok_or_else(err(1))?, src.clone())?);
         let extra = it.count() as u32;
         if extra > 0 {
             Err(err(2 + extra)())
@@ -957,7 +964,7 @@ impl<'a> Excavator<'a> {
         };
         let mut it = args.iter();
         let arglist = self.arg_parse(it.next().ok_or_else(err(0))?, src.clone())?;
-        let body: Result<_,_> = it.map(|a| self.cavr(a, src.clone())).collect();
+        let body: Result<_,_> = it.map(|a| self.dig(a, src.clone())).collect();
         Ok(AST2 { src, kind: M::Lambda(arglist, body?) })
     }
 
@@ -970,7 +977,7 @@ impl<'a> Excavator<'a> {
         let mut it = args.iter();
         let lhs = it.next().ok_or_else(err(0))?;
         if let PV::Sym(name) = lhs {
-            let init = Box::new(self.cavr(it.next().ok_or_else(err(1))?, src.clone())?);
+            let init = Box::new(self.dig(it.next().ok_or_else(err(1))?, src.clone())?);
             let extra = it.count() as u32;
             if extra > 0 {
                 Err(error!(ArgError, expect: ArgSpec::normal(2), got_num: extra + 2))
@@ -978,7 +985,7 @@ impl<'a> Excavator<'a> {
                 Ok(AST2 { kind: M::Defvar(name, init), src })
             }
         } else if lhs.is_list() {
-            let body: Result<_,_> = it.map(|v| self.cavr(v, src.clone())).collect();
+            let body: Result<_,_> = it.map(|v| self.dig(v, src.clone())).collect();
             let mut it = lhs.iter();
             let name = it.next().ok_or_else(|| error!(ArgError,
                                                       expect: ArgSpec::rest(1, 0),
@@ -997,6 +1004,23 @@ impl<'a> Excavator<'a> {
                        expect: vec![Builtin::Symbol.sym(),
                                     Builtin::ArgList.sym()],
                        got: lhs.type_of()).argn(1))
+        }
+    }
+
+    fn bt_next(&self, args: PV, src: Source) -> Result<AST2, Error> {
+        let e = |e: Error| e.op(sym![Next]).src(src.clone());
+        let mut it = args.iter_src(self.mem, src.clone());
+        if let Some((arg, src)) = it.next() {
+            let extra = it.count() as u32;
+            if extra > 0 {
+                return Err(error!(ArgError,
+                                  expect: ArgSpec::opt(0, 1),
+                                  got_num: 1+extra));
+            }
+            Ok(M::NextIter(Box::new(self.dig(arg.car().map_err(e)?,
+                                              src.clone())?)).ast(src))
+        } else {
+            Ok(M::Next.ast(src))
         }
     }
 
@@ -1034,6 +1058,7 @@ impl<'a> Excavator<'a> {
             Builtin::Push => self.wrap_two_args(M::Push, args, src),
             Builtin::Get => self.wrap_two_args(M::Get, args, src),
             Builtin::Throw => self.wrap_one_arg(M::Throw, args, src),
+            Builtin::Next => self.bt_next(args, src),
             _ => self.sapp(bt.sym(), args, src),
         }.map_err(|e| e.fallback(Meta::Op(OpName::OpSym(bt.sym()))))
     }
@@ -1052,21 +1077,26 @@ impl<'a> Excavator<'a> {
         let mut argn = 0;
         while let Some((init, src)) = it.next() {
             let (sym, _) = syms[argn];
-            let init = Box::new(init.car().and_then(|v| self.cavr(v, src.clone()))?);
-            binds.push(VarDecl(sym, src.clone(), init));
             argn += 1;
-            if argn >= spec.nopt() {
-                if spec.rest { break }
-                return Err(error!(ArgError,
-                                  expect: spec,
-                                  got_num: (argn + it.count()) as u32)
-                           .op(Builtin::Apply.sym())
-                           .src(src)
-                           .see_also("lambda", orig_src))
+            if argn > spec.nopt() {
+                if !spec.rest {
+                    return Err(error!(ArgError,
+                                      expect: spec,
+                                      got_num: (argn + it.count()) as u32)
+                               .op(Builtin::Apply.sym())
+                               .src(src)
+                               .see_also("lambda", orig_src))
+                }
+                let rest = iter::once(self.dig(init.car()?, src)).chain(
+                    it.map(|(v, src)| self.dig(v.car()?, src))
+                ).collect::<Result<Vec<_>, Error>>()?;
+                let (sym, src) = syms.last().cloned().unwrap();
+                binds.push(VarDecl(sym, src.clone(), list(rest, src)));
+                return Ok(AST2 { src: orig_src, kind: M::Let(binds, body) });
             }
+            let init = Box::new(init.car().and_then(|v| self.dig(v, src.clone()))?);
+            binds.push(VarDecl(sym, src.clone(), init));
         }
-        let rest = it.map(|(v, src)| self.cavr(v.car()?, src))
-                     .collect::<Result<Vec<_>,_>>()?;
         if argn < spec.nargs() {
             let (sym, src) = syms[argn].clone();
             return Err(error!(ArgError,
@@ -1082,13 +1112,13 @@ impl<'a> Excavator<'a> {
         }
         if spec.rest {
             let (sym, src) = syms.last().cloned().unwrap();
-            binds.push(VarDecl(sym, src.clone(), list(rest, src)))
+            binds.push(VarDecl(sym, src.clone(), nil(src)))
         }
         Ok(AST2 { src: orig_src, kind: M::Let(binds, body) })
     }
 
     fn gapp(&self, op: PV, args: PV, src: Source) -> Result<AST2, Error> {
-        let op = self.cavr(op, src.clone())?;
+        let op = self.dig(op, src.clone())?;
         if let M::Lambda(syms, body) = op.kind {
             self.lambda_app(syms, body, args, src)
         } else {
@@ -1108,16 +1138,16 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn cavr(&self, v: PV, src: Source) -> Result<AST2, Error> {
+    fn dig(&self, v: PV, src: Source) -> Result<AST2, Error> {
         match v {
             PV::Ref(p) => match unsafe {(*p).match_ref()} {
                 NkRef::Cons(cell) => {
                     let src = self.mem.get_tag(p).cloned().unwrap_or(src);
                     self.cons(*cell, src)
                 },
-                _ => Ok(AST2 { src, kind: M::Atom(v) })
+                _ => Ok(AST2 { src, kind: v.into() })
             }
-            _ => Ok(AST2 { src, kind: M::Atom(v) })
+            _ => Ok(AST2 { src, kind: v.into() })
         }
     }
 }
