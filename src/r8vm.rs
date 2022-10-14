@@ -427,7 +427,7 @@ mod sysfns {
         }
 
         fn macroexpand(&mut self, vm: &mut R8VM, args: (ast)) -> Result<PV, Error> {
-            vm.macroexpand_pv(*ast)
+            vm.macroexpand_pv(*ast, false)
         }
 
         fn read_compile(&mut self, vm: &mut R8VM, args: (code)) -> Result<PV, Error> {
@@ -1300,6 +1300,8 @@ impl R8VM {
         let mut mods: Vec<Builtin> = vec![];
         let mut close = vec![];
         let mut pmods = vec![];
+        let mut dots = vec![];
+        let mut dot = false;
         let mut num = 0;
         macro_rules! wrap {
             ($push:expr) => {
@@ -1330,6 +1332,8 @@ impl R8VM {
                 "(" => {
                     pmods.push(replace(&mut mods, vec![]));
                     close.push(num + 1);
+                    dots.push(dot);
+                    dot = false;
                     num = 0;
                 }
                 ")" => {
@@ -1337,11 +1341,11 @@ impl R8VM {
                     mods = pmods.pop().expect("Unable to wrap expr");
                     if close.len() == 1 {
                         let v = if mods.is_empty() {
-                            self.expand_from_stack(num)?
+                            self.expand_from_stack(num, dot)?
                         } else {
-                            wrap!(self.mem.list(num));
+                            wrap!(self.mem.list_dot(num, dot));
                             let pv = self.mem.pop().unwrap();
-                            self.macroexpand_pv(pv)?
+                            self.macroexpand_pv(pv, false)?
                         };
 
                         let excv = Excavator::new(&self.mem);
@@ -1350,7 +1354,7 @@ impl R8VM {
 
                         self.mem.push(v)
                     } else {
-                        wrap!(self.mem.list(num));
+                        wrap!(self.mem.list_dot(num, dot));
                     }
 
                     num = close.pop()
@@ -1385,9 +1389,12 @@ impl R8VM {
         Ok(self.mem.pop().expect("Unable to pop finalized list"))
     }
 
-    pub fn expand_from_stack(&mut self, n: u32) -> Result<PV, Error> {
+    pub fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV, Error> {
         let op = self.mem.from_top(n as usize);
         let v = if let Some(m) = op.op().and_then(|op| self.macros.get(&op.into())).copied() {
+            if dot {
+                return Err(error!(UnexpectedDottedList,).op(sym!(Apply)))
+            }
             let func = self.funcs.get(&m.into()).ok_or("No such function")?;
             if let Err(e) = func.args.check(m.into(), (n - 1) as u16) {
                 self.mem.popn(n as usize);
@@ -1406,7 +1413,7 @@ impl R8VM {
             let top = self.mem.stack.len();
             for i in top - (n as usize) .. top {
                 let v = self.mem.stack[i];
-                match self.macroexpand_pv(v) {
+                match self.macroexpand_pv(v, false) {
                     Ok(nv) => self.mem.stack[i] = nv,
                     Err(e) => {
                         self.mem.popn(n as usize);
@@ -1414,10 +1421,10 @@ impl R8VM {
                     }
                 }
             }
-            self.mem.list(n);
+            self.mem.list_dot(n, dot);
             self.mem.pop().unwrap()
         };
-        self.macroexpand_pv(v)
+        self.macroexpand_pv(v, false)
     }
 
     pub fn varor<T>(&mut self, name: SymID, or_default: T) -> Result<T, Error>
@@ -1431,39 +1438,51 @@ impl R8VM {
         }
     }
 
-    pub fn macroexpand_pv(&mut self, mut v: PV) -> Result<PV, Error> {
+    pub fn macroexpand_pv(&mut self, mut v: PV, quasi: bool) -> Result<PV, Error> {
         let ind_lim = self.varor(Builtin::LimitsMacroexpandRecursion.sym(),
                                  limits::MACROEXPAND_RECURSION)?;
-        let mut inds = 0;
-        while let Some(m) = v.op().and_then(|op| self.macros.get(&op.into())).copied() {
-            let func = self.funcs.get(&m.into()).ok_or("No such function")?;
-            let mut nargs = 0;
-            let frame = self.frame;
-            self.frame = self.mem.stack.len();
-            for arg in v.args() {
-                self.mem.push(arg);
-                nargs += 1;
-            }
-            if let Err(e) = func.args.check(m.into(), nargs) {
-                self.mem.popn(nargs as usize);
-                self.frame = frame;
-                return Err(e);
-            }
 
-            self.mem.push(PV::UInt(0));
-            self.mem.push(PV::UInt(frame));
+        if quasi && v.bt_op() == Some(Builtin::Unquote) {
+            let i = self.macroexpand_pv(v.inner().map_err(|e| e.op(sym!(Unquote)))?,
+                                        false)?;
+            v.set_inner(i)?;
+            return Ok(v)
+        } else if !quasi {
+            let mut inds = 0;
+            while let Some(m) = v.op().and_then(|op| self.macros.get(&op.into())).copied() {
+                let func = self.funcs.get(&m.into()).ok_or("No such function")?;
+                let mut nargs = 0;
+                let frame = self.frame;
+                self.frame = self.mem.stack.len();
+                for arg in v.args() {
+                    self.mem.push(arg);
+                    nargs += 1;
+                }
+                if let Err(e) = func.args.check(m.into(), nargs) {
+                    self.mem.popn(nargs as usize);
+                    self.frame = frame;
+                    return Err(e);
+                }
 
-            let pos = func.pos;
-            unsafe { self.run_from_unwind(pos)?; }
-            v = self.mem.pop().expect("Function did not return a value");
-            inds += 1;
-            if inds > ind_lim {
-                return err!(MacroexpandRecursionLimit, lim: ind_lim);
+                self.mem.push(PV::UInt(0));
+                self.mem.push(PV::UInt(frame));
+
+                let pos = func.pos;
+                unsafe { self.run_from_unwind(pos)?; }
+                v = self.mem.pop().expect("Function did not return a value");
+                inds += 1;
+                if inds > ind_lim {
+                    return err!(MacroexpandRecursionLimit, lim: ind_lim);
+                }
             }
         }
 
-        if v.bt_op() == Some(Builtin::EvalWhen) {
-            todo!()
+        if v.bt_op() == Some(Builtin::Quote) {
+            Ok(v)
+        } else if v.bt_op() == Some(Builtin::Quasi) {
+            let i = v.inner()?;
+            v.set_inner(self.macroexpand_pv(i, true)?)?;
+            Ok(v)
         } else if v.is_atom() {
             Ok(v)
         } else {
@@ -1473,11 +1492,12 @@ impl R8VM {
                     let rf = unsafe{(*p).match_ref()};
                     if let NkRef::Cons(Cons { car, .. }) = rf {
                         self.mem.push(v);
-                        let ncar = self.macroexpand_pv(*car);
+                        let ncar = self.macroexpand_pv(*car, quasi);
                         v = self.mem.pop().unwrap();
                         if let PV::Ref(p) = v {
                             let rf = unsafe{(*p).match_mut()};
-                            if let NkMut::Cons(Cons { ref mut car, cdr }) = rf {
+                            if let NkMut::Cons(Cons { ref mut car,
+                                                      ref mut cdr }) = rf {
                                 *car = match ncar {
                                     Ok(x) => x,
                                     Err(e) => {

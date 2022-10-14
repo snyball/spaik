@@ -479,6 +479,11 @@ impl Error {
         self
     }
 
+    pub fn fop(mut self, new_op: SymID) -> Error {
+        self.meta.fallback(Meta::Op(OpName::OpSym(new_op)));
+        self
+    }
+
     pub fn op(mut self, new_op: SymID) -> Error {
         self.meta.amend(Meta::Op(OpName::OpSym(new_op)));
         self

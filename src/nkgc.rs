@@ -439,6 +439,27 @@ impl PV {
         self.bt_type_of().sym()
     }
 
+    pub fn inner(self) -> Result<PV, Error> {
+        let expect = ArgSpec::normal(1);
+        let err = |n| move || error!(ArgError, expect, got_num: n);
+        let mut it = self.args();
+        let inner = it.next().ok_or_else(err(0))?;
+        let extra = it.count();
+        if extra > 0 {
+            Err(err(1 + extra as u32)())
+        } else {
+            Ok(inner)
+        }
+    }
+
+    pub fn set_inner(&mut self, v: PV) -> Result<PV, Error> {
+        with_ref_mut!(*self, Cons(Cons { ref mut cdr, .. }) => {
+            with_ref_mut!(*cdr, Cons(Cons { ref mut car, .. }) => {
+                Ok(replace(car, v))
+            })
+        })
+    }
+
     pub fn has_cycle(&self) -> bool {
         let mut vs = VisitSet::default();
         find_cycle_pv(*self, &mut vs)
@@ -1414,6 +1435,37 @@ impl Arena {
         }
         unsafe {
             ptr::write(cell, Cons::new(self.stack[top - 1], PV::Nil))
+        }
+        self.stack.truncate(idx);
+        self.stack.push(NkAtom::make_ref(orig_cell));
+    }
+
+    pub fn list_dot(&mut self, n: u32, dot: bool) {
+        if n == 0 {
+            self.push(PV::Nil);
+            return;
+        }
+        assert!(if dot { n >= 2 } else { true });
+        self.mem_fit::<Cons>(n as usize);
+        let self_ptr = self as *mut Arena;
+        let alloc = || unsafe { (*self_ptr).alloc::<Cons>() };
+        let top = self.stack.len();
+        let idx = top - (n as usize);
+        let mut cell = self.alloc::<Cons>();
+        let orig_cell = cell;
+        for item in self.stack[idx..top - 1 - dot as usize].iter() {
+            let next = alloc();
+            unsafe {
+                ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))
+            }
+            cell = next;
+        }
+        unsafe {
+            ptr::write(cell, Cons::new(self.stack[top - 1 - dot as usize], if dot {
+                self.stack[top - 1]
+            } else {
+                PV::Nil
+            }))
         }
         self.stack.truncate(idx);
         self.stack.push(NkAtom::make_ref(orig_cell));
