@@ -1487,36 +1487,36 @@ impl R8VM {
             Ok(v)
         } else {
             self.mem.push(v);
+            let mut dot = false;
             loop {
-                if let PV::Ref(p) = v {
-                    let rf = unsafe{(*p).match_ref()};
-                    if let NkRef::Cons(Cons { car, .. }) = rf {
-                        self.mem.push(v);
-                        let ncar = self.macroexpand_pv(*car, quasi);
-                        v = self.mem.pop().unwrap();
-                        if let PV::Ref(p) = v {
-                            let rf = unsafe{(*p).match_mut()};
-                            if let NkMut::Cons(Cons { ref mut car,
-                                                      ref mut cdr }) = rf {
-                                *car = match ncar {
-                                    Ok(x) => x,
-                                    Err(e) => {
-                                        self.mem.pop()?;
-                                        return Err(e);
-                                    }
-                                };
-                                v = *cdr;
-                            } else {
-                                unreachable!(); // not
+                assert_let!(PV::Ref(p) => p = p, v);
+                let rf = unsafe{(*p).match_ref()};
+                if let NkRef::Cons(Cons { car, cdr }) = rf {
+                    self.mem.push(v);
+                    let ncar = self.macroexpand_pv(if dot {*cdr} else {*car}, quasi);
+                    v = self.mem.pop().unwrap();
+                    assert_let!(PV::Ref(p) => p = p, v);
+                    let rf = unsafe{(*p).match_mut()};
+                    if let NkMut::Cons(Cons { ref mut car, ref mut cdr }) = rf {
+                        let dst = if dot { &mut *cdr } else { car };
+                        *dst = match ncar {
+                            Ok(x) => x,
+                            Err(e) => {
+                                self.mem.pop().unwrap();
+                                return Err(e);
                             }
-                        } else {
-                            unreachable!() // my
+                        };
+                        v = match cdr.bt_type_of() {
+                            Builtin::Nil => break,
+                            Builtin::Cons => *cdr,
+                            _ if dot => break,
+                            _ => { dot = true; v }
                         }
                     } else {
-                        break;        // proudest
+                        unreachable!();
                     }
                 } else {
-                    break;       // moment
+                    unreachable!();
                 }
             }
             self.mem.pop()
