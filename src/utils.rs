@@ -6,16 +6,6 @@ macro_rules! sym {
 }
 
 #[macro_export]
-macro_rules! assert_let {
-    ($p:pat => $var:ident = $e:expr, $src:expr) => {
-        let $var = match $src {
-            $p => $e,
-            _ => unreachable!(),
-        };
-    };
-}
-
-#[macro_export]
 macro_rules! map {
     ( $($k:expr => $v:expr),* $(,)* ) => {{
         let mut m = HashMap::new();

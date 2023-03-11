@@ -1509,34 +1509,30 @@ impl R8VM {
             self.mem.push(v);
             let mut dot = false;
             loop {
-                assert_let!(PV::Ref(p) => p = p, v);
+                let PV::Ref(p) = v else { unreachable!() };
                 let rf = unsafe{(*p).match_ref()};
-                if let NkRef::Cons(Cons { car, cdr }) = rf {
-                    self.mem.push(v);
-                    let ncar = self.macroexpand_pv(if dot {*cdr} else {*car}, quasi);
-                    v = self.mem.pop().unwrap();
-                    assert_let!(PV::Ref(p) => p = p, v);
-                    let rf = unsafe{(*p).match_mut()};
-                    if let NkMut::Cons(Cons { ref mut car, ref mut cdr }) = rf {
-                        let dst = if dot { &mut *cdr } else { car };
-                        *dst = match ncar {
-                            Ok(x) => x,
-                            Err(e) => {
-                                self.mem.pop().unwrap();
-                                return Err(e);
-                            }
-                        };
-                        v = match cdr.bt_type_of() {
-                            Builtin::Nil => break,
-                            Builtin::Cons => *cdr,
-                            _ if dot => break,
-                            _ => { dot = true; v }
-                        }
-                    } else {
-                        unreachable!();
+                let NkRef::Cons(Cons { car, cdr }) = rf else { unreachable!() };
+                self.mem.push(v);
+                let ncar = self.macroexpand_pv(if dot {*cdr} else {*car}, quasi);
+                v = self.mem.pop().unwrap();
+                let PV::Ref(p) = v else { unreachable!() };
+                let rf = unsafe{(*p).match_mut()};
+                let NkMut::Cons(Cons { ref mut car, ref mut cdr }) = rf else {
+                    unreachable!()
+                };
+                let dst = if dot { &mut *cdr } else { car };
+                *dst = match ncar {
+                    Ok(x) => x,
+                    Err(e) => {
+                        self.mem.pop().unwrap();
+                        return Err(e);
                     }
-                } else {
-                    unreachable!();
+                };
+                v = match cdr.bt_type_of() {
+                    Builtin::Nil => break,
+                    Builtin::Cons => *cdr,
+                    _ if dot => break,
+                    _ => { dot = true; v }
                 }
             }
             self.mem.pop()

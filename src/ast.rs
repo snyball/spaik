@@ -1094,7 +1094,7 @@ impl<'a> Excavator<'a> {
                                   got_num: 1+extra));
             }
             Ok(M::NextIter(Box::new(self.dig(arg.car().map_err(e)?,
-                                              src.clone())?)).ast(src))
+                                             src.clone())?)).ast(src))
         } else {
             Ok(M::Next.ast(src))
         }
@@ -1114,8 +1114,7 @@ impl<'a> Excavator<'a> {
                         AST2 { src: src.clone(),
                                kind: M::List(vec![
                                    self.dig(x.cdr().unwrap().car().expect("car"),
-                                            src)?
-                               ])},
+                                            src)? ]) },
                     Some(Builtin::USplice) =>
                         self.dig(x.cdr().unwrap().car().expect("car"), src)?,
                     _ => AST2 { kind: M::List(vec![self.quasi(x, src.clone())?]),
