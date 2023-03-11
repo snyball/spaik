@@ -3,7 +3,7 @@
 use crate::r8vm::R8VM;
 use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
-use crate::nuke::*;
+use crate::{nuke::*, SymID};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::sym_db::SymDB;
 use std::convert::{TryInto, TryFrom};
@@ -144,6 +144,12 @@ impl IntoLisp for &str {
 impl IntoLisp for String {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
         Ok(mem.put(self))
+    }
+}
+
+impl IntoLisp for SymID {
+    fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
+        Ok(PV::Sym(self))
     }
 }
 

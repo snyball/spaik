@@ -465,6 +465,14 @@ impl PV {
         find_cycle_pv(*self, &mut vs)
     }
 
+    #[inline]
+    pub fn tag(&self, mem: &mut Arena, tag: Source) {
+        match *self {
+            PV::Ref(p) => mem.tag(p, tag),
+            _ => ()
+        }
+    }
+
     pub fn bt_type_of(&self) -> Builtin {
         use PV::*;
         match *self {
@@ -1251,7 +1259,7 @@ enum GCState {
     Sleep(i32),
 }
 
-const DEFAULT_MEMSZ: usize = 32768 * 10000;
+const DEFAULT_MEMSZ: usize = 8192;
 const DEFAULT_GRAYSZ: usize = 256;
 const DEFAULT_STACKSZ: usize = 256;
 const DEFAULT_ENVSZ: usize = 0;
@@ -1440,7 +1448,10 @@ impl Arena {
         self.stack.push(NkAtom::make_ref(orig_cell));
     }
 
-    pub fn list_dot(&mut self, n: u32, dot: bool) {
+    pub fn list_dot_srcs(&mut self,
+                         n: u32,
+                         mut srcs: impl Iterator<Item = Source>,
+                         dot: bool) {
         if n == 0 {
             self.push(PV::Nil);
             return;
@@ -1455,9 +1466,40 @@ impl Arena {
         let orig_cell = cell;
         for item in self.stack[idx..top - 1 - dot as usize].iter() {
             let next = alloc();
-            unsafe {
-                ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))
-            }
+            unsafe {ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))}
+            self.tags.insert(NkAtom::make_raw_ref(cell),
+                             srcs.next().expect("Not enough sources for list"));
+            cell = next;
+        }
+        unsafe {
+            ptr::write(cell, Cons::new(self.stack[top - 1 - dot as usize], if dot {
+                self.stack[top - 1]
+            } else {
+                PV::Nil
+            }))
+        }
+        self.stack.truncate(idx);
+        self.stack.push(NkAtom::make_ref(orig_cell));
+    }
+
+    pub fn list_dot(&mut self,
+                    n: u32,
+                    dot: bool) {
+        if n == 0 {
+            self.push(PV::Nil);
+            return;
+        }
+        assert!(if dot { n >= 2 } else { true });
+        self.mem_fit::<Cons>(n as usize);
+        let self_ptr = self as *mut Arena;
+        let alloc = || unsafe { (*self_ptr).alloc::<Cons>() };
+        let top = self.stack.len();
+        let idx = top - (n as usize);
+        let mut cell = self.alloc::<Cons>();
+        let orig_cell = cell;
+        for item in self.stack[idx..top - 1 - dot as usize].iter() {
+            let next = alloc();
+            unsafe {ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))}
             cell = next;
         }
         unsafe {
@@ -1684,6 +1726,7 @@ impl Arena {
         self.stack.push(NkAtom::make_ref(mem));
     }
 
+    #[inline]
     pub fn tag(&mut self, item: *mut NkAtom, tag: Source) {
         self.tags.insert(item, tag);
     }

@@ -39,7 +39,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 #[macro_use]
-pub(crate) mod error;
+pub mod error;
 #[macro_use]
 pub(crate) mod utils;
 #[macro_use]
@@ -75,7 +75,6 @@ pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
 pub use nuke::Gc;
 pub use string::Str;
-use subrs::FromLisp;
 use nkgc::Cons;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
@@ -124,9 +123,15 @@ use serde::de::DeserializeOwned;
 pub use crate::compile::Builtin;
 pub use crate::nuke::Fissile;
 pub use crate::error::Error as IError;
-use crate::r8vm::{R8VM, Args, ArgSpec, EnumCall};
+use crate::r8vm::R8VM;
+pub use crate::r8vm::{Args, ArgSpec, EnumCall};
 use crate::nkgc::PV;
-use crate::subrs::{Subr, IntoLisp, Ignore, IntoSubr};
+pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, IntoSubr};
+
+pub mod prelude {
+    pub use super::{SymDB, SymID, Subr, IntoLisp, FromLisp,
+                    Ignore, IntoSubr, SpaikPlug, Spaik, EnumCall};
+}
 
 pub trait FmtErr<T> where T: Sized {
     /// Format an internal VM runtime error as a string, by replacing symbol IDs

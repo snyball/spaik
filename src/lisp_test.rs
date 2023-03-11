@@ -1,3 +1,9 @@
+#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
+use jemallocator::Jemalloc;
+#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 use spaik::FmtErr;
 use spaik::raw::r8vm::R8VM;
 use spaik::SPV;

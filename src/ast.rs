@@ -1024,6 +1024,30 @@ impl<'a> Excavator<'a> {
         }
     }
 
+    fn quasi(&self, args: PV, src: Source) -> Result<AST2, Error> {
+        enum Elem {
+            MaybeQuoted(Value),
+            Unquoted(Value)
+        }
+        use Elem::*;
+
+        if args.is_atom() {
+            return Ok(AST2 { src, kind: M::Atom(args) })
+        }
+
+        // let root_src = src;
+        // let mut li = vec![];
+        // for (item, src) in args.iter_src(self.mem, root_src.clone()) {
+        //     let arg = item.car().map_err(|e| e.op(sym!(Quasi)))?;
+        //     if let Some(bt) = arg.op().and_then(Builtin::from_sym) {
+        //     } else {
+        //         li.push(MaybeQuoted(self.quasi(item., src)))
+        //     }
+        // }
+
+        todo!()
+    }
+
     fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2, Error> {
         match bt {
             Builtin::Not => self.wrap_one_arg(M::Not, args, src),
@@ -1046,6 +1070,7 @@ impl<'a> Excavator<'a> {
             Builtin::Set => self.bt_set(args, src),
             Builtin::Lambda => self.bt_lambda(args, src),
             Builtin::Quote => Ok(AST2 { src, kind: M::Atom(args) }),
+            Builtin::Quasi => Ok(AST2 { src, kind: M::Atom(args) }),
             Builtin::Break => self.wrap_no_args(M::Break, args, src),
             Builtin::Car => self.wrap_one_arg(M::Car, args, src),
             Builtin::Cdr => self.wrap_one_arg(M::Cdr, args, src),

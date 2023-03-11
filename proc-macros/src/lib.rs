@@ -60,16 +60,16 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
 
         unsafe impl #spaik_root::subrs::Subr for #anon_namespace::#obj_ident {
             fn call(&mut self,
-                    vm: &mut #spaik_root::r8vm::R8VM,
-                    args: &[#spaik_root::nkgc::PV])
-                    -> core::result::Result<#spaik_root::nkgc::PV,
+                    vm: &mut #spaik_root::raw::r8vm::R8VM,
+                    args: &[#spaik_root::raw::nkgc::PV])
+                    -> core::result::Result<#spaik_root::raw::nkgc::PV,
                                             #spaik_root::error::Error>
             {
-                use #spaik_root::r8vm::ArgSpec;
+                use #spaik_root::raw::r8vm::ArgSpec;
                 use #spaik_root::error::Error;
                 const SPEC: ArgSpec = ArgSpec::normal(#nargs);
                 SPEC.check(Default::default(), args.len() as u16)?;
-                #(let #spaik_root::nkgc::ObjRef(#inputs_it)
+                #(let #spaik_root::raw::nkgc::ObjRef(#inputs_it)
                   =
                   args[#inputs_it_idx_1].try_into()
                   .map_err(|e: Error| e.argn(#inputs_it_idx_2))?;
@@ -188,12 +188,13 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
                     let sym = &*mem.name(*arg);
                     let pv = match strs.iter().copied().position(|x| x == sym) {
                         #(Some(#count) => #idents
-                                          .take()
+                          .take()
                                           .expect("Duplicate argument should not be possible")
                                           .into_pv(mem)
                                           .unwrap()),*,
                         Some(_) => unreachable!(),
-                        None => return err!(UndefinedVariable, var: *arg)
+                        None => return Err((#root::error::ErrorKind::UndefinedVariable
+                                            {var: *arg}).into())
                     };
                     mem.push(pv)
                 }
@@ -202,17 +203,19 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
     });
 
     let out = quote! {
-        impl #root::r8vm::EnumCall for #name {
-            fn pushargs(self, args: &[#root::nkgc::SymID], mem: &mut #root::nkgc::Arena)
+        impl #root::EnumCall for #name {
+            fn pushargs(self, args: &[#root::raw::nkgc::SymID], mem: &mut #root::raw::nkgc::Arena)
                         -> core::result::Result<(), #root::error::Error>
             {
+                use #root::IntoLisp;
                 match self {
                     #(Self::#variant #query => #body),*
                 }
                 Ok(())
             }
 
-            fn name(&self, mem: &mut #root::nkgc::Arena) -> #root::nkgc::SymID {
+            fn name(&self, mem: &mut #root::raw::nkgc::Arena) -> #root::raw::nkgc::SymID {
+                use #root::IntoLisp;
                 match self {
                     #(Self::#variant_2 #query_nil => mem.put_sym(#variant_name_s)),*
                 }
@@ -239,7 +242,7 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
     let field_kws = fields.map(|f| format!(":{}", f.ident.expect("Identifier")));
 
     let out = quote! {
-        impl #root::nkgc::Traceable for #name {
+        impl #root::raw::nkgc::Traceable for #name {
             fn trace(&self, _gray: &mut Vec<*mut #root::nuke::NkAtom>) {}
             fn update_ptrs(&mut self, _reloc: &#root::nuke::PtrMap) {}
         }
@@ -258,8 +261,8 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
         impl Userdata for #name {}
 
         impl #root::subrs::IntoLisp for #name {
-            fn into_pv(self, mem: &mut #root::nkgc::Arena)
-                       -> core::result::Result<#root::nkgc::PV, #root::error::Error>
+            fn into_pv(self, mem: &mut #root::raw::nkgc::Arena)
+                       -> core::result::Result<#root::raw::nkgc::PV, #root::error::Error>
             {
                 Ok(mem.put(#root::nuke::Object::new(self)))
             }

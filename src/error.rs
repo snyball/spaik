@@ -67,10 +67,16 @@ impl OpName {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Copy)]
 pub struct LineCol {
     pub line: u32,
     pub col: u32,
+}
+
+impl LineCol {
+    pub fn into_source(self, file: SourceFileName) -> Source {
+        Source { file, line: self.line, col: self.col }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

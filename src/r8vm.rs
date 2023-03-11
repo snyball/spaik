@@ -7,7 +7,7 @@ use crate::{
     ast::{Value, ValueKind, Excavator},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
-    error::{Error, ErrorKind, Source, OpName, Meta, LineCol},
+    error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
     nuke::*,
@@ -431,7 +431,7 @@ mod sysfns {
         }
 
         fn read_compile(&mut self, vm: &mut R8VM, args: (code)) -> Result<PV, Error> {
-            with_ref_mut!(*code, String(s) => { vm.read_compile(s) })
+            with_ref_mut!(*code, String(s) => { vm.read_compile(s, None) })
         }
 
         fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV, Error> {
@@ -1006,7 +1006,7 @@ const fn clzcall_pad_dip(nargs: u16) -> usize {
 }
 
 impl R8VM {
-    pub fn new() -> R8VM {
+    pub fn no_std() -> R8VM {
         let mut vm = R8VM {
             pmem: vec![r8c::Op::HCF()],
             ..Default::default()
@@ -1094,6 +1094,12 @@ impl R8VM {
           .unwrap();
         vm.eval("(set-macro 'set-macro! '<ξ>::set-macro!)")
           .unwrap();
+
+        vm
+    }
+
+    pub fn new() -> R8VM {
+        let mut vm = R8VM::no_std();
 
         let core_sym = vm.sym_id("<ζ>::core");
         let core = include_str!("../lisp/core.lisp");
@@ -1292,7 +1298,7 @@ impl R8VM {
         Ok(v)
     }
 
-    pub fn read_compile(&mut self, sexpr: &str) -> Result<PV, Error> {
+    pub fn read_compile(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV, Error> {
         lazy_static! {
             static ref TREE: Fragment = standard_lisp_tok_tree();
         }
@@ -1302,7 +1308,9 @@ impl R8VM {
         let mut pmods = vec![];
         let mut dots = vec![];
         let mut dot = false;
-        let mut num = 0;
+        let mut num: u32 = 0;
+        let mut srcs = vec![];
+        let mut src_idx = vec![0];
         macro_rules! wrap {
             ($push:expr) => {
                 $push;
@@ -1328,8 +1336,10 @@ impl R8VM {
         }
         for tok in toks.into_iter() {
             let Token { line, col, text } = tok;
+            srcs.push(LineCol { line, col });
             match text {
                 "(" => {
+                    src_idx.push(srcs.len());
                     pmods.push(replace(&mut mods, vec![]));
                     close.push(num + 1);
                     dots.push(dot);
@@ -1338,12 +1348,20 @@ impl R8VM {
                 }
                 ")" => {
                     assert_no_trailing!(Meta::Source(LineCol { line, col }));
+                    let cur_srcs = srcs.drain(src_idx.pop().unwrap()..)
+                                       .map(|lc| lc.into_source(file.clone()));
                     mods = pmods.pop().expect("Unable to wrap expr");
                     if close.len() == 1 {
                         let v = if mods.is_empty() {
+                            let idx = self.mem.stack.len() - num as usize;
+                            let stack = replace(&mut self.mem.stack, vec![]);
+                            for (pv, src) in stack[idx..].iter().zip(cur_srcs) {
+                                pv.tag(&mut self.mem, src);
+                            }
+                            let _ = replace(&mut self.mem.stack, stack);
                             self.expand_from_stack(num, dot)?
                         } else {
-                            wrap!(self.mem.list_dot(num, dot));
+                            wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot));
                             let pv = self.mem.pop().unwrap();
                             self.macroexpand_pv(pv, false)?
                         };
@@ -1354,7 +1372,7 @@ impl R8VM {
 
                         self.mem.push(v)
                     } else {
-                        wrap!(self.mem.list_dot(num, dot));
+                        wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot));
                     }
 
                     num = close.pop()
@@ -1385,7 +1403,9 @@ impl R8VM {
             }
         }
         assert_no_trailing!();
-        self.mem.list(num);
+        let srcs = srcs.into_iter()
+                       .map(|lc| lc.into_source(file.clone()));
+        self.mem.list_dot_srcs(num, srcs, false);
         Ok(self.mem.pop().expect("Unable to pop finalized list"))
     }
 
@@ -2522,9 +2542,10 @@ impl R8VM {
 
     pub fn freeze(&self) -> LispModule {
         let mut exports = Vec::new();
-        exports.extend(self.funcs.iter().map(|(&name, f)| Export::new(ExportKind::Func,
-                                                                      name.into(),
-                                                                      f.pos.try_into().unwrap())));
+        exports.extend(self.funcs.iter()
+                       .map(|(&name, f)| Export::new(ExportKind::Func,
+                                                     name.into(),
+                                                     f.pos.try_into().unwrap())));
         LispModule::new(&self.pmem, &self.mem.symdb, &self.consts, vec![], exports)
     }
 }

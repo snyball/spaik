@@ -1,4 +1,9 @@
 #![allow(unused_imports)]
+#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
+use jemallocator::Jemalloc;
+#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 #[macro_use]
 extern crate spaik;
 use spaik::Error;

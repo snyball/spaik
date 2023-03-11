@@ -315,6 +315,7 @@ pub struct Object {
 }
 
 /// Reference-counter for `Object` memory, see `RcMem`
+#[derive(Default)]
 pub struct GcRc(AtomicU32);
 
 impl GcRc {

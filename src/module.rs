@@ -7,8 +7,7 @@ use std::convert::TryInto;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct SymEntry {
-    name_len: u16,
-    name: Vec<u8>,
+    name: String,
     sym: SymID,
 }
 
@@ -56,10 +55,9 @@ impl Export {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct BRWString {
-    len: u32,
-    buf: Vec<u8>,
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Const {
+    String(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -67,14 +65,14 @@ pub struct LispModule {
     symtbl: Vec<SymEntry>,
     imports: Vec<Import>,
     exports: Vec<Export>,
-    strings: Vec<BRWString>,
+    consts: Vec<Const>,
     pmem: Vec<u8>,
 }
 
 impl LispModule {
     pub fn new<ASM>(pmem_in: &[ASM],
                     symtbl_in: &SIntern<SymID>,
-                    consts: &[NkSum],
+                    iconsts: &[NkSum],
                     imports: Vec<Import>,
                     exports: Vec<Export>) -> LispModule
         where ASM: ASMOp
@@ -85,25 +83,18 @@ impl LispModule {
         }
         let mut symtbl = vec![];
         for (sym, name) in symtbl_in.iter() {
-            let bytes = name.as_bytes();
-            symtbl.push(SymEntry { name: Vec::from(bytes),
-                                   name_len: bytes.len().try_into().unwrap(),
-                                   sym });
+            symtbl.push(SymEntry { name: name.to_string(), sym });
         }
-        let mut strings = vec![];
-        strings.extend(consts.iter().map(|c| match c {
-            NkSum::String(s) => {
-                let buf = Vec::from(s.as_bytes());
-                BRWString { len: buf.len().try_into().unwrap(),
-                            buf }
-            },
-            _ => unimplemented!("Only string constants are supported"),
+        let mut consts = vec![];
+        consts.extend(iconsts.iter().map(|c| match c {
+            NkSum::String(s) => Const::String(s.clone()),
+            _ => unimplemented!("Only string constants are supported as module exports"),
         }));
         LispModule {
             symtbl,
             exports,
             imports,
-            strings,
+            consts,
             pmem,
         }
     }

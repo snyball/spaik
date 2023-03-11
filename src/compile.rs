@@ -151,6 +151,7 @@ macro_rules! builtins {
                 BUILTIN_SYMBOLS[idx as usize]
             }
 
+            #[inline]
             pub fn sym(&self) -> SymID {
                 let id: SymIDInt = unsafe { mem::transmute(*self) };
                 id.into()
@@ -531,7 +532,7 @@ pub unsafe fn pv_to_value(v: PV, src: &Source) -> Value {
 
 /**
  * Compile Value into R8C code.
-*/
+ */
 pub struct R8Compiler<'a> {
     asm: ChASM,
     pub(crate) estack: Vec<Env>,
