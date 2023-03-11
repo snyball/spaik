@@ -2,6 +2,7 @@
 
 use crate::nkgc::Arena;
 use crate::nkgc::Cons;
+use crate::nkgc::ConsItem;
 use crate::nkgc::PV;
 use crate::nkgc::SymID;
 use crate::error::*;
@@ -14,6 +15,8 @@ use crate::compile::Builtin;
 use crate::compile::arg_parse;
 use crate::sym_db::{SymDB, SYM_DB};
 use std::fmt;
+use std::fmt::Display;
+use std::fmt::write;
 use std::iter;
 use std::ptr;
 
@@ -723,6 +726,73 @@ impl M {
     }
 }
 
+impl Display for M {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            M::If(a, b, c) => {
+                write!(f, "(if {a}")?;
+                if let Some(b) = b { write!(f, " {b}")?; }
+                if let Some(c) = c { write!(f, " {c}")?; }
+                write!(f, ")")?;
+            },
+            M::Atom(a) => write!(f, "{a}")?,
+            M::Progn(a) => todo!(),
+            M::SymApp(u, xs) => {
+                write!(f, "({u}")?;
+                for x in xs.iter() { write!(f, " {x}")? }
+                write!(f, ")")?;
+            },
+            M::App(u, xs) => {
+                write!(f, "({u}")?;
+                for x in xs.iter() { write!(f, " {x}")? }
+                write!(f, ")")?;
+            },
+            M::Lambda(_, _) => todo!(),
+            M::Defvar(_, _) => todo!(),
+            M::Set(_, _) => todo!(),
+            M::Defun(_, _, _) => todo!(),
+            M::Let(_, _) => todo!(),
+            M::Loop(_) => todo!(),
+            M::Break => todo!(),
+            M::Next => todo!(),
+            M::Throw(_) => todo!(),
+            M::Not(_) => todo!(),
+            M::And(_) => todo!(),
+            M::Or(_) => todo!(),
+            M::Gt(_, _) => todo!(),
+            M::Gte(_, _) => todo!(),
+            M::Lt(_, _) => todo!(),
+            M::Lte(_, _) => todo!(),
+            M::Eq(_, _) => todo!(),
+            M::Eqp(_, _) => todo!(),
+            M::Add(_) => todo!(),
+            M::Sub(_) => todo!(),
+            M::Mul(_) => todo!(),
+            M::Div(_) => todo!(),
+            M::NextIter(_) => todo!(),
+            M::Car(_) => todo!(),
+            M::Cdr(_) => todo!(),
+            M::Cons(_, _) => todo!(),
+            M::List(xs) => {
+                write!(f, "(list")?;
+                for x in xs.iter() { write!(f, " {x}")? }
+                write!(f, ")")?;
+            },
+            M::Append(xs) => {
+                write!(f, "(append")?;
+                for x in xs.iter() { write!(f, " {x}")? }
+                write!(f, ")")?;
+            },
+            M::Vector(_) => todo!(),
+            M::Push(_, _) => todo!(),
+            M::Get(_, _) => todo!(),
+            M::Pop(_) => todo!(),
+            M::CallCC(_) => todo!(),
+        }
+        Ok(())
+    }
+}
+
 impl From<PV> for M {
     fn from(pv: PV) -> Self {
         M::Atom(pv)
@@ -733,6 +803,12 @@ impl From<PV> for M {
 pub struct AST2 {
     pub src: Source,
     pub kind: M,
+}
+
+impl Display for AST2 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.kind)
+    }
 }
 
 pub struct Excavator<'a> {
@@ -1025,27 +1101,34 @@ impl<'a> Excavator<'a> {
     }
 
     fn quasi(&self, args: PV, src: Source) -> Result<AST2, Error> {
-        enum Elem {
-            MaybeQuoted(Value),
-            Unquoted(Value)
-        }
-        use Elem::*;
-
         if args.is_atom() {
             return Ok(AST2 { src, kind: M::Atom(args) })
         }
 
-        // let root_src = src;
-        // let mut li = vec![];
-        // for (item, src) in args.iter_src(self.mem, root_src.clone()) {
-        //     let arg = item.car().map_err(|e| e.op(sym!(Quasi)))?;
-        //     if let Some(bt) = arg.op().and_then(Builtin::from_sym) {
-        //     } else {
-        //         li.push(MaybeQuoted(self.quasi(item., src)))
-        //     }
-        // }
+        let root_src = src;
+        let mut li = vec![];
+        for (item, src) in args.iter_src(self.mem, root_src.clone()) {
+            li.push(match item {
+                ConsItem::Car(x) => match x.bt_op() {
+                    Some(Builtin::Unquote) =>
+                        AST2 { src: src.clone(),
+                               kind: M::List(vec![
+                                   self.dig(x.cdr().unwrap().car().expect("car"),
+                                            src)?
+                               ])},
+                    Some(Builtin::USplice) =>
+                        self.dig(x.cdr().unwrap().car().expect("car"), src)?,
+                    _ => AST2 { kind: M::List(vec![self.quasi(x, src.clone())?]),
+                                src },
+                },
+                ConsItem::Cdr(x) => self.quasi(x, src)?,
+            })
+        }
 
-        todo!()
+        if li.len() == 1 {
+            return Ok(li.pop().unwrap());
+        }
+        Ok(AST2 { kind: M::Append(li), src: root_src })
     }
 
     fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2, Error> {
@@ -1070,7 +1153,7 @@ impl<'a> Excavator<'a> {
             Builtin::Set => self.bt_set(args, src),
             Builtin::Lambda => self.bt_lambda(args, src),
             Builtin::Quote => Ok(AST2 { src, kind: M::Atom(args) }),
-            Builtin::Quasi => Ok(AST2 { src, kind: M::Atom(args) }),
+            Builtin::Quasi => self.quasi(args.car().expect("car"), src),
             Builtin::Break => self.wrap_no_args(M::Break, args, src),
             Builtin::Car => self.wrap_one_arg(M::Car, args, src),
             Builtin::Cdr => self.wrap_one_arg(M::Cdr, args, src),

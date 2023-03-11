@@ -1368,7 +1368,7 @@ impl R8VM {
 
                         let excv = Excavator::new(&self.mem);
                         let ast = excv.to_ast(v)?;
-                        dbg!(ast);
+                        println!("{}", ast);
 
                         self.mem.push(v)
                     } else {
