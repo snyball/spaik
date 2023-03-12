@@ -304,7 +304,7 @@ impl<'a> R8Compiler<'a> {
     }
 
     fn gapp(&mut self, ret: bool, op: AST2, args: Vec<AST2>) -> Result<(), Error> {
-        if matches!(op.type_of(), Builtin::Unknown | Builtin::Lambda) {
+        if !matches!(op.type_of(), Builtin::Unknown | Builtin::Lambda) {
             return Err(error!(TypeError,
                               expect: Builtin::Lambda.sym(),
                               got: op.type_of().sym())
@@ -312,9 +312,8 @@ impl<'a> R8Compiler<'a> {
         }
         self.compile(true, op)?;
         self.with_env(|env| env.anon())?; // closure
-        self.gen_call_nargs(ret, (r8c::OpName::CLZCALL,
-                                  &mut [0.into()]),
-                            0, it)?;
+        self.gen_call_nargs(ret, (r8c::OpName::CLZCALL, &mut [0.into()]),
+                            0, args.into_iter())?;
         self.env_pop(1)
     }
 
