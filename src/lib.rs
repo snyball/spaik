@@ -66,6 +66,7 @@ pub(crate) mod string;
 pub(crate) mod deserialize;
 pub(crate) mod limits;
 pub(crate) mod math;
+pub(crate) mod comp;
 
 #[cfg(feature = "repl")]
 pub mod repl;
