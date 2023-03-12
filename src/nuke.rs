@@ -694,14 +694,14 @@ impl NkAtom {
     pub fn deep_clone(&self, mem: &mut Arena) -> *mut NkAtom {
         macro_rules! clone {
             ($x:expr) => {{
-                let mut p = mem.alloc();
+                let p = mem.alloc();
                 unsafe { ptr::write(p, $x.clone()) }
                 NkAtom::make_raw_ref(p)
             }};
         }
-        match unsafe { self.match_ref() } {
+        match self.match_ref() {
             NkRef::Cons(Cons { car, cdr }) => {
-                let mut p = mem.alloc::<Cons>();
+                let p = mem.alloc::<Cons>();
                 unsafe {
                     (*p).car = car.deep_clone(mem);
                     (*p).cdr = cdr.deep_clone(mem);
@@ -711,10 +711,10 @@ impl NkAtom {
             NkRef::Lambda(l) => clone!(l),
             NkRef::VLambda(l) => clone!(l),
             NkRef::String(s) => clone!(s),
-            NkRef::PV(p) => todo!(),
+            NkRef::PV(_p) => todo!(),
             NkRef::Vector(xs) => {
                 let nxs = xs.iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
-                let mut p = mem.alloc();
+                let p = mem.alloc();
                 unsafe { ptr::write(p, nxs) }
                 NkAtom::make_raw_ref(p)
             },
