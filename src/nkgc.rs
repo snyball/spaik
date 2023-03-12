@@ -774,6 +774,13 @@ impl PV {
     cmp_op!(gt, Gt, Greater);
     cmp_op!(lte, Lte, Less, Equal);
     cmp_op!(gte, Gte, Greater, Equal);
+
+    pub fn deep_clone(&self, mem: &mut Arena) -> PV {
+        match self {
+            PV::Ref(p) => PV::Ref(unsafe { (**p).deep_clone(mem) }),
+            x => *x,
+        }
+    }
 }
 
 impl PartialOrd for PV {

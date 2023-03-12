@@ -1,7 +1,7 @@
 //! The Nuclear Allocator
 
 use crate::error::Error;
-use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats};
+use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons, Lambda, VLambda};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 use crate::subrs::{IntoLisp, FromLisp};
@@ -689,6 +689,45 @@ impl NkAtom {
     #[inline]
     pub unsafe fn destroy(&mut self) {
         DESTRUCTORS[self.meta.typ() as usize](self.fastcast_mut::<u8>());
+    }
+
+    pub fn deep_clone(&self, mem: &mut Arena) -> *mut NkAtom {
+        macro_rules! clone {
+            ($x:expr) => {{
+                let mut p = mem.alloc();
+                unsafe { ptr::write(p, $x.clone()) }
+                NkAtom::make_raw_ref(p)
+            }};
+        }
+        match unsafe { self.match_ref() } {
+            NkRef::Cons(Cons { car, cdr }) => {
+                let mut p = mem.alloc::<Cons>();
+                unsafe {
+                    (*p).car = car.deep_clone(mem);
+                    (*p).cdr = cdr.deep_clone(mem);
+                }
+                NkAtom::make_raw_ref(p)
+            },
+            NkRef::Lambda(l) => clone!(l),
+            NkRef::VLambda(l) => clone!(l),
+            NkRef::String(s) => clone!(s),
+            NkRef::PV(p) => todo!(),
+            NkRef::Vector(xs) => {
+                let nxs = xs.iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
+                let mut p = mem.alloc();
+                unsafe { ptr::write(p, nxs) }
+                NkAtom::make_raw_ref(p)
+            },
+            NkRef::Vec4(v4) => clone!(v4),
+            NkRef::Mat2(m2) => clone!(m2),
+            NkRef::Mat3(m3) => clone!(m3),
+            NkRef::Mat4(m4) => clone!(m4),
+            NkRef::Stream(s) => clone!(s),
+            NkRef::Struct(s) => clone!(s),
+            NkRef::Iter(i) => clone!(i),
+            NkRef::Continuation(c) => clone!(c),
+            NkRef::Subroutine(s) => clone!(s),
+        }
     }
 
     #[inline]
