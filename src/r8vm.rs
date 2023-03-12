@@ -65,6 +65,7 @@ chasm_def! {
 
     // Stack operations
     CONSTREF(idx: u32),
+    INST(idx: u32),
     POP(num: u8),
     POPA(num_top: u16, num_pop: u16),
     SAV(num: u8),
@@ -2070,6 +2071,7 @@ impl R8VM {
                 // Value creation
                 NIL() => self.mem.push(PV::Nil),
                 CONSTREF(n) => self.consts[*n as usize].push_to(&mut self.mem),
+                INST(n) => todo!(),
                 BOOL(i) => self.mem.push(PV::Bool(*i != 0)),
                 CLZAV(nargs, nenv) => {
                     let start_idx = self.frame + *nargs as usize;
