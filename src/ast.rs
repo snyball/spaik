@@ -805,6 +805,43 @@ pub struct AST2 {
     pub kind: M,
 }
 
+impl AST2 {
+    pub fn nil(src: Source) -> AST2 {
+        AST2 { src, kind: M::Atom(PV::Nil) }
+    }
+
+    pub fn sym(sym: SymID, src: Source) -> AST2 {
+        AST2 { src, kind: M::Atom(PV::Sym(sym)) }
+    }
+
+    pub fn is_atom(&self) -> bool {
+        if let AST2 { kind: M::Atom(pv), .. } = self {
+            pv.is_atom()
+        } else {
+            false
+        }
+    }
+
+    pub fn type_of(&self) -> Builtin {
+        let unknown = Builtin::Unknown;
+        match self.kind {
+            M::Atom(pv) => pv.bt_type_of(),
+            M::Add(_) | M::Mul(_) | M::Sub(_) | M::Div(_) => Builtin::Number,
+            M::Or(_) | M::And(_) | M::Not(_) | M::Eq(_, _) |
+            M::Eqp(_, _) | M::Gt(_, _) | M::Gte(_, _) | M::Lt(_, _) |
+            M::Lte(_, _) => Builtin::Bool,
+            M::Cdr(_) | M::List(_) | M::Append(_) => Builtin::List,
+            M::Vector(_) => Builtin::Vector,
+            M::Cons(_, _) => Builtin::Cons,
+            M::Lambda(_, _) => Builtin::Lambda,
+            M::Progn(xs) | M::Let(_, xs) =>
+                xs.last().map(|x| x.type_of()).unwrap_or(unknown),
+            M::Defvar(_, x) | M::Set(_, x) => x.type_of(),
+            _ => unknown,
+        }
+    }
+}
+
 impl Display for AST2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)
