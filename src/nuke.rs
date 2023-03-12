@@ -708,8 +708,8 @@ impl NkAtom {
                 }
                 NkAtom::make_raw_ref(p)
             },
-            NkRef::Lambda(l) => clone!(l),
-            NkRef::VLambda(l) => clone!(l),
+            NkRef::Lambda(_l) => todo!(),
+            NkRef::VLambda(_l) => todo!(),
             NkRef::String(s) => clone!(s),
             NkRef::PV(_p) => todo!(),
             NkRef::Vector(xs) => {
@@ -725,7 +725,7 @@ impl NkAtom {
             NkRef::Stream(s) => clone!(s),
             NkRef::Struct(s) => clone!(s),
             NkRef::Iter(i) => clone!(i),
-            NkRef::Continuation(c) => clone!(c),
+            NkRef::Continuation(_c) => todo!(),
             NkRef::Subroutine(s) => clone!(s),
         }
     }
