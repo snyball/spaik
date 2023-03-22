@@ -824,7 +824,7 @@ impl AST2 {
 
     pub fn type_of(&self) -> Builtin {
         let unknown = Builtin::Unknown;
-        match self.kind {
+        match &self.kind {
             M::Atom(pv) => pv.bt_type_of(),
             M::Add(_) | M::Mul(_) | M::Sub(_) | M::Div(_) => Builtin::Number,
             M::Or(_) | M::And(_) | M::Not(_) | M::Eq(_, _) |
