@@ -265,6 +265,7 @@ pub struct ChASM {
 }
 
 type Linked<ASM> = (Vec<ASM>, FnvHashMap<u32, Lbl>);
+pub type LblMap = FnvHashMap<u32, Lbl>;
 
 impl ChASM {
     #[allow(dead_code)]
@@ -308,6 +309,43 @@ impl ChASM {
                 T::new(op.id, &args[..])
             }).collect::<Result<_, _>>()?,
             hm))
+    }
+
+    pub fn link_into<T: ASMOp>(self,
+                               out: &mut Vec<T>,
+                               sz: usize,
+                               hm_out: &mut LblMap) -> Result<(), Error>
+    {
+        for (lbl, tgt) in self.marks.iter() {
+            hm_out.insert((*tgt + sz as isize) as u32,
+                          Lbl(*lbl, self.label_names[*lbl as usize]));
+        }
+        let labels = self.marks;
+        let it =
+            self.ops
+                .into_iter()
+                .enumerate()
+                .map(|(i, op)| -> Result<T, Error> {
+                    let link_err = |sym, count| {
+                        ErrorKind::LinkError { dst: format!("{}#{}", sym, count),
+                                               src: i }
+                    };
+                    let args = op.args
+                                 .into_iter()
+                                 .map(|arg| match arg {
+                                     Arg::Lbl(Lbl(c, s)) =>
+                                         labels.get(&(c as u32))
+                                               .map(|pos| ASMPV::isize(*pos - (i as isize)))
+                                               .ok_or_else(|| link_err(s, c)),
+                                     Arg::ASMPV(pv) => Ok(pv),
+                                     Arg::Func(s) => Err(link_err("sym", s.as_int() as u32))
+                                 }).collect::<Result<Vec<ASMPV>, _>>()?;
+                    T::new(op.id, &args[..])
+                });
+        for asm in it {
+            out.push(asm?);
+        }
+        Ok(())
     }
 
     pub fn add<T: ChASMOpName>(&mut self, op: T, args: &[Arg]) {
