@@ -1369,7 +1369,8 @@ impl R8VM {
 
                         let excv = Excavator::new(&self.mem);
                         let ast = excv.to_ast(v)?;
-                        println!("{}", ast);
+                        let mut cc = crate::comp::R8Compiler::new(self);
+                        let linked = cc.compile_top(false, ast);
 
                         self.mem.push(v)
                     } else {

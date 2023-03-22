@@ -1,25 +1,37 @@
+use chasm::LblMap;
+
 use crate::nuke::NkSum;
 use crate::nkgc::{PV, SymID};
 use crate::r8vm::{R8VM, ArgSpec, r8c};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::{Error, Source};
 use crate::ast::{AST2, M};
-use crate::ast;
-use crate::r8vm::r8c::OpName::*;
+use crate::{ast, SPV};
+use crate::r8vm::r8c::{OpName::*, Op as R8C};
 use std::collections::HashMap;
 use crate::compile::*;
+
+pub struct CompState {
+    labels: LblMap,
+    code: Vec<R8C>,
+    units: Vec<ChASM>,
+    source_tbl: SourceList,
+    pub(crate) estack: Vec<Env>,
+    loops: Vec<LoopCtx>,
+    consts: Vec<SPV>,
+}
 
 /**
  * Compile Value into R8C code.
  */
 pub struct R8Compiler<'a> {
-    asm: ChASM,
+    labels: LblMap,
+    code: Vec<R8C>,
+    units: Vec<ChASM>,
+    source_tbl: SourceList,
     pub(crate) estack: Vec<Env>,
     loops: Vec<LoopCtx>,
     consts: Vec<PV>,
-    // FIXME: This can probably be removed
-    symtbl: HashMap<SymID, isize>,
-    source_tbl: SourceList,
     vm: &'a R8VM,
 }
 
@@ -31,24 +43,47 @@ struct LoopCtx {
     height: usize,
 }
 
+pub type Linked = (Vec<R8C>,
+                   LblLookup,
+                   Vec<PV>,
+                   SourceList);
+
 impl<'a> R8Compiler<'a> {
     pub fn new(vm: &R8VM) -> R8Compiler {
+        let units = vec![ChASM::new()];
         R8Compiler {
-            asm: Default::default(),
             estack: Default::default(),
+            labels: Default::default(),
             consts: Default::default(),
-            symtbl: Default::default(),
             loops: Default::default(),
             source_tbl: Default::default(),
+            code: Default::default(),
+            units,
             vm
         }
+    }
+
+    pub fn unit(&mut self) -> &mut ChASM {
+        self.units.last_mut().expect("No unit to save asm to")
+    }
+
+    pub fn end_unit(&mut self) -> Result<usize, Error> {
+        let len = self.code.len();
+        self.units.pop()
+                  .expect("No unit to end")
+                  .link_into(&mut self.code, len, &mut self.labels)?;
+        Ok(len)
+    }
+
+    pub fn begin_unit(&mut self) {
+        self.units.push(ChASM::new())
     }
 
     pub fn set_source(&mut self, src: Source) {
         match self.source_tbl.last() {
             Some((_, last_src)) if *last_src == src => (),
             _ => {
-                let idx = self.asm.len();
+                let idx = self.unit().len();
                 self.source_tbl.push((idx, src));
             }
         }
@@ -56,6 +91,13 @@ impl<'a> R8Compiler<'a> {
 
     pub fn globals(&self) -> Option<impl Iterator<Item = (&SymID, &usize)>> {
         self.estack.first().map(|s| s.iter_statics())
+    }
+
+    pub fn link(mut self) -> Result<Linked, Error> {
+        let len = self.unit().len() as isize;
+        let tbl = Default::default();
+        let (asm, labels) = self.units.pop().unwrap().link::<R8C>(&tbl, len)?;
+        Ok((asm, labels, self.consts, self.source_tbl))
     }
 
     pub fn enter_fn(&mut self,
@@ -72,28 +114,28 @@ impl<'a> R8Compiler<'a> {
         env.defvar(Builtin::Frame.sym());
         self.estack.push(env);
         if spec.is_special() {
-            self.asm.op(chasm!(SAV 2));
+            self.unit().op(chasm!(SAV 2));
             if spec.has_opt() {
-                self.asm.op(chasm!(TOP spec.nargs));
-                self.asm.op(chasm!(JV 1, spec.nopt));
+                self.unit().op(chasm!(TOP spec.nargs));
+                self.unit().op(chasm!(JV 1, spec.nopt));
                 for _ in 0..spec.nopt {
-                    self.asm.op(chasm!(NIL));
+                    self.unit().op(chasm!(NIL));
                 }
             }
             if spec.has_body() {
-                self.asm.op(chasm!(TOP spec.nargs + spec.nopt));
-                self.asm.op(chasm!(VLIST));
+                self.unit().op(chasm!(TOP spec.nargs + spec.nopt));
+                self.unit().op(chasm!(VLIST));
             }
             if spec.has_env() {
-                self.asm.op(chasm!(CLZEXP));
+                self.unit().op(chasm!(CLZEXP));
             }
-            self.asm.op(chasm!(RST));
+            self.unit().op(chasm!(RST));
         }
         Ok(())
     }
 
     fn leave_fn(&mut self) {
-        self.asm.op(chasm!(RET));
+        self.unit().op(chasm!(RET));
         self.estack.pop();
     }
 
@@ -106,7 +148,7 @@ impl<'a> R8Compiler<'a> {
 
     #[inline]
     fn asm_op(&mut self, op: ChOp) {
-        self.asm.op(op);
+        self.unit().op(op);
     }
 
     /**
@@ -194,26 +236,26 @@ impl<'a> R8Compiler<'a> {
             _ => ((JT, JN), cond)
         };
         self.compile(true, cond)?;
-        let end_lbl = self.asm.label("if_end");
-        let if_false_lbl = self.asm.label("if_false");
+        let end_lbl = self.unit().label("if_end");
+        let if_false_lbl = self.unit().label("if_false");
         let _jmp_loc = if flipped {
-            self.asm.op(chasm!(jt if_false_lbl))
+            self.unit().op(chasm!(jt if_false_lbl))
         } else {
-            self.asm.op(chasm!(jn if_false_lbl))
+            self.unit().op(chasm!(jn if_false_lbl))
         };
         self.compile(ret, if_t)?;
         if let Some(if_false) = if_f {
             self.asm_op(chasm!(JMP end_lbl));
-            self.asm.mark(if_false_lbl);
+            self.unit().mark(if_false_lbl);
             self.compile(ret, if_false)?;
-            self.asm.mark(end_lbl);
+            self.unit().mark(end_lbl);
         } else if ret {
             self.asm_op(chasm!(JMP end_lbl));
-            self.asm.mark(if_false_lbl);
-            self.asm.op(chasm!(NIL));
-            self.asm.mark(end_lbl);
+            self.unit().mark(if_false_lbl);
+            self.unit().op(chasm!(NIL));
+            self.unit().mark(end_lbl);
         } else {
-            self.asm.mark(if_false_lbl);
+            self.unit().mark(if_false_lbl);
         }
         Ok(())
     }
@@ -244,7 +286,7 @@ impl<'a> R8Compiler<'a> {
                       args: impl Iterator<Item = AST2>) -> Result<(), Error> {
         let nargs = self.pushit(args)?;
         op.1[nargs_idx] = nargs.into();
-        self.asm.add(op.0, op.1);
+        self.unit().add(op.0, op.1);
         self.env_pop(nargs)?;
         if !ret {
             self.asm_op(chasm!(POP 1));
@@ -256,8 +298,8 @@ impl<'a> R8Compiler<'a> {
                    var: SymID,
                    src: &Source) -> Result<(), Error> {
         match self.get_var_idx(var, src)? {
-            BoundVar::Local(idx) => self.asm.op(chasm!(MOV idx)),
-            BoundVar::Env(idx) => self.asm.op(chasm!(GET idx)),
+            BoundVar::Local(idx) => self.unit().op(chasm!(MOV idx)),
+            BoundVar::Env(idx) => self.unit().op(chasm!(GET idx)),
         };
         Ok(())
     }
@@ -281,8 +323,8 @@ impl<'a> R8Compiler<'a> {
 
     fn asm_set_var_idx(&mut self, idx: &BoundVar) -> Result<(), Error> {
         match idx {
-            BoundVar::Local(idx) => self.asm.op(chasm!(STR *idx)),
-            BoundVar::Env(idx) => self.asm.op(chasm!(SET *idx)),
+            BoundVar::Local(idx) => self.unit().op(chasm!(STR *idx)),
+            BoundVar::Env(idx) => self.unit().op(chasm!(SET *idx)),
         };
         Ok(())
     }
@@ -294,11 +336,11 @@ impl<'a> R8Compiler<'a> {
                                                .chain(args.into_iter());
             self.gen_call_nargs(ret, (r8c::OpName::CLZCALL, &mut [0.into()]),
                                 0, args)?;
-            self.env_pop(1);
+            self.env_pop(1).unwrap();
         } else { // Call to symbol (virtual call)
             self.gen_call_nargs(ret, (r8c::OpName::VCALL,
                                       &mut [op.into(), 0.into()]),
-                                1, args.into_iter());
+                                1, args.into_iter())?;
         }
         Ok(())
     }
@@ -326,7 +368,7 @@ impl<'a> R8Compiler<'a> {
             ast::M::Atom(pv) => {
                 let idx = self.consts.len();
                 self.consts.push(pv);
-                self.asm_op(chasm!(INST(idx)));
+                self.unit().op(chasm!(INST(idx)));
             },
             ast::M::Progn(seq) => self.compile_seq(ret, seq.into_iter())?,
             ast::M::SymApp(op, args) => self.bt_sym_app(ret, src, op, args)?,
@@ -367,5 +409,11 @@ impl<'a> R8Compiler<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn compile_top(self, ret: bool, code: AST2) -> Result<Linked, Error> {
+        // self.compile(ret, code);
+        // self.link()
+        todo!()
     }
 }
