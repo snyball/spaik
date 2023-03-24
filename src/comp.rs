@@ -372,13 +372,13 @@ impl R8Compiler {
                 //        (set x (- 1 x)) => Not special
                 Some(M2::Add(M::Atom(PV::Sym(sym)), M::Atom(PV::Int(num)))) |
                 Some(M2::Add(M::Atom(PV::Int(num)), M::Atom(PV::Sym(sym))))
-                    if sym == dst => {
-                    inplace_op(INC, num);
+                    if *sym == dst => {
+                    inplace_op(INC, *num);
                     return Ok(())
                 }
                 Some(M2::Sub(M::Atom(PV::Sym(sym)), M::Atom(PV::Int(num))))
-                    if sym == dst => {
-                    inplace_op(DEC, num);
+                    if *sym == dst => {
+                    inplace_op(DEC, *num);
                     return Ok(())
                 }
                 _ => ()
