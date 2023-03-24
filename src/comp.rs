@@ -5,34 +5,24 @@ use crate::nkgc::{PV, SymID};
 use crate::r8vm::{R8VM, ArgSpec, r8c};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::{Error, Source};
-use crate::ast::{AST2, M};
+use crate::ast::{AST2, M, Prog, Progn, M2};
 use crate::{ast, SPV};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
 use std::collections::HashMap;
 use crate::compile::*;
 
-pub struct CompState {
-    labels: LblMap,
-    code: Vec<R8C>,
-    units: Vec<ChASM>,
-    source_tbl: SourceList,
-    pub(crate) estack: Vec<Env>,
-    loops: Vec<LoopCtx>,
-    consts: Vec<SPV>,
-}
-
 /**
  * Compile Value into R8C code.
  */
-pub struct R8Compiler<'a> {
+pub struct R8Compiler {
     labels: LblMap,
     code: Vec<R8C>,
     units: Vec<ChASM>,
     source_tbl: SourceList,
     pub(crate) estack: Vec<Env>,
     loops: Vec<LoopCtx>,
+    const_offset: usize,
     consts: Vec<PV>,
-    vm: &'a R8VM,
 }
 
 #[derive(Clone, Copy)]
@@ -48,10 +38,11 @@ pub type Linked = (Vec<R8C>,
                    Vec<PV>,
                    SourceList);
 
-impl<'a> R8Compiler<'a> {
+impl R8Compiler {
     pub fn new(vm: &R8VM) -> R8Compiler {
         let units = vec![ChASM::new()];
         R8Compiler {
+            const_offset: 0,
             estack: Default::default(),
             labels: Default::default(),
             consts: Default::default(),
@@ -59,7 +50,6 @@ impl<'a> R8Compiler<'a> {
             source_tbl: Default::default(),
             code: Default::default(),
             units,
-            vm
         }
     }
 
@@ -315,9 +305,9 @@ impl<'a> R8Compiler<'a> {
                 return Ok(BoundVar::Env(idx as u32))
             }
         }
-        if let Some(idx) = self.vm.get_env_global(var) {
-            return Ok(BoundVar::Env(idx as u32))
-        }
+        // if let Some(idx) = self.vm.get_env_global(var) {
+        //     return Ok(BoundVar::Env(idx as u32))
+        // }
         err_src!(src.clone(), UndefinedVariable, var)
     }
 
@@ -359,6 +349,49 @@ impl<'a> R8Compiler<'a> {
         self.env_pop(1)
     }
 
+    pub fn take_consts(&mut self, into: &mut Vec<PV>) {
+        self.const_offset += self.consts.len();
+        into.extend(self.consts.drain(..))
+    }
+
+    pub fn bt_set(&mut self,
+                  ret: bool,
+                  src: Source,
+                  dst: SymID,
+                  init: Prog) -> Result<(), Error> {
+        let bound = self.get_var_idx(dst, &src)?;
+        if let BoundVar::Local(idx) = bound {
+            let mut inplace_op = |op, val: i64| {
+                self.unit().add(op, &[idx.into(), val.into()]);
+                if ret { self.asm_op(chasm!(MOV idx)) }
+            };
+            match init.kind.binary() {
+                // Handle (set x (+ x 2)) => INC x, 2
+                //        (set x (+ 1 x)) => INC x, 1
+                //        (set x (- x 1)) => DEC x, 1
+                //        (set x (- 1 x)) => Not special
+                Some(M2::Add(M::Atom(PV::Sym(sym)), M::Atom(PV::Int(num)))) |
+                Some(M2::Add(M::Atom(PV::Int(num)), M::Atom(PV::Sym(sym))))
+                    if sym == dst => {
+                    inplace_op(INC, num);
+                    return Ok(())
+                }
+                Some(M2::Sub(M::Atom(PV::Sym(sym)), M::Atom(PV::Int(num))))
+                    if sym == dst => {
+                    inplace_op(DEC, num);
+                    return Ok(())
+                }
+                _ => ()
+            }
+        }
+        self.compile(true, *init)?;
+        if ret { self.asm_op(chasm!(DUP)) }
+        // NOTE!: Currently the variable index has no reason to change
+        //        between the call to get_var_idx and asm_set_var_idx.
+        //        Should that change this will become invalid:
+        self.asm_set_var_idx(&bound)
+    }
+
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<(), Error> {
         self.set_source(src.clone());
 
@@ -366,7 +399,7 @@ impl<'a> R8Compiler<'a> {
             ast::M::If(cond, if_t, if_f) =>
                 self.bt_if(ret, *cond, if_t.map(|v| *v), if_f.map(|v| *v))?,
             ast::M::Atom(pv) => {
-                let idx = self.consts.len();
+                let idx = self.const_offset + self.consts.len();
                 self.consts.push(pv);
                 self.unit().op(chasm!(INST(idx)));
             },
@@ -375,7 +408,7 @@ impl<'a> R8Compiler<'a> {
             ast::M::App(op, args) => self.gapp(ret, *op, args)?,
             ast::M::Lambda(_, _) => todo!(),
             ast::M::Defvar(_, _) => todo!(),
-            ast::M::Set(_, _) => todo!(),
+            ast::M::Set(dst, init) => self.bt_set(ret, src, dst, init)?,
             ast::M::Defun(_, _, _) => todo!(),
             ast::M::Let(_, _) => todo!(),
             ast::M::Loop(_) => todo!(),
