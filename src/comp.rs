@@ -513,6 +513,110 @@ impl R8Compiler {
         Ok(())
     }
 
+    /**
+     * Builtin vector push
+     *
+     * NOTE: In Lisp, the argument order is (push <vec> <elem>), but in
+     *       the asm <vec> and <elem> are flipped, because this lets me do
+     *       just a single DUP in cases where VPUSH is expected to return
+     *       a value.
+     */
+    fn bt_vpush(&mut self, ret: bool, vec: AST2, val: AST2) -> Result<()> {
+        self.push(val)?;
+        if ret {
+            self.unit().op(chasm!(DUP));
+        }
+        self.push(vec)?;
+        self.unit().op(chasm!(VPUSH));
+        self.env_pop(2)
+    }
+
+    fn bt_next(&mut self, ret: bool, arg: AST2) -> Result<()> {
+        let AST2 { src, kind } = arg;
+        match kind {
+            M::Atom(PV::Sym(var)) => {
+                let bound = self.get_var_idx(var, &src)?;
+                match bound {
+                    BoundVar::Local(idx) => self.asm_op(chasm!(NXIT idx)),
+                    BoundVar::Env(idx) => {
+                        self.asm_op(chasm!(GET idx));
+                        let idx = self.with_env(|env| env.anon())?;
+                        self.asm_op(chasm!(NXIT idx));
+                        self.asm_op(chasm!(POPA 1, 1));
+                        self.env_pop(1)?;
+                    }
+                }
+            }
+            init => {
+                self.compile(true, AST2 { kind: init, src })?;
+                let idx = self.with_env(|env| env.anon())?;
+                self.asm_op(chasm!(NXIT idx));
+                self.asm_op(chasm!(POPA 1, 1));
+                self.env_pop(1)?;
+            }
+        };
+        if !ret {
+            self.asm_op(chasm!(POP 1));
+        }
+        Ok(())
+    }
+
+    fn bt_and(&mut self, ret: bool, args: impl IntoIterator<Item = AST2>) -> Result<()> {
+        let mut it = args.into_iter().peekable();
+        if it.peek().is_none() {
+            if ret {
+                self.unit().op(chasm!(BOOL 1));
+            }
+            return Ok(());
+        }
+        let end_l = self.unit().label("and_end");
+        let and_exit = self.unit().label("and_early_exit");
+        while let Some(part) = it.next() {
+            let (flip, part) = R8Compiler::argument_clinic(part);
+            self.compile(it.peek().is_some() || ret, part)?;
+            if flip {
+                self.unit().op(chasm!(JT and_exit));
+            } else {
+                self.unit().op(chasm!(JN and_exit));
+            }
+        }
+        self.unit().pop();
+        if ret {
+            self.unit().op(chasm!(JMP end_l));
+            self.unit().mark(and_exit);
+            self.unit().op(chasm!(NIL));
+            self.unit().mark(end_l);
+        } else {
+            self.unit().mark(and_exit);
+        }
+        Ok(())
+    }
+
+    fn bt_or(&mut self, ret: bool, args: impl IntoIterator<Item = AST2>) -> Result<()> {
+        let mut it = args.into_iter().peekable();
+        if it.peek().is_none() {
+            if ret {
+                self.unit().op(chasm!(BOOL 0));
+            }
+            return Ok(());
+        }
+        let end_l = self.unit().label("or_end");
+        while let Some(part) = it.next() {
+            let (flip, part) = R8Compiler::argument_clinic(part);
+            self.compile(it.peek().is_some() || ret, part)?;
+            if ret { self.unit().op(chasm!(DUP)); }
+            if flip {
+                self.unit().op(chasm!(JN end_l));
+            } else {
+                self.unit().op(chasm!(JT end_l));
+            }
+            if ret { self.unit().op(chasm!(POP 1)); }
+        }
+        if ret { self.unit().op(chasm!(NIL)); }
+        self.unit().mark(end_l);
+        Ok(())
+    }
+
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
         macro_rules! opcall {
             ($op:ident $($arg:expr),*) => {
@@ -523,6 +627,18 @@ impl R8Compiler {
                     $(self.compile(false, $arg)?;)*
                 }
             };
+        }
+
+        macro_rules! vopcall {
+            ($op:ident $argv:expr) => {{
+                let nargs = $argv.len();
+                for arg in $argv.into_iter() {
+                    self.compile(ret, arg)?;
+                }
+                if ret {
+                    self.unit().op(chasm!($op nargs));
+                }
+            }};
         }
 
         self.set_source(src.clone());
@@ -571,20 +687,26 @@ impl R8Compiler {
                                        None, Some(chasm!(PUSH 1)), args)?,
             M::Div(args) => self.binop(Builtin::Div, src, chasm!(SUB),
                                        Some(chasm!(PUSH 1)), None, args)?,
-            M::And(_) => todo!(),
-            M::Or(_) => todo!(),
+            M::And(args) => self.bt_and(ret, args)?,
+            M::Or(args) => self.bt_or(ret, args)?,
 
-            M::NextIter(_) => todo!(),
-            M::Car(_) => todo!(),
-            M::Cdr(_) => todo!(),
-            M::Cons(_, _) => todo!(),
-            M::List(_) => todo!(),
-            M::Append(_) => todo!(),
-            M::Vector(_) => todo!(),
-            M::Push(_, _) => todo!(),
-            M::Get(_, _) => todo!(),
-            M::Pop(_) => todo!(),
-            M::CallCC(_) => todo!(),
+            M::NextIter(it) => self.bt_next(ret, *it)?,
+            M::Car(x) => opcall!(CAR *x),
+            M::Cdr(x) => opcall!(CDR *x),
+            M::Cons(x, y) => opcall!(CONS *x, *y),
+            M::List(xs) => vopcall!(LIST xs),
+            M::Append(xs) => vopcall!(APPEND xs),
+            M::Vector(xs) => vopcall!(VEC xs),
+            M::Push(vec, elem) => self.bt_vpush(ret, *vec, *elem)?,
+            M::Get(vec, idx) => opcall!(VGET *vec, *idx),
+            M::Pop(vec) => opcall!(VPOP *vec),
+            M::CallCC(funk) => {
+                self.compile(true, *funk)?;
+                self.asm_op(chasm!(CALLCC 0));
+                if !ret {
+                    self.asm_op(chasm!(POP 1));
+                }
+            }
         }
 
         Ok(())
