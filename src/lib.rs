@@ -62,7 +62,6 @@ pub(crate) mod sexpr_parse;
 pub(crate) mod tok;
 pub(crate) mod nuke;
 pub(crate) mod module;
-pub(crate) mod string;
 pub(crate) mod deserialize;
 pub(crate) mod limits;
 pub(crate) mod math;
@@ -75,7 +74,7 @@ pub mod scratch;
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
 pub use nuke::Gc;
-pub use string::Str;
+pub type Str = Arc<str>;
 use nkgc::Cons;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
@@ -114,6 +113,7 @@ pub mod raw {
 
 use std::borrow::Cow;
 use std::fmt::Debug;
+use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel, Receiver, TryRecvError, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;

@@ -766,7 +766,7 @@ impl Display for M {
                 write!(f, ")")?;
             },
             M::Atom(a) => write!(f, "{a}")?,
-            M::Progn(a) => todo!(),
+            M::Progn(a) => vop!("progn", a),
             M::SymApp(u, xs) => {
                 write!(f, "({u}")?;
                 for x in xs.iter() { write!(f, " {x}")? }
@@ -786,10 +786,23 @@ impl Display for M {
                 }
                 wargs!(progn);
             },
-            M::Defvar(_, _) => todo!(),
-            M::Set(_, _) => todo!(),
-            M::Defun(_, _, _) => todo!(),
-            M::Let(_, _) => todo!(),
+            M::Defvar(name, init) => write!(f, "(defvar {name:?} {init})")?,
+            M::Set(name, init) => write!(f, "(set {name:?} {init})")?,
+            M::Defun(name, ArgList2(_, args), progn) => {
+                write!(f, "(define ({name}")?;
+                for arg in args { write!(f, " {arg:?}")?; }
+                write!(f, ")")?;
+                wargs!(progn);
+            },
+            M::Let(decls, progn) => {
+                write!(f, "(let (")?;
+                for (i, VarDecl(sym, _, init)) in decls.into_iter().enumerate() {
+                    if i > 0 { write!(f, " ")?; }
+                    write!(f, "({sym} {init})")?;
+                }
+                write!(f, ")")?;
+                wargs!(progn);
+            },
             M::Loop(xs) => vop!("loop", xs),
             M::Break(Some(val)) => write!(f, "(break {val})")?,
             M::Break(None) => write!(f, "(break)")?,
@@ -808,7 +821,7 @@ impl Display for M {
             M::Sub(xs) => vop!("-", xs),
             M::Mul(xs) => vop!("*", xs),
             M::Div(xs) => vop!("/", xs),
-            M::NextIter(_) => todo!(),
+            M::NextIter(it) => write!(f, "(next {it})")?,
             M::Car(x) => write!(f, "(car {x})")?,
             M::Cdr(x) => write!(f, "(cdr {x})")?,
             M::Cons(x, y) => write!(f, "(cons {x} {y})")?,
@@ -822,11 +835,11 @@ impl Display for M {
                 for x in xs.iter() { write!(f, " {x}")? }
                 write!(f, ")")?;
             },
-            M::Vector(_) => todo!(),
-            M::Push(_, _) => todo!(),
-            M::Get(_, _) => todo!(),
-            M::Pop(_) => todo!(),
-            M::CallCC(_) => todo!(),
+            M::Vector(xs) => vop!("vec", xs),
+            M::Push(vec, elem) => write!(f, "(push {vec} {elem})")?,
+            M::Get(vec, idx) => write!(f, "(get {vec} {idx})")?,
+            M::Pop(vec) => write!(f, "(pop {vec})")?,
+            M::CallCC(funk) => write!(f, "(call/cc {funk})")?,
         }
         Ok(())
     }
