@@ -76,7 +76,7 @@ fn fmt_value(val: &Value, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
 }
 
 impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt_value(self, f, &SYM_DB)
     }
 }
@@ -136,7 +136,7 @@ impl Value {
      * Applications like `((lambda (x) (+ x 2)) 2)` are compiled just like
      * `(let ((x 2)) (+ x 2))`.
      */
-    pub fn bt_lambda_bind(&self) -> Option<Result<Let, Error>> {
+    pub fn bt_lambda_bind(&self) -> Option<Result<Let>> {
         let mut it = self.iter();
         let nargs = self.nargs();
         let lambda_code = it.next();
@@ -158,7 +158,7 @@ impl Value {
         }
     }
 
-    pub fn bt_let(&self) -> Result<Let, Error> {
+    pub fn bt_let(&self) -> Result<Let> {
         let mut it = self.args();
         if let Some(vars) = it.next() {
             let pairs =
@@ -175,7 +175,7 @@ impl Value {
                                 Ok(LetBinding(*sym, val, src)),
                             _ => err()
                         }
-                    }).collect::<Result<Vec<_>, Error>>()?;
+                    }).collect::<Result<Vec<_>>>()?;
             Ok(Let(pairs, it.head()))
         } else {
             Err(error!(ArgError,
@@ -186,7 +186,7 @@ impl Value {
         }
     }
 
-    pub fn bt_define(&self) -> Result<Define, Error> {
+    pub fn bt_define(&self) -> Result<Define> {
         let op = Builtin::Define.sym();
         let expect = ArgSpec::rest(1, 1);
         let mut it = self.args();
@@ -220,7 +220,7 @@ impl Value {
         }
     }
 
-    pub fn bt_get(&self) -> Option<Result<Get, Error>> {
+    pub fn bt_get(&self) -> Option<Result<Get>> {
         matches!(self.bt_op(), Some(Builtin::Get)).then(|| {
             ArgSpec::normal(2).check(Builtin::Get.sym(), self.nargs())
                               .map(|_| {
@@ -265,7 +265,7 @@ impl Value {
         })
     }
 
-    pub fn bt_lambda(&self) -> Result<Lambda, Error> {
+    pub fn bt_lambda(&self) -> Result<Lambda> {
         let mut it = self.args();
         let (args, spec) = if let Some(args) = it.next() {
             arg_parse(args)?
@@ -874,7 +874,7 @@ impl<'a> Excavator<'a> {
         Excavator { mem }
     }
 
-    pub fn arg_parse(&self, args: PV, src: Source) -> Result<ArgList2, Error> {
+    pub fn arg_parse(&self, args: PV, src: Source) -> Result<ArgList2> {
         let mut syms = Vec::new();
         let mut spec = ArgSpec::default();
         let mut it = args.iter_src(self.mem, src);
@@ -924,11 +924,11 @@ impl<'a> Excavator<'a> {
         Ok(ArgList2(spec, syms))
     }
 
-    pub fn to_ast(&self, v: PV) -> Result<AST2, Error> {
+    pub fn to_ast(&self, v: PV) -> Result<AST2> {
         self.cav(v)
     }
 
-    fn cav(&self, v: PV) -> Result<AST2, Error> {
+    fn cav(&self, v: PV) -> Result<AST2> {
         let src = if let PV::Ref(p) = v {
             self.mem.get_tag(p).cloned().unwrap_or_else(|| Source::none())
         } else {
@@ -937,7 +937,7 @@ impl<'a> Excavator<'a> {
         self.dig(v, src)
     }
 
-    fn wrap_one_arg<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
+    fn wrap_one_arg<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2>
         where F: Fn(Box<AST2>) -> M
     {
         let mut it = args.iter();
@@ -956,10 +956,10 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn wrap_any_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
+    fn wrap_any_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2>
         where F: FnOnce(Vec<AST2>) -> M
     {
-        let args: Result<_,_> = args.into_iter().map(|a| self.dig(a, src.clone()))
+        let args: Result<_> = args.into_iter().map(|a| self.dig(a, src.clone()))
                                                 .collect();
         Ok(AST2 {
             kind: wrap(args?),
@@ -967,7 +967,7 @@ impl<'a> Excavator<'a> {
         })
     }
 
-    fn chain_cmp_op<F>(&self, cmp: F, args: PV, src: Source) -> Result<AST2, Error>
+    fn chain_cmp_op<F>(&self, cmp: F, args: PV, src: Source) -> Result<AST2>
         where F: Fn(Box<AST2>, Box<AST2>) -> M
     {
         let expect = ArgSpec::rest(2, 0);
@@ -997,8 +997,7 @@ impl<'a> Excavator<'a> {
     }
 
     fn two_and_maybe_one_arg(&self, args: PV, src: Source)
-                             -> Result<(Box<AST2>, Box<AST2>, Option<Box<AST2>>),
-                                       Error>
+                             -> Result<(Box<AST2>, Box<AST2>, Option<Box<AST2>>)>
     {
         let expect = ArgSpec::opt(2, 1);
         let err = |n| {
@@ -1021,7 +1020,7 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn wrap_no_args(&self, kind: M, args: PV, src: Source) -> Result<AST2, Error> {
+    fn wrap_no_args(&self, kind: M, args: PV, src: Source) -> Result<AST2> {
         let got_num = args.iter().count() as u32;
         if got_num == 0 {
             Ok(AST2 { kind, src })
@@ -1031,7 +1030,7 @@ impl<'a> Excavator<'a> {
     }
 
     fn two_args(&self, args: PV, src: Source)
-                -> Result<(Box<AST2>, Box<AST2>), Error>
+                -> Result<(Box<AST2>, Box<AST2>)>
     {
         let expect = ArgSpec::normal(2);
         let err = |n| {
@@ -1049,14 +1048,14 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn wrap_two_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2, Error>
+    fn wrap_two_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2>
         where F: FnOnce(Box<AST2>, Box<AST2>) -> M
     {
         let (u, v) = self.two_args(args, src.clone())?;
         Ok(AST2 { kind: wrap(u, v), src })
     }
 
-    fn bt_if(&self, args: PV, src: Source) -> Result<AST2, Error> {
+    fn bt_if(&self, args: PV, src: Source) -> Result<AST2> {
         let (cond, if_true, if_false) = self.two_and_maybe_one_arg(args, src.clone())?;
         Ok(AST2 {
             kind: M::If(cond, Some(if_true), if_false),
@@ -1064,7 +1063,7 @@ impl<'a> Excavator<'a> {
         })
     }
 
-    fn bt_set(&self, args: PV, src: Source) -> Result<AST2, Error> {
+    fn bt_set(&self, args: PV, src: Source) -> Result<AST2> {
         let expect = ArgSpec::normal(2);
         let err = |n| {
             let src = &src;
@@ -1086,7 +1085,7 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn bt_lambda(&self, args: PV, src: Source) -> Result<AST2, Error> {
+    fn bt_lambda(&self, args: PV, src: Source) -> Result<AST2> {
         let expect = ArgSpec::rest(1, 0);
         let err = |n| {
             let src = &src;
@@ -1094,11 +1093,11 @@ impl<'a> Excavator<'a> {
         };
         let mut it = args.iter();
         let arglist = self.arg_parse(it.next().ok_or_else(err(0))?, src.clone())?;
-        let body: Result<_,_> = it.map(|a| self.dig(a, src.clone())).collect();
+        let body: Result<_> = it.map(|a| self.dig(a, src.clone())).collect();
         Ok(AST2 { src, kind: M::Lambda(arglist, body?) })
     }
 
-    fn bt_define(&self, args: PV, src: Source) -> Result<AST2, Error> {
+    fn bt_define(&self, args: PV, src: Source) -> Result<AST2> {
         let expect = ArgSpec::rest(1, 1);
         let err = |n| {
             let src = &src;
@@ -1115,7 +1114,7 @@ impl<'a> Excavator<'a> {
                 Ok(AST2 { kind: M::Defvar(name, init), src })
             }
         } else if lhs.is_list() {
-            let body: Result<_,_> = it.map(|v| self.dig(v, src.clone())).collect();
+            let body: Result<_> = it.map(|v| self.dig(v, src.clone())).collect();
             let mut it = lhs.iter();
             let name = it.next().ok_or_else(|| error!(ArgError,
                                                       expect: ArgSpec::rest(1, 0),
@@ -1137,7 +1136,7 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn bt_next(&self, args: PV, src: Source) -> Result<AST2, Error> {
+    fn bt_next(&self, args: PV, src: Source) -> Result<AST2> {
         let e = |e: Error| e.op(sym![Next]).src(src.clone());
         let mut it = args.iter_src(self.mem, src.clone());
         if let Some((arg, src)) = it.next() {
@@ -1154,7 +1153,7 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn quasi(&self, args: PV, src: Source) -> Result<AST2, Error> {
+    fn quasi(&self, args: PV, src: Source) -> Result<AST2> {
         if args.is_atom() {
             return Ok(AST2 { src, kind: M::Atom(args) })
         }
@@ -1184,7 +1183,7 @@ impl<'a> Excavator<'a> {
         Ok(AST2 { kind: M::Append(li), src: root_src })
     }
 
-    fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2, Error> {
+    fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2> {
         match bt {
             Builtin::Not => self.wrap_one_arg(M::Not, args, src),
             Builtin::And => self.wrap_any_args(M::And, args, src),
@@ -1224,13 +1223,13 @@ impl<'a> Excavator<'a> {
         }.map_err(|e| e.fallback(Meta::Op(OpName::OpSym(bt.sym()))))
     }
 
-    fn sapp(&self, op: SymID, args: PV, src: Source) -> Result<AST2, Error> {
+    fn sapp(&self, op: SymID, args: PV, src: Source) -> Result<AST2> {
         self.wrap_any_args(|a| M::SymApp(op, a), args, src)
     }
 
     fn lambda_app(&self,
                   ArgList2(spec, syms): ArgList2,
-                  body: Progn, args: PV, src: Source) -> Result<AST2, Error>
+                  body: Progn, args: PV, src: Source) -> Result<AST2>
     {
         let orig_src = src.clone();
         let mut binds = vec![];
@@ -1250,7 +1249,7 @@ impl<'a> Excavator<'a> {
                 }
                 let rest = iter::once(self.dig(init.car()?, src)).chain(
                     it.map(|(v, src)| self.dig(v.car()?, src))
-                ).collect::<Result<Vec<_>, Error>>()?;
+                ).collect::<Result<Vec<_>>>()?;
                 let (sym, src) = syms.last().cloned().unwrap();
                 binds.push(VarDecl(sym, src.clone(), list(rest, src)));
                 return Ok(AST2 { src: orig_src, kind: M::Let(binds, body) });
@@ -1278,7 +1277,7 @@ impl<'a> Excavator<'a> {
         Ok(AST2 { src: orig_src, kind: M::Let(binds, body) })
     }
 
-    fn gapp(&self, op: PV, args: PV, src: Source) -> Result<AST2, Error> {
+    fn gapp(&self, op: PV, args: PV, src: Source) -> Result<AST2> {
         let op = self.dig(op, src.clone())?;
         if let M::Lambda(syms, body) = op.kind {
             self.lambda_app(syms, body, args, src)
@@ -1287,7 +1286,7 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn cons(&self, Cons { car, cdr }: Cons, src: Source) -> Result<AST2, Error> {
+    fn cons(&self, Cons { car, cdr }: Cons, src: Source) -> Result<AST2> {
         if let PV::Sym(op) = car{
             if let Some(bt) = Builtin::from_sym(op) {
                 self.bapp(bt, cdr, src)
@@ -1299,7 +1298,7 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn dig(&self, v: PV, src: Source) -> Result<AST2, Error> {
+    fn dig(&self, v: PV, src: Source) -> Result<AST2> {
         match v {
             PV::Ref(p) => match unsafe {(*p).match_ref()} {
                 NkRef::Cons(cell) => {

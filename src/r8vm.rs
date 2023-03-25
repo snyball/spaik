@@ -86,6 +86,7 @@ chasm_def! {
     SYM(id: SymIDInt),
     CHAR(c: u32),
     CLZ(sym: SymIDInt, nenv: u16),
+    CLZR(delta: i32, nenv: u16),
     CLZAV(nargs: u16, nenv: u16), // Commit the closure environment
     BOOL(val: u8),
     NIL(),
@@ -2247,6 +2248,8 @@ impl R8VM {
                 }
 
                 HCF() => return Ok(()),
+
+                x => unimplemented!("{x}"),
             }
             self.mem.collect();
         };

@@ -1,15 +1,17 @@
 use chasm::LblMap;
+use fnv::FnvHashMap;
 
 use crate::nuke::NkSum;
 use crate::nkgc::{PV, SymID};
 use crate::r8vm::{R8VM, ArgSpec, r8c};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::{Error, Source};
-use crate::ast::{AST2, M, Prog, Progn, M2};
+use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2};
 use crate::{ast, SPV};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
 use std::collections::HashMap;
 use crate::compile::*;
+use crate::error::Result;
 
 /**
  * Compile Value into R8C code.
@@ -23,6 +25,9 @@ pub struct R8Compiler {
     loops: Vec<LoopCtx>,
     const_offset: usize,
     consts: Vec<PV>,
+    // fns: FnvHashMap<SymID, usize>,
+    code_offset: usize,
+    new_fns: Vec<(SymID, usize)>,
 }
 
 #[derive(Clone, Copy)]
@@ -43,12 +48,14 @@ impl R8Compiler {
         let units = vec![ChASM::new()];
         R8Compiler {
             const_offset: 0,
+            new_fns: Default::default(),
             estack: Default::default(),
             labels: Default::default(),
             consts: Default::default(),
             loops: Default::default(),
             source_tbl: Default::default(),
             code: Default::default(),
+            code_offset: 0,
             units,
         }
     }
@@ -57,7 +64,7 @@ impl R8Compiler {
         self.units.last_mut().expect("No unit to save asm to")
     }
 
-    pub fn end_unit(&mut self) -> Result<usize, Error> {
+    pub fn end_unit(&mut self) -> Result<usize> {
         let len = self.code.len();
         self.units.pop()
                   .expect("No unit to end")
@@ -83,7 +90,7 @@ impl R8Compiler {
         self.estack.first().map(|s| s.iter_statics())
     }
 
-    pub fn link(mut self) -> Result<Linked, Error> {
+    pub fn link(mut self) -> Result<Linked> {
         let len = self.unit().len() as isize;
         let tbl = Default::default();
         let (asm, labels) = self.units.pop().unwrap().link::<R8C>(&tbl, len)?;
@@ -92,7 +99,7 @@ impl R8Compiler {
 
     pub fn enter_fn(&mut self,
                     args: &[SymID],
-                    spec: ArgSpec) -> Result<(), Error> {
+                    spec: ArgSpec) -> Result<()> {
         let mut env = Env::none();
         if spec.has_env() {
             env.defvar(Builtin::LambdaObject.sym());
@@ -129,7 +136,7 @@ impl R8Compiler {
         self.estack.pop();
     }
 
-    fn with_env<T>(&mut self, f: impl Fn(&mut Env) -> T) -> Result<T, Error> {
+    fn with_env<T>(&mut self, f: impl Fn(&mut Env) -> T) -> Result<T> {
         self.estack
             .last_mut()
             .map(f)
@@ -159,12 +166,12 @@ impl R8Compiler {
      * to be removed from the stack.
      */
     #[inline]
-    fn push(&mut self, code: AST2) -> Result<usize, Error> {
+    fn push(&mut self, code: AST2) -> Result<usize> {
         self.compile(true, code)?;
         self.with_env(|env| env.anon())
     }
 
-    fn pushit<'z>(&mut self, args: impl Iterator<Item = AST2>) -> Result<usize, Error> {
+    fn pushit<'z>(&mut self, args: impl Iterator<Item = AST2>) -> Result<usize> {
         let mut nargs = 0;
         for arg in args {
             nargs += 1;
@@ -173,7 +180,7 @@ impl R8Compiler {
         Ok(nargs)
     }
 
-    fn env_pop(&mut self, n: usize) -> Result<(), Error> {
+    fn env_pop(&mut self, n: usize) -> Result<()> {
         self.with_env(|env| env.pop(n))
     }
 
@@ -212,7 +219,7 @@ impl R8Compiler {
 
     fn bt_if(&mut self, ret: bool,
              cond: AST2, if_t: Option<AST2>, if_f: Option<AST2>
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let if_t = if_t.unwrap_or_else(|| AST2::nil(cond.src.clone()));
         let (flipped, cond) = R8Compiler::argument_clinic(cond);
         let src = cond.src.clone();
@@ -253,7 +260,7 @@ impl R8Compiler {
     fn compile_seq<'z>(&mut self,
                        ret: bool,
                        mut seq: impl Iterator<Item = AST2>
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let Some(mut last) = seq.next() else {
             if ret { self.asm_op(chasm!(NIL)) }
             return Ok(())
@@ -273,7 +280,7 @@ impl R8Compiler {
                       ret: bool,
                       op: (r8c::OpName, &mut [chasm::Arg]),
                       nargs_idx: usize,
-                      args: impl Iterator<Item = AST2>) -> Result<(), Error> {
+                      args: impl Iterator<Item = AST2>) -> Result<()> {
         let nargs = self.pushit(args)?;
         op.1[nargs_idx] = nargs.into();
         self.unit().add(op.0, op.1);
@@ -286,7 +293,7 @@ impl R8Compiler {
 
     fn asm_get_var(&mut self,
                    var: SymID,
-                   src: &Source) -> Result<(), Error> {
+                   src: &Source) -> Result<()> {
         match self.get_var_idx(var, src)? {
             BoundVar::Local(idx) => self.unit().op(chasm!(MOV idx)),
             BoundVar::Env(idx) => self.unit().op(chasm!(GET idx)),
@@ -296,7 +303,7 @@ impl R8Compiler {
 
     fn get_var_idx(&mut self,
                    var: SymID,
-                   src: &Source) -> Result<BoundVar, Error> {
+                   src: &Source) -> Result<BoundVar> {
         if let Some(idx) = self.with_env(|env| env.get_idx(var))? {
             return Ok(BoundVar::Local(idx as u32));
         }
@@ -311,7 +318,7 @@ impl R8Compiler {
         err_src!(src.clone(), UndefinedVariable, var)
     }
 
-    fn asm_set_var_idx(&mut self, idx: &BoundVar) -> Result<(), Error> {
+    fn asm_set_var_idx(&mut self, idx: &BoundVar) -> Result<()> {
         match idx {
             BoundVar::Local(idx) => self.unit().op(chasm!(STR *idx)),
             BoundVar::Env(idx) => self.unit().op(chasm!(SET *idx)),
@@ -319,7 +326,7 @@ impl R8Compiler {
         Ok(())
     }
 
-    fn bt_sym_app(&mut self, ret: bool, src: Source, op: SymID, args: Vec<AST2>) -> Result<(), Error> {
+    fn bt_sym_app(&mut self, ret: bool, src: Source, op: SymID, args: Vec<AST2>) -> Result<()> {
         if let Ok(()) = self.asm_get_var(op, &src) { // Call to closure variable
             self.with_env(|env| env.anon())?;
             let args = Some(AST2::sym(op, src)).into_iter()
@@ -335,7 +342,7 @@ impl R8Compiler {
         Ok(())
     }
 
-    fn gapp(&mut self, ret: bool, op: AST2, args: Vec<AST2>) -> Result<(), Error> {
+    fn gapp(&mut self, ret: bool, op: AST2, args: Vec<AST2>) -> Result<()> {
         if !matches!(op.type_of(), Builtin::Unknown | Builtin::Lambda) {
             return Err(error!(TypeError,
                               expect: Builtin::Lambda.sym(),
@@ -358,7 +365,7 @@ impl R8Compiler {
                   ret: bool,
                   src: Source,
                   dst: SymID,
-                  init: Prog) -> Result<(), Error> {
+                  init: Prog) -> Result<()> {
         let bound = self.get_var_idx(dst, &src)?;
         if let BoundVar::Local(idx) = bound {
             let mut inplace_op = |op, val: i64| {
@@ -392,7 +399,13 @@ impl R8Compiler {
         self.asm_set_var_idx(&bound)
     }
 
-    fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<(), Error> {
+    fn lambda(&mut self, prog: Progn) -> Result<usize> {
+        self.begin_unit();
+        self.compile_seq(true, prog.into_iter());
+        self.end_unit()
+    }
+
+    fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
         self.set_source(src.clone());
 
         match kind {
@@ -401,15 +414,18 @@ impl R8Compiler {
             M::Atom(pv) => {
                 let idx = self.const_offset + self.consts.len();
                 self.consts.push(pv);
-                self.unit().op(chasm!(INST(idx)));
+                self.unit().op(chasm!(INST idx));
             },
             M::Progn(seq) => self.compile_seq(ret, seq.into_iter())?,
             M::SymApp(op, args) => self.bt_sym_app(ret, src, op, args)?,
             M::App(op, args) => self.gapp(ret, *op, args)?,
-            M::Lambda(_, _) => todo!(),
+            M::Lambda(ArgList2(spec, names), progn) => {
+                let pos = self.lambda(progn)?;
+                self.unit().op(chasm!(CLZR pos as i32, spec.nargs));
+            },
             M::Defvar(_, _) => todo!(),
             M::Set(dst, init) => self.bt_set(ret, src, dst, init)?,
-            M::Defun(_, _, _) => todo!(),
+            M::Defun(name, args, progn) => todo!(),
             M::Let(_, _) => todo!(),
             M::Loop(_) => todo!(),
             M::Break => todo!(),
@@ -444,7 +460,7 @@ impl R8Compiler {
         Ok(())
     }
 
-    pub fn compile_top(self, ret: bool, code: AST2) -> Result<Linked, Error> {
+    pub fn compile_top(self, ret: bool, code: AST2) -> Result<Linked> {
         // self.compile(ret, code);
         // self.link()
         todo!()

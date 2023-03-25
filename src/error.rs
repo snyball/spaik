@@ -11,13 +11,14 @@ use crate::fmt::LispFmt;
 use crate::sym_db::{SymDB, SYM_DB};
 use std::borrow::Cow;
 use std::mem::{discriminant, replace};
-use std::result;
 use std::error;
 use std::fmt::{self, Debug};
 use std::num::TryFromIntError;
 use std::sync::mpsc::SendError;
 
 pub type SourceFileName = Option<Cow<'static, str>>;
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Source {
@@ -159,7 +160,7 @@ pub struct FmtArgnOp<'a, 'b> {
 }
 
 impl fmt::Display for FmtArgnOp<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(op) = self.meta.op() {
             write!(f, "{}", self.pre)?;
             if let Some(argn) = self.meta.op_argn() {
@@ -553,7 +554,7 @@ impl serde::de::Error for Error {
 }
 
 impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt_error(&Error {
             ty: self.clone(),
             meta: Default::default(),
@@ -562,7 +563,7 @@ impl fmt::Display for ErrorKind {
 }
 
 impl fmt::Display for Source {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
         if self.line == 0 {
             write!(f, "unknown")?;
@@ -577,7 +578,7 @@ impl fmt::Display for Source {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt_error(self, f, &SYM_DB)
     }
 }
