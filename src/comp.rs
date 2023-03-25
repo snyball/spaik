@@ -480,7 +480,51 @@ impl R8Compiler {
         Ok(())
     }
 
+    fn binop(&mut self,
+             op: Builtin,
+             src: Source,
+             bop: ChOp,
+             one_arg_pre: Option<ChOp>,
+             default: Option<ChOp>,
+             args: impl IntoIterator<Item = AST2>) -> Result<()> {
+        let mut it = args.into_iter().peekable();
+        if let Some(fst) = it.next() {
+            if let (Some(pre), true) = (one_arg_pre, it.peek().is_none()) {
+                self.unit().op(pre);
+                self.with_env(|env| env.anon())?;
+                self.compile(true, fst)?;
+                self.unit().op(bop.clone());
+            } else {
+                self.push(fst)?;
+                for arg in it {
+                    self.compile(true, arg)?;
+                    self.unit().op(bop.clone());
+                }
+            }
+            self.env_pop(1)?;
+        } else if let Some(op) = default {
+            self.unit().op(op);
+        } else {
+            return Err(error!(ArgError,
+                              expect: ArgSpec::rest(1, 0),
+                              got_num: 0)
+                       .src(src).op(op.sym()))
+        }
+        Ok(())
+    }
+
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
+        macro_rules! opcall {
+            ($op:ident $($arg:expr),*) => {
+                if ret {
+                    $(self.compile(true, $arg)?;)*
+                    self.unit().op(chasm!($op));
+                } else {
+                    $(self.compile(false, $arg)?;)*
+                }
+            };
+        }
+
         self.set_source(src.clone());
 
         match kind {
@@ -508,20 +552,28 @@ impl R8Compiler {
             M::Loop(prog) => self.bt_loop(ret, prog)?,
             M::Break(arg) => self.bt_break(src, arg)?,
             M::Next => self.bt_loop_next(src)?,
-            M::Throw(_) => todo!(),
-            M::Not(_) => todo!(),
+            M::Throw(arg) => {
+                self.compile(true, *arg)?;
+                self.unit().op(chasm!(UNWIND));
+            },
+            M::Not(x) => opcall!(NOT *x),
+            M::Gt(x, y) => opcall!(GT *x, *y),
+            M::Gte(x, y) => opcall!(GTE *x, *y),
+            M::Lt(x, y) => opcall!(LT *x, *y),
+            M::Lte(x, y) => opcall!(LTE *x, *y),
+            M::Eq(x, y) => opcall!(EQL *x, *y),
+            M::Eqp(x, y) => opcall!(EQLP *x, *y),
+            M::Add(args) => self.binop(Builtin::Add, src, chasm!(ADD),
+                                       None, Some(chasm!(PUSH 0)), args)?,
+            M::Sub(args) => self.binop(Builtin::Sub, src, chasm!(SUB),
+                                       Some(chasm!(PUSH 0)), None, args)?,
+            M::Mul(args) => self.binop(Builtin::Mul, src, chasm!(MUL),
+                                       None, Some(chasm!(PUSH 1)), args)?,
+            M::Div(args) => self.binop(Builtin::Div, src, chasm!(SUB),
+                                       Some(chasm!(PUSH 1)), None, args)?,
             M::And(_) => todo!(),
             M::Or(_) => todo!(),
-            M::Gt(_, _) => todo!(),
-            M::Gte(_, _) => todo!(),
-            M::Lt(_, _) => todo!(),
-            M::Lte(_, _) => todo!(),
-            M::Eq(_, _) => todo!(),
-            M::Eqp(_, _) => todo!(),
-            M::Add(_) => todo!(),
-            M::Sub(_) => todo!(),
-            M::Mul(_) => todo!(),
-            M::Div(_) => todo!(),
+
             M::NextIter(_) => todo!(),
             M::Car(_) => todo!(),
             M::Cdr(_) => todo!(),
