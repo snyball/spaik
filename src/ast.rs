@@ -648,7 +648,7 @@ pub type Progn = Vec<AST2>;
 pub type Prog = Box<AST2>;
 
 #[derive(Debug, Clone)]
-pub struct VarDecl(SymID, Source, Prog);
+pub struct VarDecl(pub SymID, pub Source, pub Prog);
 
 fn nil(src: Source) -> Prog {
     Box::new(AST2 { src, kind: M::Atom(PV::Nil) })
@@ -685,7 +685,7 @@ pub enum M {
     Defun(SymID, ArgList2, Progn),
     Let(Vec<VarDecl>, Progn),
     Loop(Progn),
-    Break,
+    Break(Option<Prog>),
     Next,
     Throw(Prog),
 
@@ -770,7 +770,7 @@ impl Display for M {
             M::Defun(_, _, _) => todo!(),
             M::Let(_, _) => todo!(),
             M::Loop(_) => todo!(),
-            M::Break => todo!(),
+            M::Break(val) => todo!(),
             M::Next => todo!(),
             M::Throw(_) => todo!(),
             M::Not(_) => todo!(),
@@ -953,6 +953,19 @@ impl<'a> Excavator<'a> {
                 .src(src))
         } else {
             Ok(wrap(Box::new(self.dig(arg, src.clone())?)).ast(src))
+        }
+    }
+
+    fn wrap_maybe_arg<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2>
+        where F: Fn(Option<Prog>) -> M
+    {
+        let mut it = args.iter();
+        let Some(arg) = it.next() else { return Ok(wrap(None).ast(src)) };
+        let extra = it.count() as u32;
+        if extra > 0 {
+            Err(error!(ArgError, expect: ArgSpec::opt(0, 1), got_num: 1 + extra).src(src))
+        } else {
+            Ok(wrap(Some(Box::new(self.dig(arg, src.clone())?))).ast(src))
         }
     }
 
@@ -1206,7 +1219,7 @@ impl<'a> Excavator<'a> {
             Builtin::Lambda => self.bt_lambda(args, src),
             Builtin::Quote => Ok(AST2 { src, kind: M::Atom(args) }),
             Builtin::Quasi => self.quasi(args.car().expect("car"), src),
-            Builtin::Break => self.wrap_no_args(M::Break, args, src),
+            Builtin::Break => self.wrap_maybe_arg(M::Break, args, src),
             Builtin::Car => self.wrap_one_arg(M::Car, args, src),
             Builtin::Cdr => self.wrap_one_arg(M::Cdr, args, src),
             Builtin::Pop => self.wrap_one_arg(M::Pop, args, src),

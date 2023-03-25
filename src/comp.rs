@@ -6,7 +6,7 @@ use crate::nkgc::{PV, SymID};
 use crate::r8vm::{R8VM, ArgSpec, r8c};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::{Error, Source};
-use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2};
+use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl};
 use crate::{ast, SPV};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
 use std::collections::HashMap;
@@ -98,14 +98,14 @@ impl R8Compiler {
     }
 
     pub fn enter_fn(&mut self,
-                    args: &[SymID],
+                    args: impl IntoIterator<Item = SymID>,
                     spec: ArgSpec) -> Result<()> {
         let mut env = Env::none();
         if spec.has_env() {
             env.defvar(Builtin::LambdaObject.sym());
         }
         for arg in args {
-            env.defvar(*arg);
+            env.defvar(arg);
         }
         env.defvar(Builtin::IP.sym());
         env.defvar(Builtin::Frame.sym());
@@ -259,8 +259,9 @@ impl R8Compiler {
 
     fn compile_seq<'z>(&mut self,
                        ret: bool,
-                       mut seq: impl Iterator<Item = AST2>
+                       mut seq: impl IntoIterator<Item = AST2>
     ) -> Result<()> {
+        let mut seq = seq.into_iter();
         let Some(mut last) = seq.next() else {
             if ret { self.asm_op(chasm!(NIL)) }
             return Ok(())
@@ -399,10 +400,84 @@ impl R8Compiler {
         self.asm_set_var_idx(&bound)
     }
 
-    fn lambda(&mut self, prog: Progn) -> Result<usize> {
+    fn lambda(&mut self, spec: ArgSpec, names: Vec<(SymID, Source)>, prog: Progn) -> Result<usize> {
         self.begin_unit();
-        self.compile_seq(true, prog.into_iter());
+        self.enter_fn(names.into_iter().map(|(s,_)| s), spec)?;
+        self.compile_seq(true, prog)?;
+        self.leave_fn();
         self.end_unit()
+    }
+
+    fn bt_let(&mut self, ret: bool, decls: Vec<VarDecl>, prog: Progn) -> Result<()> {
+        let len = decls.len();
+        for VarDecl(name, _src, val) in decls.into_iter() {
+            self.compile(true, *val)?;
+            self.with_env(|env| env.defvar(name))?;
+        }
+        self.compile_seq(ret, prog)?;
+        if ret {
+            self.unit().op(chasm!(POPA 1, len));
+        } else {
+            self.asm_op(chasm!(POP len));
+        }
+        self.env_pop(len)
+    }
+
+    fn bt_loop(&mut self,
+               ret: bool,
+               seq: impl IntoIterator<Item = AST2>) -> Result<()> {
+        let start = self.unit().label("loop_start");
+        let end = self.unit().label("loop_end");
+        let height = self.with_env(|env| env.len())?;
+        self.loops.push(LoopCtx { start, end, ret, height });
+        self.unit().mark(start);
+        self.compile_seq(false, seq)?;
+        self.unit().op(chasm!(JMP start));
+        self.unit().mark(end);
+        self.loops.pop();
+        Ok(())
+    }
+
+    fn bt_break(&mut self, src: Source, arg: Option<Prog>) -> Result<()> {
+        let outer = self.loops
+                        .last()
+                        .copied()
+                        .ok_or(error_src!(src, OutsideContext,
+                                          op: Builtin::Break.sym(),
+                                          ctx: Builtin::Loop.sym()))?;
+        let LoopCtx { end, ret, height, .. } = outer;
+        let dist = self.with_env(|env| env.len())? - height;
+        let popa = |cc: &mut R8Compiler| if dist > 0 {
+            cc.asm_op(chasm!(POPA 1, dist-1))
+        };
+        match arg {
+            Some(code) if ret => {
+                self.compile(true, *code)?;
+                popa(self);
+            }
+            None if ret => {
+                self.asm_op(chasm!(NIL));
+                popa(self);
+            }
+            _ if dist > 0 => self.asm_op(chasm!(POP dist)),
+            _ => ()
+        }
+        self.asm_op(chasm!(JMP end));
+        Ok(())
+    }
+
+    fn bt_loop_next(&mut self, src: Source) -> Result<()> {
+        let outer = self.loops
+                        .last()
+                        .copied()
+                        .ok_or(error_src!(src, OutsideContext,
+                                          op: Builtin::Next.sym(),
+                                          ctx: Builtin::Loop.sym()))?;
+        let LoopCtx { start, height, .. } = outer;
+        let dist = self.with_env(|env| env.len())? - height;
+        self.asm_op(chasm!(POP dist));
+        self.asm_op(chasm!(JMP start));
+        Ok(())
     }
 
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
@@ -420,16 +495,19 @@ impl R8Compiler {
             M::SymApp(op, args) => self.bt_sym_app(ret, src, op, args)?,
             M::App(op, args) => self.gapp(ret, *op, args)?,
             M::Lambda(ArgList2(spec, names), progn) => {
-                let pos = self.lambda(progn)?;
+                let pos = self.lambda(spec, names, progn)?;
                 self.unit().op(chasm!(CLZR pos as i32, spec.nargs));
             },
-            M::Defvar(_, _) => todo!(),
+            M::Defvar(sym, init) => todo!(),
             M::Set(dst, init) => self.bt_set(ret, src, dst, init)?,
-            M::Defun(name, args, progn) => todo!(),
-            M::Let(_, _) => todo!(),
-            M::Loop(_) => todo!(),
-            M::Break => todo!(),
-            M::Next => todo!(),
+            M::Defun(name, ArgList2(spec, names), progn) => {
+                let pos = self.lambda(spec, names, progn)?;
+                self.new_fns.push((name, pos));
+            },
+            M::Let(decls, progn) => self.bt_let(ret, decls, progn)?,
+            M::Loop(prog) => self.bt_loop(ret, prog)?,
+            M::Break(arg) => self.bt_break(src, arg)?,
+            M::Next => self.bt_loop_next(src)?,
             M::Throw(_) => todo!(),
             M::Not(_) => todo!(),
             M::And(_) => todo!(),
