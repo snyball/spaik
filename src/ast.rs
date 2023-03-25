@@ -745,6 +745,19 @@ impl M {
 
 impl Display for M {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        macro_rules! wargs {
+            ($args:expr) => {
+                let mut it = $args.into_iter();
+                it.next().map(|arg| write!(f, "{arg}"));
+                for arg in it { write!(f, " {arg}")?; }
+            };
+        }
+        macro_rules! vop {
+            ($op:literal, $args:expr) => {{
+                write!(f, "({}", $op)?;
+                for arg in $args { write!(f, " {arg}")?; }
+            }};
+        }
         match self {
             M::If(a, b, c) => {
                 write!(f, "(if {a}")?;
@@ -764,32 +777,41 @@ impl Display for M {
                 for x in xs.iter() { write!(f, " {x}")? }
                 write!(f, ")")?;
             },
-            M::Lambda(_, _) => todo!(),
+            M::Lambda(ArgList2(_, args), progn) => {
+                write!(f, "(lambda (")?;
+                let mut it = args.into_iter();
+                it.next().map(|arg| write!(f, "{arg:?}"));
+                for arg in it {
+                    write!(f, " {arg:?}")?;
+                }
+                wargs!(progn);
+            },
             M::Defvar(_, _) => todo!(),
             M::Set(_, _) => todo!(),
             M::Defun(_, _, _) => todo!(),
             M::Let(_, _) => todo!(),
-            M::Loop(_) => todo!(),
-            M::Break(val) => todo!(),
-            M::Next => todo!(),
-            M::Throw(_) => todo!(),
-            M::Not(_) => todo!(),
-            M::And(_) => todo!(),
-            M::Or(_) => todo!(),
-            M::Gt(_, _) => todo!(),
-            M::Gte(_, _) => todo!(),
-            M::Lt(_, _) => todo!(),
-            M::Lte(_, _) => todo!(),
-            M::Eq(_, _) => todo!(),
-            M::Eqp(_, _) => todo!(),
-            M::Add(_) => todo!(),
-            M::Sub(_) => todo!(),
-            M::Mul(_) => todo!(),
-            M::Div(_) => todo!(),
+            M::Loop(xs) => vop!("loop", xs),
+            M::Break(Some(val)) => write!(f, "(break {val})")?,
+            M::Break(None) => write!(f, "(break)")?,
+            M::Next => write!(f, "(next)")?,
+            M::Throw(x) => write!(f, "(throw {x})")?,
+            M::Not(x) => write!(f, "(not {x})")?,
+            M::And(xs) => vop!("and", xs),
+            M::Or(xs) => vop!("or", xs),
+            M::Gt(x, y) => write!(f, "(> {x} {y})")?,
+            M::Gte(x, y) => write!(f, "(>= {x} {y})")?,
+            M::Lt(x, y) => write!(f, "(< {x} {y})")?,
+            M::Lte(x, y) => write!(f, "(<= {x} {y})")?,
+            M::Eq(x, y) => write!(f, "(= {x} {y})")?,
+            M::Eqp(x, y) => write!(f, "(equal {x} {y})")?,
+            M::Add(xs) => vop!("+", xs),
+            M::Sub(xs) => vop!("-", xs),
+            M::Mul(xs) => vop!("*", xs),
+            M::Div(xs) => vop!("/", xs),
             M::NextIter(_) => todo!(),
-            M::Car(_) => todo!(),
-            M::Cdr(_) => todo!(),
-            M::Cons(_, _) => todo!(),
+            M::Car(x) => write!(f, "(car {x})")?,
+            M::Cdr(x) => write!(f, "(cdr {x})")?,
+            M::Cons(x, y) => write!(f, "(cons {x} {y})")?,
             M::List(xs) => {
                 write!(f, "(list")?;
                 for x in xs.iter() { write!(f, " {x}")? }
