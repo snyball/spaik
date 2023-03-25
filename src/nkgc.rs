@@ -1241,7 +1241,7 @@ pub struct Arena {
     pub(crate) stack: Vec<PV>,
     pub(crate) symdb: SIntern<SymID>,
     pub(crate) conts: Vec<Vec<PV>>,
-    env: Vec<PV>,
+    pub(crate) env: Vec<PV>,
     gray: Vec<*mut NkAtom>,
     extref: FnvHashMap<ExtRefID, (i32, PV)>,
     extdrop_recv: Receiver<ExtRefMsg>,

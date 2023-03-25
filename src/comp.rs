@@ -1,15 +1,11 @@
 use chasm::LblMap;
-use fnv::FnvHashMap;
 
-use crate::nuke::NkSum;
 use crate::nkgc::{PV, SymID};
 use crate::r8vm::{R8VM, ArgSpec, r8c};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
-use crate::error::{Error, Source};
+use crate::error::Source;
 use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl};
-use crate::{ast, SPV};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
-use std::collections::HashMap;
 use crate::compile::*;
 use crate::error::Result;
 
@@ -27,7 +23,7 @@ pub struct R8Compiler {
     consts: Vec<PV>,
     // fns: FnvHashMap<SymID, usize>,
     code_offset: usize,
-    new_fns: Vec<(SymID, usize)>,
+    new_fns: Vec<(SymID, ArgSpec, Vec<SymID>, usize, usize)>,
 }
 
 #[derive(Clone, Copy)]
@@ -46,7 +42,7 @@ pub type Linked = (Vec<R8C>,
 impl R8Compiler {
     pub fn new(vm: &R8VM) -> R8Compiler {
         let units = vec![ChASM::new()];
-        R8Compiler {
+        let mut cc = R8Compiler {
             const_offset: 0,
             new_fns: Default::default(),
             estack: Default::default(),
@@ -57,7 +53,9 @@ impl R8Compiler {
             code: Default::default(),
             code_offset: 0,
             units,
-        }
+        };
+        cc.set_offsets(vm);
+        cc
     }
 
     pub fn unit(&mut self) -> &mut ChASM {
@@ -68,8 +66,9 @@ impl R8Compiler {
         let len = self.code.len();
         self.units.pop()
                   .expect("No unit to end")
-                  .link_into(&mut self.code, len, &mut self.labels)?;
-        Ok(len)
+                  .link_into(&mut self.code,
+                             len + self.code_offset,
+                             &mut self.labels)
     }
 
     pub fn begin_unit(&mut self) {
@@ -259,7 +258,7 @@ impl R8Compiler {
 
     fn compile_seq<'z>(&mut self,
                        ret: bool,
-                       mut seq: impl IntoIterator<Item = AST2>
+                       seq: impl IntoIterator<Item = AST2>
     ) -> Result<()> {
         let mut seq = seq.into_iter();
         let Some(mut last) = seq.next() else {
@@ -400,12 +399,14 @@ impl R8Compiler {
         self.asm_set_var_idx(&bound)
     }
 
-    fn lambda(&mut self, spec: ArgSpec, names: Vec<(SymID, Source)>, prog: Progn) -> Result<usize> {
+    fn lambda(&mut self, spec: ArgSpec, names: Vec<(SymID, Source)>, prog: Progn) -> Result<(usize, usize)> {
+        let pos = self.code.len() + self.code_offset;
         self.begin_unit();
         self.enter_fn(names.into_iter().map(|(s,_)| s), spec)?;
         self.compile_seq(true, prog)?;
         self.leave_fn();
-        self.end_unit()
+        let sz = self.end_unit()?;
+        Ok((pos, sz))
     }
 
     fn bt_let(&mut self, ret: bool, decls: Vec<VarDecl>, prog: Progn) -> Result<()> {
@@ -617,6 +618,24 @@ impl R8Compiler {
         Ok(())
     }
 
+    fn atom(&mut self, pv: PV) -> Result<()> {
+        let op = match pv {
+            PV::Bool(true) => chasm!(BOOL 1),
+            PV::Bool(false) => chasm!(BOOL 0),
+            PV::Char(c) => chasm!(CHAR c as u32),
+            PV::Int(i) => chasm!(PUSH i),
+            PV::Real(r) => chasm!(PUSHF r.to_bits()),
+            PV::Sym(s) => chasm!(SYM s),
+            pv => {
+                let idx = self.const_offset + self.consts.len();
+                self.consts.push(pv);
+                chasm!(INST idx)
+            }
+        };
+        self.unit().op(op);
+        Ok(())
+    }
+
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
         macro_rules! opcall {
             ($op:ident $($arg:expr),*) => {
@@ -641,28 +660,33 @@ impl R8Compiler {
             }};
         }
 
+        macro_rules! asm {
+            ($($args:tt)*) => {{ self.unit().op(chasm!($($args)*)); }};
+        }
+
         self.set_source(src.clone());
 
         match kind {
+            M::Var(var) => match self.get_var_idx(var, &src)? {
+                BoundVar::Local(idx) => asm!(MOV idx),
+                BoundVar::Env(_) => todo!(),
+            },
             M::If(cond, if_t, if_f) =>
                 self.bt_if(ret, *cond, if_t.map(|v| *v), if_f.map(|v| *v))?,
-            M::Atom(pv) => {
-                let idx = self.const_offset + self.consts.len();
-                self.consts.push(pv);
-                self.unit().op(chasm!(INST idx));
-            },
+            M::Atom(pv) => if ret { self.atom(pv)? },
             M::Progn(seq) => self.compile_seq(ret, seq.into_iter())?,
             M::SymApp(op, args) => self.bt_sym_app(ret, src, op, args)?,
             M::App(op, args) => self.gapp(ret, *op, args)?,
             M::Lambda(ArgList2(spec, names), progn) => {
-                let pos = self.lambda(spec, names, progn)?;
-                self.unit().op(chasm!(CLZR pos as i32, spec.nargs));
+                let (pos, _sz) = self.lambda(spec, names, progn)?;
+                asm!(CLZR pos as i32, spec.nargs);
             },
             M::Defvar(sym, init) => todo!(),
             M::Set(dst, init) => self.bt_set(ret, src, dst, init)?,
             M::Defun(name, ArgList2(spec, names), progn) => {
-                let pos = self.lambda(spec, names, progn)?;
-                self.new_fns.push((name, pos));
+                let syms = names.iter().map(|(s,_)| *s).collect();
+                let (pos, sz) = self.lambda(spec, names, progn)?;
+                self.new_fns.push((name, spec, syms, pos, sz));
             },
             M::Let(decls, progn) => self.bt_let(ret, decls, progn)?,
             M::Loop(prog) => self.bt_loop(ret, prog)?,
@@ -670,7 +694,7 @@ impl R8Compiler {
             M::Next => self.bt_loop_next(src)?,
             M::Throw(arg) => {
                 self.compile(true, *arg)?;
-                self.unit().op(chasm!(UNWIND));
+                asm!(UNWIND);
             },
             M::Not(x) => opcall!(NOT *x),
             M::Gt(x, y) => opcall!(GT *x, *y),
@@ -702,19 +726,29 @@ impl R8Compiler {
             M::Pop(vec) => opcall!(VPOP *vec),
             M::CallCC(funk) => {
                 self.compile(true, *funk)?;
-                self.asm_op(chasm!(CALLCC 0));
-                if !ret {
-                    self.asm_op(chasm!(POP 1));
-                }
+                asm!(CALLCC 0);
+                if !ret { asm!(POP 1) }
             }
         }
 
         Ok(())
     }
 
-    pub fn compile_top(self, ret: bool, code: AST2) -> Result<Linked> {
-        // self.compile(ret, code);
-        // self.link()
-        todo!()
+    pub fn compile_top(&mut self, code: AST2) -> Result<()> {
+        self.compile(false, code)
+    }
+
+    pub fn take(&mut self, vm: &mut R8VM) {
+        vm.pmem.extend(self.code.drain(..));
+        vm.mem.env.extend(self.consts.drain(..));
+        for (name, spec, names, pos, sz) in self.new_fns.drain(..) {
+            vm.defun(name, spec, names, pos, sz);
+        }
+        self.set_offsets(vm);
+    }
+
+    fn set_offsets(&mut self, vm: &R8VM) {
+        self.code_offset = vm.pmem.len();
+        self.const_offset = vm.mem.env.len();
     }
 }

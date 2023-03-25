@@ -688,6 +688,7 @@ pub enum M {
     Break(Option<Prog>),
     Next,
     Throw(Prog),
+    Var(SymID),
 
     // Builtin ops
     Not(Prog),
@@ -840,6 +841,7 @@ impl Display for M {
             M::Get(vec, idx) => write!(f, "(get {vec} {idx})")?,
             M::Pop(vec) => write!(f, "(pop {vec})")?,
             M::CallCC(funk) => write!(f, "(call/cc {funk})")?,
+            M::Var(var) => write!(f, "{var:?}")?,
         }
         Ok(())
     }
@@ -1335,7 +1337,7 @@ impl<'a> Excavator<'a> {
     }
 
     fn cons(&self, Cons { car, cdr }: Cons, src: Source) -> Result<AST2> {
-        if let PV::Sym(op) = car{
+        if let PV::Sym(op) = car {
             if let Some(bt) = Builtin::from_sym(op) {
                 self.bapp(bt, cdr, src)
             } else {
@@ -1355,6 +1357,7 @@ impl<'a> Excavator<'a> {
                 },
                 _ => Ok(AST2 { src, kind: v.into() })
             }
+            PV::Sym(var) => Ok(AST2 { src, kind: M::Var(var) }),
             _ => Ok(AST2 { src, kind: v.into() })
         }
     }

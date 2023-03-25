@@ -314,7 +314,7 @@ impl ChASM {
     pub fn link_into<T: ASMOp>(self,
                                out: &mut Vec<T>,
                                sz: usize,
-                               hm_out: &mut LblMap) -> Result<(), Error>
+                               hm_out: &mut LblMap) -> Result<usize, Error>
     {
         for (lbl, tgt) in self.marks.iter() {
             hm_out.insert((*tgt + sz as isize) as u32,
@@ -342,10 +342,12 @@ impl ChASM {
                                  }).collect::<Result<Vec<ASMPV>, _>>()?;
                     T::new(op.id, &args[..])
                 });
+        let mut len = 0;
         for asm in it {
             out.push(asm?);
+            len += 1;
         }
-        Ok(())
+        Ok(len)
     }
 
     pub fn add<T: ChASMOpName>(&mut self, op: T, args: &[Arg]) {

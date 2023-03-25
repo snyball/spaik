@@ -735,7 +735,7 @@ impl<T> InStream for T where T: io::Read + Debug + Send {}
 #[derive(Debug)]
 pub struct R8VM {
     /// Memory
-    pmem: Vec<r8c::Op>,
+    pub(crate) pmem: Vec<r8c::Op>,
     consts: Vec<NkSum>,
     pub(crate) mem: Arena,
     globals: FnvHashMap<SymID, usize>,
@@ -1313,6 +1313,7 @@ impl R8VM {
         let mut num: u32 = 0;
         let mut srcs = vec![];
         let mut src_idx = vec![0];
+        let mut cc = crate::comp::R8Compiler::new(self);
         macro_rules! wrap {
             ($push:expr) => {
                 $push;
@@ -1370,8 +1371,8 @@ impl R8VM {
 
                         let excv = Excavator::new(&self.mem);
                         let ast = excv.to_ast(v)?;
-                        let mut cc = crate::comp::R8Compiler::new(self);
-                        let linked = cc.compile_top(false, ast);
+                        cc.compile_top(ast)?;
+                        cc.take(self);
 
                         self.mem.push(v)
                     } else {
@@ -1744,16 +1745,14 @@ impl R8VM {
     }
 
     pub fn defun(&mut self,
-                 sym: SymID,
-                 args: PV,
-                 ast: PV) -> Result<(), Error> {
-        let mut cc = R8Compiler::new(self);
-        let args = unsafe { pv_to_value(args, &Source::none()) };
-        let ast = unsafe { pv_to_value(ast, &Source::none()) };
-        let (spec, args) = cc.compile_fn(sym, &args, &ast)?;
-        let code = cc.link()?;
-        self.add_func(sym, code, spec, args);
-        Ok(())
+                 name: SymID,
+                 args: ArgSpec,
+                 arg_names: Vec<SymID>,
+                 pos: usize,
+                 sz: usize)
+    {
+        self.funcs.insert(name.into(), Func { pos, sz, args });
+        self.func_arg_syms.insert(name, arg_names);
     }
 
     pub fn sym_name(&self, sym: SymID) -> &str {
