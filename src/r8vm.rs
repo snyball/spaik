@@ -17,7 +17,7 @@ use crate::{
     sym_db::SymDB, FmtErr, tok::Token, limits,
 };
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::{HashMap, hash_map::Entry}, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr, slice, sync::Mutex};
+use std::{io, fs, borrow::Cow, cmp, collections::{HashMap, hash_map::Entry}, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr, slice, sync::Mutex, path::Path};
 
 chasm_def! {
     r8c:
@@ -394,8 +394,8 @@ mod sysfns {
             Ok(PV::Nil)
         }
 
-        fn disassemble_all(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
-            featurefn!("repl", vm.dump_all_code()?)?;
+        fn dump_all_fns(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+            featurefn!("repl", vm.dump_all_fns()?)?;
             Ok(PV::Nil)
         }
 
@@ -405,6 +405,12 @@ mod sysfns {
 
         fn read_compile(&mut self, vm: &mut R8VM, args: (code)) -> Result<PV, Error> {
             with_ref_mut!(*code, String(s) => { vm.read_compile(s, None) })
+        }
+
+        fn read_compile_from(&mut self, vm: &mut R8VM, args: (arg)) -> Result<PV, Error> {
+            with_ref_mut!(*arg, String(s) => {
+                vm.read_compile_from(s)
+            })
         }
 
         fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV, Error> {
@@ -731,7 +737,7 @@ pub struct R8VM {
     funcs: FnvHashMap<SymIDInt, Func>,
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
     func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
-    srctbl: SourceList,
+    pub(crate) srctbl: SourceList,
     catch: Vec<usize>,
 
     stdout: Mutex<Box<dyn OutStream>>,
@@ -1025,12 +1031,13 @@ impl R8VM {
         addfn!("make-symbol", make_symbol);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
+        addfn!("read-compile-from", read_compile_from);
         addfn!("type-of", type_of);
         addfn!("sym-id", sym_id);
         addfn!("set-macro", set_macro);
 
         // Debug
-        addfn!("disassemble-all", disassemble_all);
+        addfn!("dump-fns", dump_all_fns);
         addfn!("dump-macro-tbl", dump_macro_tbl);
         addfn!("dump-sym-tbl", dump_sym_tbl);
         addfn!("dump-env-tbl", dump_env_tbl);
@@ -1267,6 +1274,11 @@ impl R8VM {
         Ok(v)
     }
 
+    pub fn read_compile_from(&mut self, path: &str) -> Result<PV, Error> {
+        let sexpr = fs::read_to_string(path)?;
+        self.read_compile(&sexpr, Some(Cow::from(path.to_string())))
+    }
+
     pub fn read_compile(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV, Error> {
         lazy_static! {
             static ref TREE: Fragment = standard_lisp_tok_tree();
@@ -1483,9 +1495,9 @@ impl R8VM {
             self.mem.push(v);
             let mut dot = false;
             loop {
-                let PV::Ref(p) = v else { unreachable!() };
+                let PV::Ref(p) = v else { unreachable!("{v:?}") };
                 let rf = unsafe{(*p).match_ref()};
-                let NkRef::Cons(Cons { car, cdr }) = rf else { unreachable!() };
+                let NkRef::Cons(Cons { car, cdr }) = rf else { unreachable!("{rf:?}") };
                 self.mem.push(v);
                 let ncar = self.macroexpand_pv(if dot {*cdr} else {*car}, quasi);
                 v = self.mem.pop().unwrap();
@@ -2229,6 +2241,10 @@ impl R8VM {
                     };
                 }
                 CALL(pos, nargs) => {
+                    if self.mem.stack.len() > 3000 {
+                        panic!("Stack Overflow");
+                    }
+                    let pre_ip = self.ip_delta(ip);
                     self.call_pre(ip);
                     self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
                     ip = self.ret_to(*pos as usize);
@@ -2434,11 +2450,19 @@ impl R8VM {
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_all_code(&self) -> Result<(), Error> {
+    pub fn dump_all_fns(&self) -> Result<(), Error> {
         let mut funks = self.funcs.iter().map(|(k, v)| ((*k).into(), v.pos)).collect::<Vec<_>>();
         funks.sort_by_key(|(_, v)| *v);
         for funk in funks.into_iter().map(|(u, _)| u) {
             self.dump_fn_code(funk)?
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "repl")]
+    pub fn dump_all_code(&self) -> Result<(), Error> {
+        for (i, op) in self.pmem.iter().enumerate() {
+            println!("{i:0>8}    {op}")
         }
         Ok(())
     }

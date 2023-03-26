@@ -9,10 +9,15 @@ use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::Source;
 use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
-use crate::compile::*;
+use crate::{compile::*, SymDB};
 use crate::error::Result;
 
 static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+pub enum Sym {
+    Id(SymID),
+    Str(String),
+}
 
 /**
  * Compile Value into R8C code.
@@ -21,13 +26,13 @@ pub struct R8Compiler {
     labels: LblMap,
     code: Vec<R8C>,
     units: Vec<ChASM>,
-    source_tbl: SourceList,
+    srctbl: SourceList,
     pub(crate) estack: Vec<Env>,
     loops: Vec<LoopCtx>,
     const_offset: usize,
     consts: Vec<PV>,
     code_offset: usize,
-    new_fns: Vec<(SymID, ArgSpec, Vec<SymID>, usize, usize)>,
+    new_fns: Vec<(Sym, ArgSpec, Vec<SymID>, usize, usize)>,
 }
 
 #[derive(Clone, Copy)]
@@ -108,7 +113,7 @@ impl R8Compiler {
             labels: Default::default(),
             consts: Default::default(),
             loops: Default::default(),
-            source_tbl: Default::default(),
+            srctbl: Default::default(),
             code: Default::default(),
             code_offset: 0,
             units,
@@ -135,17 +140,18 @@ impl R8Compiler {
     }
 
     pub fn set_source(&mut self, src: Source) {
-        match self.source_tbl.last() {
+        if src.line == 0 { return } // FIXME: This shouldn't be necessary
+        match self.srctbl.last() {
             Some((_, last_src)) if *last_src == src => (),
             _ => {
-                let idx = self.unit().len();
-                self.source_tbl.push((idx, src));
+                let idx = self.unit().len() + self.code_offset;
+                self.srctbl.push((idx, src));
             }
         }
     }
 
     pub fn enter_fn(&mut self,
-                    args: impl IntoIterator<Item = SymID>,
+                    args: impl Iterator<Item = SymID>,
                     spec: ArgSpec) -> Result<()> {
         let mut env = Env::none();
         if spec.has_env() {
@@ -377,8 +383,7 @@ impl R8Compiler {
     fn bt_sym_app(&mut self, ret: bool, src: Source, op: SymID, args: Vec<AST2>) -> Result<()> {
         if let Ok(()) = self.asm_get_var(op, &src) { // Call to closure variable
             self.with_env(|env| env.anon())?;
-            let args = Some(AST2::sym(op, src)).into_iter()
-                                               .chain(args.into_iter());
+            let args = args.into_iter();
             self.gen_call_nargs(ret, (r8c::OpName::CLZCALL, &mut [0.into()]),
                                 0, args)?;
             self.env_pop(1).unwrap();
@@ -463,7 +468,7 @@ impl R8Compiler {
                                        &outside,
                                        prog.iter_mut())?;
         let num = LAMBDA_COUNT.fetch_add(1, Ordering::SeqCst);
-        let name = format!("<λ>::L{}:{}#{}", src.line, src.col, num);
+        let name = format!("<λ>::{num}");
         let mut num = 0;
         for (var, bound) in lowered.iter() {
             if let BoundVar::Local(idx) = bound {
@@ -474,7 +479,7 @@ impl R8Compiler {
         }
         spec.env = num;
         self.begin_unit();
-        self.enter_fn(args, spec)?;
+        self.enter_fn(args.iter().copied(), spec)?;
         for (var, bound) in lowered.iter() {
             if let BoundVar::Env(idx) = bound {
                 self.with_env(|env| env.defenv(*var, *idx as usize))?;
@@ -486,17 +491,21 @@ impl R8Compiler {
         }
         self.leave_fn();
         let pos = self.code.len() + self.code_offset;
-        let _sz = self.end_unit()?;
+        let sz = self.end_unit()?;
         self.unit().op(
             chasm!(ARGSPEC spec.nargs, spec.nopt, spec.env, spec.rest as u8)
         );
         self.unit().op(chasm!(CLZR pos, num));
+        self.new_fns.push((Sym::Str(name), spec, args, pos, sz));
         Ok(())
     }
 
     fn bt_let(&mut self, ret: bool, decls: Vec<VarDecl>, prog: Progn) -> Result<()> {
+        println!("let ...");
         let len = decls.len();
+        dbg!(&decls);
         for VarDecl(name, _src, val) in decls.into_iter() {
+            println!("(let {name} {val})");
             self.compile(true, *val)?;
             self.with_env(|env| env.defvar(name))?;
         }
@@ -504,7 +513,7 @@ impl R8Compiler {
         if ret {
             self.unit().op(chasm!(POPA 1, len));
         } else {
-            self.asm_op(chasm!(POP len));
+            self.unit().op(chasm!(POP len));
         }
         self.env_pop(len)
     }
@@ -752,7 +761,7 @@ impl R8Compiler {
             }};
         }
 
-        self.set_source(src.clone());
+        self.set_source(dbg!(src.clone()));
 
         match kind {
             M::Var(var) => match self.get_var_idx(var, &src)? {
@@ -772,9 +781,11 @@ impl R8Compiler {
             M::Defun(name, ArgList2(spec, names), progn) => {
                 let syms = names.iter().map(|(s,_)| *s).collect();
                 let (pos, sz) = self.lambda(spec, names, progn)?;
-                self.new_fns.push((name, spec, syms, pos, sz));
+                self.new_fns.push((Sym::Id(name), spec, syms, pos, sz));
             },
-            M::Let(decls, progn) => self.bt_let(ret, decls, progn)?,
+            M::Let(decls, progn) => {
+                self.bt_let(ret, decls, progn)?
+            },
             M::Loop(prog) => self.bt_loop(ret, prog)?,
             M::Break(arg) => self.bt_break(src, arg)?,
             M::Next => self.bt_loop_next(src)?,
@@ -839,7 +850,12 @@ impl R8Compiler {
         }
         vm.pmem.append(&mut self.code);
         vm.mem.env.append(&mut self.consts);
+        vm.srctbl.append(&mut self.srctbl);
         for (name, spec, names, pos, sz) in self.new_fns.drain(..) {
+            let name = match name {
+                Sym::Id(id) => id,
+                Sym::Str(s) => vm.mem.symdb.put(s),
+            };
             vm.defun(name, spec, names, pos, sz);
         }
         self.set_offsets(vm);

@@ -1364,9 +1364,9 @@ impl<'a> Excavator<'a> {
                        .see_also_sym(sym, src)
                        .op(Builtin::Apply.sym()));
         }
-        for (sym, src) in syms.iter().cloned() {
-            binds.push(VarDecl(sym, src.clone(), nil(src)))
-        }
+        // for (sym, src) in syms.iter().cloned() {
+        //     binds.push(VarDecl(sym, src.clone(), nil(src)))
+        // }
         if spec.rest {
             let (sym, src) = syms.last().cloned().unwrap();
             binds.push(VarDecl(sym, src.clone(), nil(src)))
@@ -1404,6 +1404,12 @@ impl<'a> Excavator<'a> {
                 },
                 _ => Ok(AST2 { src, kind: v.into() })
             }
+            PV::Sym(n) if self.mem.symdb.name(n)
+                                        .map(|n| n.starts_with(':'))
+                                        .unwrap_or_default() ||
+                          n == Builtin::Nil.sym() => {
+                             Ok(AST2 { src, kind: v.into() })
+                          }
             PV::Sym(var) => Ok(AST2 { src, kind: M::Var(var) }),
             _ => Ok(AST2 { src, kind: v.into() })
         }

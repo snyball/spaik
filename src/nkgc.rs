@@ -647,6 +647,7 @@ impl PV {
             UInt(_) => true,
             Real(_) => true,
             Sym(_) => true,
+            Bool(_) => true,
             Ref(p) => !matches!(unsafe{(*p).type_of()}, NkT::Cons),
             _ => false,
         }
