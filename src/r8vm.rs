@@ -4,7 +4,7 @@
 use comfy_table::Table;
 
 use crate::{
-    ast::{Value, ValueKind, Excavator},
+    ast::{Value, ValueKind, Excavator, PrinterVisitor},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
@@ -1338,7 +1338,9 @@ impl R8VM {
                         };
 
                         let excv = Excavator::new(&self.mem);
-                        let ast = excv.to_ast(v)?;
+                        let mut ast = excv.to_ast(v)?;
+                        let mut visitor = PrinterVisitor;
+                        ast.visit(&mut visitor)?;
                         cc.compile_top(ast)?;
                         cc.take(self)?;
 
@@ -2076,6 +2078,11 @@ impl R8VM {
                     let new_env = &self.mem.stack[start_idx..end_idx];
                     // Save environment
                     with_ref_mut!(lambda, VLambda(lambda) => {
+                        for (dst, var) in lambda.locals.iter_mut().zip(new_env.iter()) {
+                            *dst = *var;
+                        }
+                        Ok(())
+                    }, Lambda(lambda) => {
                         for (dst, var) in lambda.locals.iter_mut().zip(new_env.iter()) {
                             *dst = *var;
                         }

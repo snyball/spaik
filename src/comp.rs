@@ -1,13 +1,18 @@
+use std::sync::atomic::{Ordering, AtomicUsize};
+
 use chasm::LblMap;
+use fnv::{FnvHashSet, FnvHashMap};
 
 use crate::nkgc::{PV, SymID};
 use crate::r8vm::{R8VM, ArgSpec, r8c};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::Source;
-use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl};
+use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
 use crate::compile::*;
 use crate::error::Result;
+
+static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /**
  * Compile Value into R8C code.
@@ -31,6 +36,66 @@ struct LoopCtx {
     end: Lbl,
     ret: bool,
     height: usize,
+}
+
+type EnvMap = FnvHashMap<SymID, BoundVar>;
+type VarSet = FnvHashSet<(SymID, BoundVar)>;
+
+struct ClzScoper<'a> {
+    env: Env,
+    outside: &'a EnvMap,
+    lowered: VarSet,
+}
+
+impl Visitor for ClzScoper<'_> {
+    fn visit(&mut self, elem: &mut AST2) -> Result<()> {
+        match elem.kind {
+            M::SymApp(op, _) => if let Some(&var) = self.outside.get(&op) {
+                self.lowered.insert((op, var));
+            }
+            M::Let(ref vars, _) => {
+                let len = vars.len();
+                vars.iter().for_each(|VarDecl(var, _, _)| self.env.defvar(*var));
+                elem.visit(self)?;
+                self.env.pop(len);
+                return Ok(());
+            }
+            M::Lambda(ArgList2(_, ref vars), _) => {
+                let len = vars.len();
+                vars.iter().for_each(|(var, _)| self.env.defvar(*var));
+                elem.visit(self)?;
+                self.env.pop(len);
+                return Ok(());
+            }
+            M::Var(var) => {
+                if self.env.get_idx(var).is_some() {
+                } else if let Some(&bound) = self.outside.get(&var) {
+                    self.lowered.insert((var, bound));
+                } else if var == Builtin::Nil.sym() {
+                } else {
+                    return err_src!(elem.src.clone(), UndefinedVariable, var);
+                }
+            }
+            _ => ()
+        }
+        elem.visit(self)
+    }
+}
+
+impl ClzScoper<'_> {
+    pub fn scope<'a>(args: Vec<SymID>,
+                     outside: &EnvMap,
+                     body: impl Iterator<Item = &'a mut AST2>) -> Result<VarSet> {
+        let mut scoper = ClzScoper {
+            lowered: FnvHashSet::default(),
+            env: Env::new(args),
+            outside
+        };
+        for part in body {
+            part.visit(&mut scoper)?;
+        }
+        Ok(scoper.lowered)
+    }
 }
 
 impl R8Compiler {
@@ -387,6 +452,48 @@ impl R8Compiler {
         Ok((pos, sz))
     }
 
+    fn bt_lambda(&mut self,
+                 mut spec: ArgSpec,
+                 names: Vec<(SymID, Source)>,
+                 mut prog: Progn,
+                 src: Source) -> Result<()> {
+        let outside = self.with_env(|env| env.as_map())?;
+        let mut args: Vec<_> = names.iter().map(|(s,_)| *s).collect();
+        let lowered = ClzScoper::scope(args.clone(),
+                                       &outside,
+                                       prog.iter_mut())?;
+        let num = LAMBDA_COUNT.fetch_add(1, Ordering::SeqCst);
+        let name = format!("<λ>::L{}:{}#{}", src.line, src.col, num);
+        let mut num = 0;
+        for (var, bound) in lowered.iter() {
+            if let BoundVar::Local(idx) = bound {
+                args.push(*var);
+                self.unit().op(chasm!(MOV *idx));
+                num += 1;
+            }
+        }
+        spec.env = num;
+        self.begin_unit();
+        self.enter_fn(args, spec)?;
+        for (var, bound) in lowered.iter() {
+            if let BoundVar::Env(idx) = bound {
+                self.with_env(|env| env.defenv(*var, *idx as usize))?;
+            }
+        }
+        self.compile_seq(true, prog)?;
+        if spec.has_env() {
+            self.asm_op(chasm!(CLZAV spec.sum_nargs() + 1, spec.env));
+        }
+        self.leave_fn();
+        let pos = self.code.len() + self.code_offset;
+        let _sz = self.end_unit()?;
+        self.unit().op(
+            chasm!(ARGSPEC spec.nargs, spec.nopt, spec.env, spec.rest as u8)
+        );
+        self.unit().op(chasm!(CLZR pos, num));
+        Ok(())
+    }
+
     fn bt_let(&mut self, ret: bool, decls: Vec<VarDecl>, prog: Progn) -> Result<()> {
         let len = decls.len();
         for VarDecl(name, _src, val) in decls.into_iter() {
@@ -658,11 +765,8 @@ impl R8Compiler {
             M::Progn(seq) => self.compile_seq(ret, seq.into_iter())?,
             M::SymApp(op, args) => self.bt_sym_app(ret, src, op, args)?,
             M::App(op, args) => self.gapp(ret, *op, args)?,
-            M::Lambda(ArgList2(spec, names), progn) => {
-                let (pos, _sz) = self.lambda(spec, names, progn)?;
-                asm!(ARGSPEC spec.nargs, spec.nopt, spec.env, spec.rest as u8);
-                asm!(CLZR pos as i32, 0);
-            },
+            M::Lambda(ArgList2(spec, names), progn) =>
+                self.bt_lambda(spec, names, progn, src)?,
             M::Defvar(_sym, _init) => todo!(),
             M::Set(dst, init) => self.bt_set(ret, src, dst, *init)?,
             M::Defun(name, ArgList2(spec, names), progn) => {

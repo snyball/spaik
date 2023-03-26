@@ -1376,6 +1376,11 @@ impl Arena {
                 self.push(*v);
             }
             Ok(())
+        }, Lambda(Lambda { locals, .. }) => {
+            for v in locals.iter() {
+                self.push(*v);
+            }
+            Ok(())
         })
     }
 

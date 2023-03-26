@@ -890,6 +890,65 @@ impl AST2 {
             _ => unknown,
         }
     }
+
+    pub fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()> {
+        macro_rules! visit {
+            ($($arg:expr),*) => {{
+                $(visitor.visit(&mut *$arg)?;)*
+            }};
+        }
+        macro_rules! vvisit {
+            ($arg:expr) => {{
+                for sub in $arg.iter_mut() { visitor.visit(sub)? }
+            }};
+        }
+        match self.kind {
+            M::If(ref mut a, None, None) => visit!(a),
+            M::If(ref mut a, None, Some(ref mut c)) => visit!(a, c),
+            M::If(ref mut a, Some(ref mut b), None) => visit!(a, b),
+            M::If(ref mut a, Some(ref mut b), Some(ref mut c)) => visit!(a, b, c),
+            M::Atom(a) => (),
+            M::Progn(ref mut prog) => vvisit!(prog),
+            M::SymApp(_, ref mut prog) => vvisit!(prog),
+            M::App(ref mut prog, ref mut progn) => { visit!(prog); vvisit!(progn) },
+            M::Lambda(_, ref mut progn) => vvisit!(progn),
+            M::Defvar(_, ref mut init) => visit!(init),
+            M::Set(_, ref mut init) => visit!(init),
+            M::Defun(_, _, ref mut progn) => vvisit!(progn),
+            M::Let(_, ref mut progn) => vvisit!(progn),
+            M::Loop(ref mut progn) => vvisit!(progn),
+            M::Break(Some(ref mut init)) => visit!(init),
+            M::Break(None) => (),
+            M::Next => (),
+            M::Throw(ref mut init) => visit!(init),
+            M::Var(_) => (),
+            M::Not(ref mut x) => visit!(x),
+            M::And(ref mut xs) => vvisit!(xs),
+            M::Or(ref mut xs) => vvisit!(xs),
+            M::Gt(ref mut x, ref mut y) => visit!(x, y),
+            M::Gte(ref mut x, ref mut y) => visit!(x, y),
+            M::Lt(ref mut x, ref mut y) => visit!(x, y),
+            M::Lte(ref mut x, ref mut y) => visit!(x, y),
+            M::Eq(ref mut x, ref mut y) => visit!(x, y),
+            M::Eqp(ref mut x, ref mut y) => visit!(x, y),
+            M::Add(ref mut xs) => vvisit!(xs),
+            M::Sub(ref mut xs) => vvisit!(xs),
+            M::Mul(ref mut xs) => vvisit!(xs),
+            M::Div(ref mut xs) => vvisit!(xs),
+            M::NextIter(ref mut x) => visit!(x),
+            M::Car(ref mut x) => visit!(x),
+            M::Cdr(ref mut x) => visit!(x),
+            M::Cons(ref mut x, ref mut y) => visit!(x, y),
+            M::List(ref mut xs) => vvisit!(xs),
+            M::Append(ref mut xs) => vvisit!(xs),
+            M::Vector(ref mut xs) => vvisit!(xs),
+            M::Push(ref mut x, ref mut y) => visit!(x, y),
+            M::Get(ref mut x, ref mut y) => visit!(x, y),
+            M::Pop(ref mut x) => visit!(x),
+            M::CallCC(ref mut x) => visit!(x),
+        }
+        Ok(())
+    }
 }
 
 impl Display for AST2 {
@@ -1348,6 +1407,19 @@ impl<'a> Excavator<'a> {
             PV::Sym(var) => Ok(AST2 { src, kind: M::Var(var) }),
             _ => Ok(AST2 { src, kind: v.into() })
         }
+    }
+}
+
+pub trait Visitor: Sized {
+    fn visit(&mut self, elem: &mut AST2) -> Result<()>;
+}
+
+pub struct PrinterVisitor;
+
+impl Visitor for PrinterVisitor {
+    fn visit(&mut self, elem: &mut AST2) -> Result<()> {
+        println!("{elem}");
+        elem.visit(self)
     }
 }
 
