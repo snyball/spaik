@@ -743,14 +743,14 @@ impl R8Compiler {
         }
 
         macro_rules! opcall {
-            ($op:ident $($arg:expr),*) => {
+            ($op:ident $($arg:expr),*) => {{
                 if ret {
                     $(self.compile(true, $arg)?;)*
-                    asm!($op);
+                        asm!($op);
                 } else {
                     $(self.compile(false, $arg)?;)*
                 }
-            };
+            }};
         }
 
         macro_rules! vopcall {
@@ -802,14 +802,18 @@ impl R8Compiler {
             M::Lte(x, y) => opcall!(LTE *x, *y),
             M::Eq(x, y) => opcall!(EQL *x, *y),
             M::Eqp(x, y) => opcall!(EQLP *x, *y),
-            M::Add(args) => self.binop(Builtin::Add, src, chasm!(ADD),
-                                       None, Some(chasm!(PUSH 0)), args)?,
-            M::Sub(args) => self.binop(Builtin::Sub, src, chasm!(SUB),
-                                       Some(chasm!(PUSH 0)), None, args)?,
-            M::Mul(args) => self.binop(Builtin::Mul, src, chasm!(MUL),
-                                       None, Some(chasm!(PUSH 1)), args)?,
-            M::Div(args) => self.binop(Builtin::Div, src, chasm!(DIV),
-                                       Some(chasm!(PUSHF 1.0_f32.to_bits())), None, args)?,
+            M::Add(args) if ret => self.binop(Builtin::Add, src, chasm!(ADD),
+                                              None, Some(chasm!(PUSH 0)), args)?,
+            M::Add(args) => vopcall!(NIL args),
+            M::Sub(args) if ret => self.binop(Builtin::Sub, src, chasm!(SUB),
+                                              Some(chasm!(PUSH 0)), None, args)?,
+            M::Sub(args) => vopcall!(NIL args),
+            M::Mul(args) if ret => self.binop(Builtin::Mul, src, chasm!(MUL),
+                                              None, Some(chasm!(PUSH 1)), args)?,
+            M::Mul(args) => vopcall!(NIL args),
+            M::Div(args) if ret => self.binop(Builtin::Div, src, chasm!(DIV),
+                                              Some(chasm!(PUSHF 1.0_f32.to_bits())), None, args)?,
+            M::Div(args) => vopcall!(NIL args),
             M::And(args) => self.bt_and(ret, args)?,
             M::Or(args) => self.bt_or(ret, args)?,
 
