@@ -1388,6 +1388,9 @@ impl R8VM {
                 }
             }
         }
+        if !close.is_empty() {
+            bail!(UnclosedDelimiter { open: "(" })
+        }
         assert_no_trailing!();
         let srcs = srcs.into_iter()
                        .map(|lc| lc.into_source(file.clone()));
