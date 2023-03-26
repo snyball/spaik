@@ -13,7 +13,7 @@ use crate::sexpr_parse::{tokenize, Fragment, standard_lisp_tok_tree, string_pars
 use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::mem::replace;
+use std::mem::{replace, take};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
@@ -227,7 +227,7 @@ impl fmt::Display for SymID {
 }
 
 /// Primitive values
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub enum PV {
     Ref(*mut NkAtom),
     Sym(SymID),
@@ -236,6 +236,7 @@ pub enum PV {
     Real(f32),
     Bool(bool),
     Char(char),
+    #[default]
     Nil,
 }
 
@@ -294,15 +295,15 @@ impl TryFrom<PV> for SymID {
     }
 }
 
-impl fmt::Display for PV {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self as &dyn LispFmt)
+impl From<bool> for PV {
+    fn from(value: bool) -> Self {
+        PV::Bool(value)
     }
 }
 
-impl Default for PV {
-    fn default() -> PV {
-        PV::Nil
+impl fmt::Display for PV {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self as &dyn LispFmt)
     }
 }
 
@@ -475,10 +476,7 @@ impl PV {
 
     #[inline]
     pub fn tag(&self, mem: &mut Arena, tag: Source) {
-        match *self {
-            PV::Ref(p) => mem.tag(p, tag),
-            _ => ()
-        }
+        if let PV::Ref(p) = *self { mem.tag(p, tag) }
     }
 
     pub fn bt_type_of(&self) -> Builtin {
@@ -562,7 +560,7 @@ impl PV {
         PVIter { item: *self }
     }
 
-    pub fn iter_src<'a, 'b>(&'a self, nk: &'b Arena, src: Source) -> PVIterSrc<'b> {
+    pub fn iter_src<'b>(&self, nk: &'b Arena, src: Source) -> PVIterSrc<'b> {
         PVIterSrc { item: *self, src, nk }
     }
 
@@ -649,10 +647,7 @@ impl PV {
             UInt(_) => true,
             Real(_) => true,
             Sym(_) => true,
-            Ref(p) => match unsafe{(*p).type_of()} {
-                NkT::Cons => false,
-                _ => true,
-            }
+            Ref(p) => !matches!(unsafe{(*p).type_of()}, NkT::Cons),
             _ => false,
         }
     }
@@ -796,7 +791,7 @@ impl PartialOrd for PV {
         match (*self, *other) {
             (PV::Int(x), PV::Real(y)) => (x as f32).partial_cmp(&y),
             (PV::Int(x), PV::Int(y)) => Some(x.cmp(&y)),
-            (PV::Real(x), PV::Real(y)) => (x as f32).partial_cmp(&y),
+            (PV::Real(x), PV::Real(y)) => x.partial_cmp(&y),
             (PV::Real(x), PV::Int(y)) => x.partial_cmp(&(y as f32)),
             (PV::Ref(l), PV::Ref(r)) => unsafe {
                 let tl = (*l).type_of();
@@ -1028,9 +1023,9 @@ pub struct PVIterSrc<'a> {
     src: Source,
 }
 
-impl Into<PV> for PVIterSrc<'_> {
-    fn into(self) -> PV {
-        self.item
+impl From<PVIterSrc<'_>> for PV {
+    fn from(value: PVIterSrc<'_>) -> Self {
+        value.item
     }
 }
 
@@ -1062,9 +1057,9 @@ pub struct PVIter {
     item: PV,
 }
 
-impl Into<PV> for PVIter {
-    fn into(self) -> PV {
-        self.item
+impl From<PVIter> for PV {
+    fn from(value: PVIter) -> Self {
+        value.item
     }
 }
 
@@ -1615,7 +1610,7 @@ impl Arena {
             let Token { line, col, text } = tok;
             match text {
                 "(" => {
-                    pmods.push(replace(&mut mods, vec![]));
+                    pmods.push(take(&mut mods));
                     close.push(num + 1);
                     num = 0;
                 }
@@ -1764,7 +1759,7 @@ impl Arena {
             panic!("Reordering forbidden");
         }
 
-        let tags = self.tags.iter().map(|(ptr, _)| {
+        let tags = self.tags.keys().map(|ptr| {
             (*ptr, self.nuke.reloc().get(*ptr))
         }).collect::<Vec<_>>();
         for (old, new) in tags.into_iter() {

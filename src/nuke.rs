@@ -1,7 +1,7 @@
 //! The Nuclear Allocator
 
 use crate::error::Error;
-use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons, Lambda, VLambda};
+use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 use crate::subrs::{IntoLisp, FromLisp};
@@ -780,7 +780,7 @@ impl NkAtom {
 
     #[inline]
     pub fn color(&self) -> Color {
-        unsafe { mem::transmute(self.meta.color() as u8) }
+        unsafe { mem::transmute(self.meta.color()) }
     }
 
     #[inline]
@@ -800,7 +800,7 @@ impl NkAtom {
 
     #[inline]
     pub fn type_of(&self) -> NkT {
-        unsafe { mem::transmute(self.meta.typ() as u8) }
+        unsafe { mem::transmute(self.meta.typ()) }
     }
 
     pub fn full_size(&self) -> usize {
@@ -1320,7 +1320,7 @@ impl PtrMap {
     }
 
     pub fn len(&self) -> usize {
-        self.0.len() as usize
+        self.0.len()
     }
 
     pub fn push<A, B>(&mut self, from: *const A, to: *const B) {

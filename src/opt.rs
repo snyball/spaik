@@ -1,16 +1,10 @@
+#![allow(dead_code)]
+
 use crate::{ast::{AST2, M}, nkgc::PV, error::Source, Builtin};
 use crate::error::Error;
 
-struct ConstEval {
-}
-
-enum ConstValue<T> {
-    Decided(T),
-    Undecided
-}
-
 impl AST2 {
-    fn eval(&mut self, force: bool) -> Result<bool, Error> {
+    pub fn eval(&mut self, force: bool) -> Result<bool, Error> {
         let mut change = false;
         macro_rules! eval {
             ($item:expr) => { change = change || $item.eval(force)? }

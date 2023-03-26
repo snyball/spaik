@@ -13,6 +13,7 @@ use std::ptr;
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to create an SPV reference-counter
 pub trait FromLisp<T>: Sized {
+    #[allow(clippy::wrong_self_convention)]
     fn from_lisp(self, mem: &mut Arena) -> Result<T, Error>;
 }
 
@@ -148,7 +149,7 @@ impl IntoLisp for String {
 }
 
 impl IntoLisp for SymID {
-    fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
+    fn into_pv(self, _mem: &mut Arena) -> Result<PV, Error> {
         Ok(PV::Sym(self))
     }
 }

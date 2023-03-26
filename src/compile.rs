@@ -57,6 +57,10 @@ impl Env {
         self.vars.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn empty() -> Env {
         Env::new(vec![])
     }
@@ -1125,7 +1129,7 @@ impl<'a> R8Compiler<'a> {
                    var: SymID,
                    src: &Source) -> Result<BoundVar, Error> {
         if let Some(idx) = self.with_env(|env| env.get_idx(var))? {
-            return Ok(BoundVar::Local(idx as u32));
+            return Ok(BoundVar::Local(idx));
         }
         for env in self.estack.iter().rev() {
             if let Some(idx) = env.get_env_idx(var) {

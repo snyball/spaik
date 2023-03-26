@@ -514,13 +514,13 @@ pub struct Promise<T> {
 impl<T> Deref for Promise<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        &*self.msg
+        &self.msg
     }
 }
 
 impl<T> DerefMut for Promise<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.msg
+        &mut self.msg
     }
 }
 

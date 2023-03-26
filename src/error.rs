@@ -299,10 +299,6 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         if num.is_one() {""} else {"s"}
     }
 
-    fn plur(one: &'static str, many: &'static str, num: impl Integer) -> &'static str {
-        if num.is_one() {one} else {many}
-    }
-
     match &err.ty {
         IllegalInstruction { inst } =>
             write!(f, "Illegal instruction: <{}>", inst)?,

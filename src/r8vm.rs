@@ -17,7 +17,7 @@ use crate::{
     sym_db::SymDB, FmtErr, tok::Token, limits,
 };
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace}, ptr, slice, sync::Mutex};
+use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr, slice, sync::Mutex};
 
 chasm_def! {
     r8c:
@@ -166,44 +166,6 @@ impl RuntimeError {
 
     pub fn err<T>(msg: String) -> Result<T, RuntimeError> {
         Err(RuntimeError::new(msg))
-    }
-}
-
-macro_rules! comma_list_len {
-    ( $head:pat ) => { 1 };
-    ( $head:pat, $( $tail:pat ),+ ) => { 1 + comma_list_len!($($tail),+) }
-}
-
-type StackOpFn<T> = fn(&mut Vec<T>) -> Result<(), Error>;
-
-macro_rules! stack_op {
-    ( $name:literal [ $( $arg:pat ),+ ] => $action:block ) => {
-        |st: &mut Vec<PV>| -> Result<(), Error> {
-            const NARGS: usize = comma_list_len!($($arg),+);
-            const EXPR_FMT: &'static str = stringify!($($arg),+);
-            if st.len() < NARGS {
-                return Err(RuntimeError::new(format!(
-                    "Not enough arguments for: {}", EXPR_FMT)).into());
-            }
-            let slice = &st[st.len() - NARGS..];
-            #[allow(unused_imports)]
-            use PV::*;
-            let res: Result<_, Error> = match slice {
-                [$($arg),+] => { $action }
-                _ => {
-                    let types = slice.iter()
-                                     .map(|v| v.bt_type_of())
-                                     .map(|v| v.get_str())
-                                     .collect::<Vec<_>>()
-                                     .join(" ");
-                    return Err(RuntimeError::new(
-                        format!("Illegal arguments: ({} {})", $name, types)).into())
-                },
-            };
-            st.truncate(st.len() - NARGS);
-            st.push(PV::from(res?));
-            Ok(())
-        }
     }
 }
 
@@ -633,9 +595,9 @@ impl TryFrom<PV> for ArgSpec {
     }
 }
 
-impl Into<PV> for ArgSpec {
-    fn into(self) -> PV {
-        PV::UInt(unsafe { std::mem::transmute(self) })
+impl From<ArgSpec> for PV {
+    fn from(value: ArgSpec) -> Self {
+        PV::UInt(unsafe { std::mem::transmute(value) })
     }
 }
 
@@ -802,25 +764,6 @@ impl Default for R8VM {
     }
 }
 
-macro_rules! def_stack_op {
-    ($($name:ident($lisp_name:literal) : [ $($match:pat),+ ] => $body:block;)+) => {
-        $(const $name: StackOpFn<PV> = stack_op!($lisp_name [$($match),+] => $body);)+
-    };
-}
-
-def_stack_op! {
-    GT_OP(">"):   [x, y] => { x.gt(y) };
-    GTE_OP(">="): [x, y] => { x.gte(y) };
-    LT_OP("<"):   [x, y] => { x.lt(y) };
-    LTE_OP("<="): [x, y] => { x.lte(y) };
-    ADD_OP("+"):  [x, y] => { x.add(y) };
-    SUB_OP("-"):  [x, y] => { x.sub(y) };
-    DIV_OP("/"):  [x, y] => { x.div(y) };
-    MUL_OP("*"):  [x, y] => { x.mul(y) };
-    EQL_OP("="):  [x, y] => { Ok(Bool(x == y)) };
-    EQLP_OP("eq?"):  [x, y] => { Ok(Bool(x.equalp(*y))) };
-}
-
 struct Regs<const N: usize> {
     vals: [PV; N],
     idx: u8,
@@ -936,8 +879,8 @@ impl Args for &[PV] {
     }
 
     fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error> {
-        for arg in self.into_iter().copied() {
-            mem.push(arg);
+        for arg in self.iter() {
+            mem.push(*arg);
         }
         Ok(())
     }
@@ -956,8 +899,8 @@ impl<const N: usize> Args for &[PV; N] {
     }
 
     fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error> {
-        for arg in self.into_iter().copied() {
-            mem.push(arg);
+        for arg in self.iter() {
+            mem.push(*arg);
         }
         Ok(())
     }
@@ -1251,14 +1194,14 @@ impl R8VM {
                      .make_iter()
                      .map_err(|e| e.op(Builtin::SysLoad.sym()))?;
         for (i, p) in it.enumerate() {
-            path.push_str(with_ref!(p, String(s) => {Ok(&*s)})
+            path.push_str(with_ref!(p, String(s) => {Ok(&(*s)[..])})
                           .map_err(|e| e.argn(i as u32)
                                         .op(Builtin::SysLoadPath.sym()))?);
-            path.push_str("/");
+            path.push('/');
             path.push_str(&sym_name);
             let extd = path.len();
             for ext in &[".sp", ".spk", ".lisp"] {
-                path.push_str(&ext);
+                path.push_str(ext);
                 if let Ok(src) = fs::read_to_string(&path) {
                     return self.load_with(path, lib, src);
                 }
@@ -1367,7 +1310,7 @@ impl R8VM {
             match text {
                 "(" => {
                     src_idx.push(srcs.len());
-                    pmods.push(replace(&mut mods, vec![]));
+                    pmods.push(take(&mut mods));
                     close.push(num + 1);
                     dots.push(dot);
                     dot = false;
@@ -1382,7 +1325,7 @@ impl R8VM {
                     if close.len() == 1 {
                         let v = if mods.is_empty() {
                             let idx = self.mem.stack.len() - num as usize;
-                            let stack = replace(&mut self.mem.stack, vec![]);
+                            let stack = take(&mut self.mem.stack);
                             for (pv, src) in stack[idx..].iter().zip(cur_srcs) {
                                 pv.tag(&mut self.mem, src);
                             }
@@ -1445,7 +1388,7 @@ impl R8VM {
                 return Err(error!(UnexpectedDottedList,).op(sym!(Apply)))
             }
             let func = self.funcs.get(&m.into()).ok_or("No such function")?;
-            if let Err(e) = func.args.check(m.into(), (n - 1) as u16) {
+            if let Err(e) = func.args.check(m, (n - 1) as u16) {
                 self.mem.popn(n as usize);
                 return Err(e);
             }
@@ -1507,7 +1450,7 @@ impl R8VM {
                     self.mem.push(arg);
                     nargs += 1;
                 }
-                if let Err(e) = func.args.check(m.into(), nargs) {
+                if let Err(e) = func.args.check(m, nargs) {
                     self.mem.popn(nargs as usize);
                     self.frame = frame;
                     return Err(e);
@@ -2159,10 +2102,26 @@ impl R8VM {
                 }
 
                 // Math
-                ADD() => ADD_OP(&mut self.mem.stack)?,
-                SUB() => SUB_OP(&mut self.mem.stack)?,
-                DIV() => DIV_OP(&mut self.mem.stack)?,
-                MUL() => MUL_OP(&mut self.mem.stack)?,
+                ADD() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.add(&y)?);
+                },
+                SUB() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.sub(&y)?);
+                },
+                DIV() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.div(&y)?);
+                },
+                MUL() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.mul(&y)?);
+                },
                 INC(v, d) => match self.mem.stack[self.frame + (*v as usize)] {
                     PV::Int(ref mut x) => *x += i64::from(*d),
                     PV::Real(ref mut x) => *x += f32::from(*d),
@@ -2175,12 +2134,36 @@ impl R8VM {
                 },
 
                 // Logic
-                EQL() => EQL_OP(&mut self.mem.stack)?,
-                EQLP() => EQLP_OP(&mut self.mem.stack)?,
-                GT() => GT_OP(&mut self.mem.stack)?,
-                GTE() => GTE_OP(&mut self.mem.stack)?,
-                LT() => LT_OP(&mut self.mem.stack)?,
-                LTE() => LTE_OP(&mut self.mem.stack)?,
+                EQL() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.eq(&y).into());
+                },
+                EQLP() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.equalp(y).into());
+                },
+                GT() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.gt(&y)?);
+                },
+                GTE() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.gte(&y)?);
+                },
+                LT() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.lt(&y)?);
+                },
+                LTE() => {
+                    let y = self.mem.stack.pop().unwrap_unchecked();
+                    let x = self.mem.stack.pop().unwrap_unchecked();
+                    self.mem.stack.push(x.lte(&y)?);
+                },
                 NOT() => {
                     let v = !bool::from(self.mem.pop()?);
                     self.mem.push(PV::Bool(v));
@@ -2301,8 +2284,6 @@ impl R8VM {
                 }
 
                 HCF() => return Ok(()),
-
-                x => unimplemented!("{x}"),
             }
             self.mem.collect();
         };
@@ -2491,10 +2472,10 @@ impl R8VM {
                  func.args)?;
         for i in start..start+(func.sz as isize) {
             let op = self.pmem[i as usize];
-            if let Some(s) = labels.get(&(((i as isize) - start) as u32)) {
+            if let Some(s) = labels.get(&((i - start) as u32)) {
                 writeln!(stdout, "{}:", s.to_string().yellow().bold())?;
             }
-            let (name, args) = fmt_special(i as isize, op).unwrap_or(
+            let (name, args) = fmt_special(i, op).unwrap_or(
                 (op.name().to_lowercase(),
                  op.args().iter().map(|v| v.to_string()).collect())
             );

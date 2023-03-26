@@ -16,7 +16,6 @@ use crate::compile::arg_parse;
 use crate::sym_db::{SymDB, SYM_DB};
 use std::fmt;
 use std::fmt::Display;
-use std::fmt::write;
 use std::iter;
 use std::ptr;
 
@@ -662,10 +661,6 @@ fn list(xs: Vec<AST2>, src: Source) -> Prog {
     }
 }
 
-fn nilp(src: Source) -> Progn {
-    vec![AST2 { src, kind: M::Atom(PV::Nil) }]
-}
-
 #[derive(Debug, Clone)]
 pub struct ArgList2(pub ArgSpec,
                     pub Vec<(SymID, Source)>);
@@ -780,7 +775,7 @@ impl Display for M {
             },
             M::Lambda(ArgList2(_, args), progn) => {
                 write!(f, "(lambda (")?;
-                let mut it = args.into_iter();
+                let mut it = args.iter();
                 it.next().map(|arg| write!(f, "{arg:?}"));
                 for arg in it {
                     write!(f, " {arg:?}")?;
@@ -797,7 +792,7 @@ impl Display for M {
             },
             M::Let(decls, progn) => {
                 write!(f, "(let (")?;
-                for (i, VarDecl(sym, _, init)) in decls.into_iter().enumerate() {
+                for (i, VarDecl(sym, _, init)) in decls.iter().enumerate() {
                     if i > 0 { write!(f, " ")?; }
                     write!(f, "({sym} {init})")?;
                 }
@@ -868,6 +863,7 @@ impl AST2 {
         AST2 { src, kind: M::Atom(PV::Sym(sym)) }
     }
 
+    #[allow(dead_code)]
     pub fn is_atom(&self) -> bool {
         if let AST2 { kind: M::Atom(pv), .. } = self {
             pv.is_atom()
@@ -967,7 +963,7 @@ impl<'a> Excavator<'a> {
 
     fn cav(&self, v: PV) -> Result<AST2> {
         let src = if let PV::Ref(p) = v {
-            self.mem.get_tag(p).cloned().unwrap_or_else(|| Source::none())
+            self.mem.get_tag(p).cloned().unwrap_or_else(Source::none)
         } else {
             Source::none()
         };
@@ -1035,7 +1031,7 @@ impl<'a> Excavator<'a> {
             let mut prev = nx;
             let mut cmps = vec![AST2 { src: src.clone(), kind: icmp },
                                 AST2 { src: src.clone(), kind: jcmp }];
-            while let Some(nx) = it.next() {
+            for nx in it {
                 let nx = Box::new(self.dig(nx, src.clone())?);
                 cmps.push(AST2 { src: src.clone(), kind: cmp(prev, nx.clone()) });
                 prev = nx;
@@ -1046,6 +1042,7 @@ impl<'a> Excavator<'a> {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn two_and_maybe_one_arg(&self, args: PV, src: Source)
                              -> Result<(Box<AST2>, Box<AST2>, Option<Box<AST2>>)>
     {
@@ -1067,15 +1064,6 @@ impl<'a> Excavator<'a> {
             Err(err(3 + extra)())
         } else {
             Ok((arg0, arg1, arg2))
-        }
-    }
-
-    fn wrap_no_args(&self, kind: M, args: PV, src: Source) -> Result<AST2> {
-        let got_num = args.iter().count() as u32;
-        if got_num == 0 {
-            Ok(AST2 { kind, src })
-        } else {
-            Err(error!(ArgError, expect: ArgSpec::normal(0), got_num))
         }
     }
 
@@ -1317,8 +1305,7 @@ impl<'a> Excavator<'a> {
                        .see_also_sym(sym, src)
                        .op(Builtin::Apply.sym()));
         }
-        for i in argn..spec.nopt() {
-            let (sym, src) = syms[i].clone();
+        for (sym, src) in syms.iter().cloned() {
             binds.push(VarDecl(sym, src.clone(), nil(src)))
         }
         if spec.rest {

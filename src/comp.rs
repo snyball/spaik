@@ -33,11 +33,6 @@ struct LoopCtx {
     height: usize,
 }
 
-pub type Linked = (Vec<R8C>,
-                   LblLookup,
-                   Vec<PV>,
-                   SourceList);
-
 impl R8Compiler {
     pub fn new(vm: &R8VM) -> R8Compiler {
         let units = vec![ChASM::new()];
@@ -82,17 +77,6 @@ impl R8Compiler {
                 self.source_tbl.push((idx, src));
             }
         }
-    }
-
-    pub fn globals(&self) -> Option<impl Iterator<Item = (&SymID, &usize)>> {
-        self.estack.first().map(|s| s.iter_statics())
-    }
-
-    pub fn link(mut self) -> Result<Linked> {
-        let len = self.unit().len() as isize;
-        let tbl = Default::default();
-        let (asm, labels) = self.units.pop().unwrap().link::<R8C>(&tbl, len)?;
-        Ok((asm, labels, self.consts, self.source_tbl))
     }
 
     pub fn enter_fn(&mut self,
@@ -169,7 +153,7 @@ impl R8Compiler {
         self.with_env(|env| env.anon())
     }
 
-    fn pushit<'z>(&mut self, args: impl Iterator<Item = AST2>) -> Result<usize> {
+    fn pushit(&mut self, args: impl Iterator<Item = AST2>) -> Result<usize> {
         let mut nargs = 0;
         for arg in args {
             nargs += 1;
@@ -255,16 +239,16 @@ impl R8Compiler {
         Ok(())
     }
 
-    fn compile_seq<'z>(&mut self,
-                       ret: bool,
-                       seq: impl IntoIterator<Item = AST2>
+    fn compile_seq(&mut self,
+                   ret: bool,
+                   seq: impl IntoIterator<Item = AST2>
     ) -> Result<()> {
         let mut seq = seq.into_iter();
         let Some(mut last) = seq.next() else {
             if ret { self.asm_op(chasm!(NIL)) }
             return Ok(())
         };
-        while let Some(nx) = seq.next() {
+        for nx in seq {
             self.compile(false, last)?;
             last = nx;
         }
@@ -304,7 +288,7 @@ impl R8Compiler {
                    var: SymID,
                    src: &Source) -> Result<BoundVar> {
         if let Some(idx) = self.with_env(|env| env.get_idx(var))? {
-            return Ok(BoundVar::Local(idx as u32));
+            return Ok(BoundVar::Local(idx));
         }
         for env in self.estack.iter().rev() {
             if let Some(idx) = env.get_env_idx(var) {
@@ -346,7 +330,7 @@ impl R8Compiler {
             return Err(error!(TypeError,
                               expect: Builtin::Lambda.sym(),
                               got: op.type_of().sym())
-                       .src(op.src.clone()).argn(0).op(Builtin::Apply.sym()))
+                       .src(op.src).argn(0).op(Builtin::Apply.sym()))
         }
         self.compile(true, op)?;
         self.with_env(|env| env.anon())?; // closure
@@ -355,16 +339,11 @@ impl R8Compiler {
         self.env_pop(1)
     }
 
-    pub fn take_consts(&mut self, into: &mut Vec<PV>) {
-        self.const_offset += self.consts.len();
-        into.extend(self.consts.drain(..))
-    }
-
     pub fn bt_set(&mut self,
                   ret: bool,
                   src: Source,
                   dst: SymID,
-                  init: Prog) -> Result<()> {
+                  init: AST2) -> Result<()> {
         let bound = self.get_var_idx(dst, &src)?;
         if let BoundVar::Local(idx) = bound {
             let mut inplace_op = |op, val: i64| {
@@ -390,7 +369,7 @@ impl R8Compiler {
                 _ => ()
             }
         }
-        self.compile(true, *init)?;
+        self.compile(true, init)?;
         if ret { self.asm_op(chasm!(DUP)) }
         // NOTE!: Currently the variable index has no reason to change
         //        between the call to get_var_idx and asm_set_var_idx.
@@ -493,7 +472,7 @@ impl R8Compiler {
                 self.unit().op(pre);
                 self.with_env(|env| env.anon())?;
                 self.compile(true, fst)?;
-                self.unit().op(bop.clone());
+                self.unit().op(bop);
             } else {
                 self.push(fst)?;
                 for arg in it {
@@ -680,8 +659,8 @@ impl R8Compiler {
                 asm!(ARGSPEC spec.nargs, spec.nopt, spec.env, spec.rest as u8);
                 asm!(CLZR pos as i32, 0);
             },
-            M::Defvar(sym, init) => todo!(),
-            M::Set(dst, init) => self.bt_set(ret, src, dst, init)?,
+            M::Defvar(_sym, _init) => todo!(),
+            M::Set(dst, init) => self.bt_set(ret, src, dst, *init)?,
             M::Defun(name, ArgList2(spec, names), progn) => {
                 let syms = names.iter().map(|(s,_)| *s).collect();
                 let (pos, sz) = self.lambda(spec, names, progn)?;
@@ -738,8 +717,8 @@ impl R8Compiler {
     }
 
     pub fn take(&mut self, vm: &mut R8VM) {
-        vm.pmem.extend(self.code.drain(..));
-        vm.mem.env.extend(self.consts.drain(..));
+        vm.pmem.append(&mut self.code);
+        vm.mem.env.append(&mut self.consts);
         for (name, spec, names, pos, sz) in self.new_fns.drain(..) {
             vm.defun(name, spec, names, pos, sz);
         }

@@ -3,7 +3,6 @@ use crate::chasm::ASMOp;
 use crate::sintern::SIntern;
 use crate::nuke::NkSum;
 use serde::{Serialize, Deserialize};
-use std::convert::TryInto;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct SymEntry {

@@ -2,7 +2,7 @@
 
 #[macro_export]
 macro_rules! sym {
-    ($arg:ident) => { crate::compile::Builtin::$arg.sym() };
+    ($arg:ident) => { $crate::compile::Builtin::$arg.sym() };
 }
 
 #[macro_export]

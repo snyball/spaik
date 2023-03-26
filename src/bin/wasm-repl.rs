@@ -101,15 +101,18 @@ pub extern fn alloc(sz: usize) -> *mut u8 {
     }
 }
 
+/**
+ * # Safety
+ *
+ * lmao
+ */
 #[no_mangle]
-pub extern fn dealloc(ptr: *mut u8, sz: usize) {
-    unsafe {
-        std::alloc::dealloc(ptr, Layout::from_size_align(sz, 1).unwrap());
-    }
+pub unsafe extern fn dealloc(ptr: *mut u8, sz: usize) {
+    std::alloc::dealloc(ptr, Layout::from_size_align(sz, 1).unwrap());
 }
 
 pub fn panic_hook(info: &panic::PanicInfo) {
-    let msg = format!("Error: {}", info.to_string());
+    let msg = format!("Error: {info}");
     unsafe {
         console_error(msg.as_ptr() as *const c_char, msg.len());
     }

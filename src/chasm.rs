@@ -298,7 +298,7 @@ impl ChASM {
                              .into_iter()
                              .map(|arg| match arg {
                                  Arg::Lbl(Lbl(c, s)) =>
-                                     labels.get(&(c as u32))
+                                     labels.get(&c)
                                            .map(|pos| ASMPV::isize(*pos - (i as isize)))
                                            .ok_or_else(|| link_err(s, c)),
                                  Arg::ASMPV(pv) => Ok(pv),
@@ -334,7 +334,7 @@ impl ChASM {
                                  .into_iter()
                                  .map(|arg| match arg {
                                      Arg::Lbl(Lbl(c, s)) =>
-                                         labels.get(&(c as u32))
+                                         labels.get(&c)
                                                .map(|pos| ASMPV::isize(*pos - (i as isize)))
                                                .ok_or_else(|| link_err(s, c)),
                                      Arg::ASMPV(pv) => Ok(pv),
@@ -367,7 +367,7 @@ impl ChASM {
     }
 
     pub fn mark(&mut self, lbl: Lbl) {
-        self.marks.insert(lbl.0 as u32, self.ops.len() as isize);
+        self.marks.insert(lbl.0, self.ops.len() as isize);
     }
 
     pub fn pop(&mut self) {
@@ -376,6 +376,10 @@ impl ChASM {
 
     pub fn len(&self) -> usize {
         self.ops.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
