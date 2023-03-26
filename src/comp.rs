@@ -807,6 +807,10 @@ impl R8Compiler {
                 let syms = names.iter().map(|(s,_)| *s).collect();
                 let (pos, sz) = self.lambda(spec, names, progn)?;
                 self.new_fns.push((Sym::Id(name), spec, syms, pos, sz));
+                if ret {
+                    asm!(ARGSPEC spec.nargs, spec.nopt, 0, spec.rest as u8);
+                    asm!(CLZR pos, 0);
+                }
             },
             M::Let(decls, progn) => {
                 self.bt_let(ret, decls, progn)?
