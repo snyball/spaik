@@ -219,6 +219,7 @@ builtins! {
     (Exit, "exit"),
     (Len, "len"),
     (Lambda, "lambda"),
+    (GreekLambda, "λ"),
     (Call, "call"),
     (Apply, "apply"), // TODO!!!
     (True, "true"),

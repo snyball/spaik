@@ -134,13 +134,11 @@ macro_rules! chasm_def {
             #[allow(unused_imports)]
             use $crate::chasm::*;
 
-            #[repr(u8)]
             #[derive(Debug, Clone, Copy, PartialEq, Eq)]
             pub enum Op {
                 $($en($($targ),*)),+
             }
 
-            #[repr(u8)]
             #[derive(Debug, Clone, Copy, PartialEq, Eq)]
             pub enum OpName {
                 $($en),+
@@ -202,9 +200,11 @@ macro_rules! chasm_def {
 
             fn write(&self, out: &mut dyn std::io::Write) -> Result<usize, std::io::Error> {
                 let mut sz = std::mem::size_of::<$crate::chasm::OpCode>();
-                let op: $crate::chasm::OpCode = unsafe {
+                let dscr: u64 = unsafe {
                     std::mem::transmute(std::mem::discriminant(self))
                 };
+                assert!(dscr < 256);
+                let op: $crate::chasm::OpCode = dscr as u8;
                 out.write_all(&op.to_ne_bytes())?;
                 match self {
                     $($name::Op::$en($($arg),*) => {

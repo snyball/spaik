@@ -21,7 +21,6 @@ pub struct R8Compiler {
     loops: Vec<LoopCtx>,
     const_offset: usize,
     consts: Vec<PV>,
-    // fns: FnvHashMap<SymID, usize>,
     code_offset: usize,
     new_fns: Vec<(SymID, ArgSpec, Vec<SymID>, usize, usize)>,
 }
@@ -400,11 +399,11 @@ impl R8Compiler {
     }
 
     fn lambda(&mut self, spec: ArgSpec, names: Vec<(SymID, Source)>, prog: Progn) -> Result<(usize, usize)> {
-        let pos = self.code.len() + self.code_offset;
         self.begin_unit();
         self.enter_fn(names.into_iter().map(|(s,_)| s), spec)?;
         self.compile_seq(true, prog)?;
         self.leave_fn();
+        let pos = self.code.len() + self.code_offset;
         let sz = self.end_unit()?;
         Ok((pos, sz))
     }
@@ -626,6 +625,7 @@ impl R8Compiler {
             PV::Int(i) => chasm!(PUSH i),
             PV::Real(r) => chasm!(PUSHF r.to_bits()),
             PV::Sym(s) => chasm!(SYM s),
+            PV::Nil => chasm!(NIL),
             pv => {
                 let idx = self.const_offset + self.consts.len();
                 self.consts.push(pv);
@@ -637,11 +637,15 @@ impl R8Compiler {
     }
 
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
+        macro_rules! asm {
+            ($($args:tt)*) => {{ self.unit().op(chasm!($($args)*)); }};
+        }
+
         macro_rules! opcall {
             ($op:ident $($arg:expr),*) => {
                 if ret {
                     $(self.compile(true, $arg)?;)*
-                    self.unit().op(chasm!($op));
+                    asm!($op);
                 } else {
                     $(self.compile(false, $arg)?;)*
                 }
@@ -654,14 +658,8 @@ impl R8Compiler {
                 for arg in $argv.into_iter() {
                     self.compile(ret, arg)?;
                 }
-                if ret {
-                    self.unit().op(chasm!($op nargs));
-                }
+                if ret { asm!($op nargs) }
             }};
-        }
-
-        macro_rules! asm {
-            ($($args:tt)*) => {{ self.unit().op(chasm!($($args)*)); }};
         }
 
         self.set_source(src.clone());
@@ -679,7 +677,8 @@ impl R8Compiler {
             M::App(op, args) => self.gapp(ret, *op, args)?,
             M::Lambda(ArgList2(spec, names), progn) => {
                 let (pos, _sz) = self.lambda(spec, names, progn)?;
-                asm!(CLZR pos as i32, spec.nargs);
+                asm!(ARGSPEC spec.nargs, spec.nopt, spec.env, spec.rest as u8);
+                asm!(CLZR pos as i32, 0);
             },
             M::Defvar(sym, init) => todo!(),
             M::Set(dst, init) => self.bt_set(ret, src, dst, init)?,

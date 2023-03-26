@@ -83,6 +83,7 @@ chasm_def! {
     // Value creation
     PUSH(val: i32),
     PUSHF(val: u32),
+    ARGSPEC(nargs: u16, nopt: u16, nenv: u16, rest: u8),
     SYM(id: SymIDInt),
     CHAR(c: u32),
     CLZ(sym: SymIDInt, nenv: u16),
@@ -317,6 +318,14 @@ mod sysfns {
             let s = tostring(vm, *x);
             vm.println(&s)?;
             Ok(*x)
+        }
+
+        fn sys_freeze(&mut self, vm: &mut R8VM, args: (dst)) -> Result<PV, Error> {
+            let module = vm.freeze();
+            let file = std::fs::File::create(dst.str().as_ref())?;
+            let mut wr = std::io::BufWriter::new(file);
+            bincode::serialize_into(&mut wr, &module).unwrap();
+            Ok(PV::Nil)
         }
 
         fn print(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
@@ -609,11 +618,30 @@ mod sysfns {
 pub type ArgInt = u16;
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+#[repr(C)]
 pub struct ArgSpec {
     pub nargs: ArgInt,
     pub nopt: ArgInt,
-    pub rest: bool,
     pub env: ArgInt,
+    pub rest: bool,
+}
+
+impl TryFrom<PV> for ArgSpec {
+    type Error = Error;
+
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        let PV::UInt(val) = value else {bail!(TypeError {
+            expect: Builtin::UnsignedInteger.sym(),
+            got: value.type_of(),
+        })};
+        Ok(unsafe { std::mem::transmute(val) })
+    }
+}
+
+impl Into<PV> for ArgSpec {
+    fn into(self) -> PV {
+        PV::UInt(unsafe { std::mem::transmute(self) })
+    }
 }
 
 impl fmt::Display for ArgSpec {
@@ -1057,6 +1085,7 @@ impl R8VM {
         addfn!(read);
         addfn!(macroexpand);
         addfn!("make-symbol", make_symbol);
+        addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
         addfn!("type-of", type_of);
         addfn!("sym-id", sym_id);
@@ -1349,6 +1378,7 @@ impl R8VM {
                     dot = false;
                     num = 0;
                 }
+                ")" if close.is_empty() => bail!(TrailingDelimiter { close: ")" }),
                 ")" => {
                     assert_no_trailing!(Meta::Source(LineCol { line, col }));
                     let cur_srcs = srcs.drain(src_idx.pop().unwrap()..)
@@ -1890,6 +1920,19 @@ impl R8VM {
                        - nargs as usize
                        - has_env as usize;
             Ok(self.ret_to(pos))
+        }, Lambda(lambda) => {
+            let sym = Builtin::GreekLambda.sym();
+            lambda.args.check(sym, nargs)?;
+            let has_env = lambda.args.has_env();
+            if !has_env {
+                self.mem.stack.drain(idx..(idx+1)).for_each(drop); // drain gang
+            }
+            self.call_pre(ip);
+            self.frame = self.mem.stack.len()
+                       - 2
+                       - nargs as usize
+                       - has_env as usize;
+            Ok(self.ret_to(lambda.pos))
         }, Subroutine(subr) => {
             // SAFETY: The Subr trait is marked unsafe, read the associated
             //         safety documentation in Subr as to why this is safe. The
@@ -2072,7 +2115,10 @@ impl R8VM {
                 // Value creation
                 NIL() => self.mem.push(PV::Nil),
                 CONSTREF(n) => self.consts[*n as usize].push_to(&mut self.mem),
-                INST(n) => todo!(),
+                INST(idx) => {
+                    let pv = self.mem.get_env(*idx as usize).deep_clone(&mut self.mem);
+                    self.mem.push(pv);
+                },
                 BOOL(i) => self.mem.push(PV::Bool(*i != 0)),
                 CLZAV(nargs, nenv) => {
                     let start_idx = self.frame + *nargs as usize;
@@ -2087,12 +2133,25 @@ impl R8VM {
                         Ok(())
                     })?;
                 }
+                ARGSPEC(_nargs, _nopt, _env, _rest) => {}
+                CLZR(pos, nenv) => {
+                    dbg!(std::mem::size_of::<PV>());
+                    dbg!(std::mem::size_of::<r8c::Op>());
+                    let ARGSPEC(nargs, nopt, env, rest) = *ip.sub(2) else {
+                        panic!("CLZR without ARGSPEC");
+                    };
+                    let spec = ArgSpec { nargs, nopt, env, rest: rest == 1 };
+                    let to = self.mem.stack.len();
+                    let from = to - *nenv as usize;
+                    let locals = self.mem.stack.drain(from..to).collect();
+                    self.mem.push_new(nkgc::Lambda { pos: *pos as usize,
+                                                     args: spec,
+                                                     locals });
+                }
                 CLZ(sym, nenv) => {
                     let to = self.mem.stack.len();
                     let from = to - *nenv as usize;
-                    let locals: Vec<_> = self.mem.stack
-                                                 .drain(from..to)
-                                                 .collect();
+                    let locals = self.mem.stack.drain(from..to).collect();
                     let name = (*sym).into();
                     let args = self.funcs
                                    .get(sym)

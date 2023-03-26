@@ -632,6 +632,12 @@ macro_rules! err {
     };
 }
 
+macro_rules! bail {
+    ($kind:ident { $($init:tt)* } ) => {
+        return Err((crate::error::ErrorKind::$kind { $($init)* }).into())
+    };
+}
+
 macro_rules! error {
     ($kind:ident, $($init:tt)* ) => {
         crate::error::Error {

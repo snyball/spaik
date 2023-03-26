@@ -439,6 +439,14 @@ impl PV {
         self.bt_type_of().sym()
     }
 
+    pub fn str(&self) -> Cow<str> {
+        with_ref!(*self, String(s) => {
+            Ok(Cow::Borrowed(&s[..]))
+        }).unwrap_or_else(|_| {
+            Cow::from(self.to_string())
+        })
+    }
+
     pub fn inner(self) -> Result<PV, Error> {
         let expect = ArgSpec::normal(1);
         let err = |n| move || error!(ArgError, expect, got_num: n);
@@ -1153,9 +1161,9 @@ impl Traceable for Stream {
 // TODO: Should this be a DST? With locals stored inline?
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct Lambda {
-    code: usize,
-    pub(crate) locals: Vec<PV>,
-    args: ArgSpec,
+    pub pos: usize,
+    pub locals: Vec<PV>,
+    pub args: ArgSpec,
 }
 
 impl Traceable for Lambda {
@@ -1180,7 +1188,7 @@ impl LispFmt for Lambda {
         write!(f, "(λ '(")?;
         self.locals.iter().lisp_fmt(db, visited, f)?;
         write!(f, ") @")?;
-        write!(f, "{})", self.code)
+        write!(f, "{})", self.pos)
     }
 }
 
