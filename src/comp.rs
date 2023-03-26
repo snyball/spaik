@@ -795,8 +795,8 @@ impl R8Compiler {
                                        Some(chasm!(PUSH 0)), None, args)?,
             M::Mul(args) => self.binop(Builtin::Mul, src, chasm!(MUL),
                                        None, Some(chasm!(PUSH 1)), args)?,
-            M::Div(args) => self.binop(Builtin::Div, src, chasm!(SUB),
-                                       Some(chasm!(PUSH 1)), None, args)?,
+            M::Div(args) => self.binop(Builtin::Div, src, chasm!(DIV),
+                                       Some(chasm!(PUSHF 1.0_f32.to_bits())), None, args)?,
             M::And(args) => self.bt_and(ret, args)?,
             M::Or(args) => self.bt_or(ret, args)?,
 
