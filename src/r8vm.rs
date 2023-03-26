@@ -4,7 +4,7 @@
 use comfy_table::Table;
 
 use crate::{
-    ast::{Value, ValueKind, Excavator, PrinterVisitor},
+    ast::{Value, ValueKind, Excavator, PrinterVisitor, AST2, M},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
@@ -396,6 +396,11 @@ mod sysfns {
 
         fn dump_all_fns(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
             featurefn!("repl", vm.dump_all_fns()?)?;
+            Ok(PV::Nil)
+        }
+
+        fn dump_code(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+            featurefn!("repl", vm.dump_code()?)?;
             Ok(PV::Nil)
         }
 
@@ -803,9 +808,26 @@ impl<const N: usize> Regs<N> {
     }
 }
 
+macro_rules! call_with {
+    ($vm:expr, $pos:expr, $nargs:expr, $body:block) => {{
+        let frame = $vm.frame;
+        $vm.frame = $vm.mem.stack.len();
+        $body
+        $vm.mem.push(PV::UInt(0));
+        $vm.mem.push(PV::UInt(frame));
+        unsafe {
+            $vm.run_from_unwind($pos)?;
+        }
+        let res = $vm.mem.pop().expect(
+            "Function did not return a value"
+        );
+
+        res
+    }};
+}
+
 // FIXME: The error handling in this macro fucks up the stack.
-#[allow(unused_macros)]
-macro_rules! vm_call_with {
+macro_rules! symcall_with {
     ($vm:expr, $func:expr, $nargs:expr, $body:block) => {{
         let func = $vm.funcs.get(&$func.into()).ok_or("No such function")?;
         func.args.check($func.into(), $nargs.try_into().unwrap())?;
@@ -1038,6 +1060,7 @@ impl R8VM {
 
         // Debug
         addfn!("dump-fns", dump_all_fns);
+        addfn!("dump-code", dump_code);
         addfn!("dump-macro-tbl", dump_macro_tbl);
         addfn!("dump-sym-tbl", dump_sym_tbl);
         addfn!("dump-env-tbl", dump_env_tbl);
@@ -1096,7 +1119,7 @@ impl R8VM {
             error!(UndefinedFunction, name)
         )?;
         let nargs = args.len();
-        Ok(vm_call_with!(self, name, nargs, { enm.pushargs(args, &mut self.mem)? }))
+        Ok(symcall_with!(self, name, nargs, { enm.pushargs(args, &mut self.mem)? }))
     }
 
     pub fn minimize(&mut self) {
@@ -1316,7 +1339,9 @@ impl R8VM {
                 }
             };
         }
-        for tok in toks.into_iter() {
+        let mut tokit = toks.into_iter().peekable();
+        let mut modfn_pos = 0;
+        while let Some(tok) = tokit.next() {
             let Token { line, col, text } = tok;
             srcs.push(LineCol { line, col });
             match text {
@@ -1350,10 +1375,12 @@ impl R8VM {
                         };
 
                         let excv = Excavator::new(&self.mem);
-                        let mut ast = excv.to_ast(v)?;
-                        let mut visitor = PrinterVisitor;
-                        ast.visit(&mut visitor)?;
-                        cc.compile_top(ast)?;
+                        let ast = excv.to_ast(v)?;
+                        if tokit.peek().is_some() {
+                            cc.compile_top(ast)?;
+                        } else {
+                            modfn_pos = cc.compile_top_tail(ast)?;
+                        }
                         cc.take(self)?;
 
                         self.mem.push(v)
@@ -1384,6 +1411,15 @@ impl R8VM {
                         PV::Sym(self.put_sym(text))
                     };
                     wrap!(self.mem.push(pv));
+
+                    if tokit.peek().is_none() && close.is_empty() {
+                        modfn_pos = cc.compile_top_tail(
+                            AST2 { src: Source::new(line, col, file.clone()),
+                                   kind: M::Atom(pv) }
+                        )?;
+                        cc.take(self)?;
+                    }
+
                     num += 1;
                 }
             }
@@ -1392,10 +1428,12 @@ impl R8VM {
             bail!(UnclosedDelimiter { open: "(" })
         }
         assert_no_trailing!();
-        let srcs = srcs.into_iter()
-                       .map(|lc| lc.into_source(file.clone()));
-        self.mem.list_dot_srcs(num, srcs, false);
-        Ok(self.mem.pop().expect("Unable to pop finalized list"))
+        self.mem.popn(num as usize);
+        if modfn_pos != 0 {
+            Ok(call_with!(self, modfn_pos, 0, {}))
+        } else {
+            Ok(PV::Nil)
+        }
     }
 
     pub fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV, Error> {
@@ -1706,7 +1744,7 @@ impl R8VM {
            .map(|sym| {
                let args = ast.args().collect::<Vec<_>>();
                let mut asts = vec![];
-               let pv = vm_call_with!(self, sym, args.len(), {
+               let pv = symcall_with!(self, sym, args.len(), {
                    for arg in args.iter() {
                        let pv = self.mem.push_ast(arg);
                        asts.push(self.mem.make_extref(pv));
@@ -2386,7 +2424,7 @@ impl R8VM {
      * - `args` : Arguments that should be passed.
      */
     pub fn call(&mut self, sym: SymID, args: impl AsArgs) -> Result<PV, Error> {
-        Ok(vm_call_with!(self, sym, args.inner_nargs(), {
+        Ok(symcall_with!(self, sym, args.inner_nargs(), {
             args.inner_pusharg(&mut self.mem)?
         }))
     }
@@ -2411,7 +2449,7 @@ impl R8VM {
     }
 
     pub fn raw_call(&mut self, sym: SymID, args: &[PV]) -> Result<PV, Error> {
-        Ok(vm_call_with!(self, sym, args.len(), {
+        Ok(symcall_with!(self, sym, args.len(), {
             for arg in args.iter() {
                 self.mem.push(*arg);
             }
@@ -2460,7 +2498,7 @@ impl R8VM {
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_all_code(&self) -> Result<(), Error> {
+    pub fn dump_code(&self) -> Result<(), Error> {
         for (i, op) in self.pmem.iter().enumerate() {
             println!("{i:0>8}    {op}")
         }

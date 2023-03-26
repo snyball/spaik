@@ -13,6 +13,7 @@ use crate::{compile::*, SymDB};
 use crate::error::Result;
 
 static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
+static MODULE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 pub enum Sym {
     Id(SymID),
@@ -105,7 +106,6 @@ impl ClzScoper<'_> {
 
 impl R8Compiler {
     pub fn new(vm: &R8VM) -> R8Compiler {
-        let units = vec![ChASM::new()];
         let mut cc = R8Compiler {
             const_offset: 0,
             new_fns: Default::default(),
@@ -115,9 +115,12 @@ impl R8Compiler {
             loops: Default::default(),
             srctbl: Default::default(),
             code: Default::default(),
+            units: Default::default(),
             code_offset: 0,
-            units,
         };
+        cc.begin_unit();
+        let none: Option<SymID> = None;
+        cc.enter_fn(none.into_iter(), ArgSpec::none());
         cc.set_offsets(vm);
         cc
     }
@@ -152,7 +155,7 @@ impl R8Compiler {
 
     pub fn enter_fn(&mut self,
                     args: impl Iterator<Item = SymID>,
-                    spec: ArgSpec) -> Result<()> {
+                    spec: ArgSpec) {
         let mut env = Env::none();
         if spec.has_env() {
             env.defvar(Builtin::LambdaObject.sym());
@@ -181,7 +184,6 @@ impl R8Compiler {
             }
             self.unit().op(chasm!(RST));
         }
-        Ok(())
     }
 
     fn leave_fn(&mut self) {
@@ -449,7 +451,7 @@ impl R8Compiler {
 
     fn lambda(&mut self, spec: ArgSpec, names: Vec<(SymID, Source)>, prog: Progn) -> Result<(usize, usize)> {
         self.begin_unit();
-        self.enter_fn(names.into_iter().map(|(s,_)| s), spec)?;
+        self.enter_fn(names.into_iter().map(|(s,_)| s), spec);
         self.compile_seq(true, prog)?;
         self.leave_fn();
         let pos = self.code.len() + self.code_offset;
@@ -479,7 +481,7 @@ impl R8Compiler {
         }
         spec.env = num;
         self.begin_unit();
-        self.enter_fn(args.iter().copied(), spec)?;
+        self.enter_fn(args.iter().copied(), spec);
         for (var, bound) in lowered.iter() {
             if let BoundVar::Env(idx) = bound {
                 self.with_env(|env| env.defenv(*var, *idx as usize))?;
@@ -833,6 +835,19 @@ impl R8Compiler {
 
     pub fn compile_top(&mut self, code: AST2) -> Result<()> {
         self.compile(false, code)
+    }
+
+    pub fn compile_top_tail(&mut self, code: AST2) -> Result<usize> {
+        self.compile(true, code)?;
+        self.leave_fn();
+        let pos = self.code.len() + self.code_offset;
+        let sz = self.end_unit()?;
+        let num = MODULE_COUNT.fetch_add(1, Ordering::SeqCst);
+        self.new_fns.push((Sym::Str(format!("<σ>::{num}")),
+                           ArgSpec::none(),
+                           vec![],
+                           pos, sz));
+        Ok(pos)
     }
 
     pub fn take(&mut self, vm: &mut R8VM) -> Result<()> {
