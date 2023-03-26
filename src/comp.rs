@@ -1,3 +1,5 @@
+//! SPAIK v2 Compiler
+
 use std::sync::atomic::{Ordering, AtomicUsize};
 
 use chasm::LblMap;
