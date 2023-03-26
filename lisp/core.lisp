@@ -5,11 +5,12 @@
 (set-macro! defun <ξ>::defun)
 
 (defun <ξ>::defmacro (name args &body body)
-  (let ((mac-fn-name (make-symbol (concat '<ξ>:: name))))
-    `(progn
-       (define (,mac-fn-name ,@args)
-         ,@body)
-       (set-macro! ,name ,mac-fn-name))))
+  ((lambda (mac-fn-name)
+     `(progn
+        (define (,mac-fn-name ,@args)
+          ,@body)
+        (set-macro! ,name ,mac-fn-name)))
+   (make-symbol (concat '<ξ>:: name))))
 (set-macro! defmacro <ξ>::defmacro)
 
 (defun head (x)
@@ -72,6 +73,10 @@
   (cdr (cdr (cdr (car x)))))
 (defun cddddr (x)
   (cdr (cdr (cdr (cdr x)))))
+
+(defun map (f xs)
+  (if xs (cons (f (car xs))
+               (map f (cdr xs)))))
 
 (defmacro while (cnd &body body)
   `(loop
@@ -193,11 +198,6 @@
     (range (x (a b))
       (set xs (cons x xs)))
     (reverse xs)))
-
-(defun map (f xs)
-  (when xs
-    (cons (f (car xs))
-          (map f (cdr xs)))))
 
 (defun filter (f xs)
   (when xs
@@ -328,6 +328,7 @@
          (in-sub false)
          (span (vec))
          (out '(concat)))
+    (_println in)
     (dolist (c w)
       (when (= c begin)
         (set out (cons (join span) out))
@@ -356,9 +357,9 @@
       `(_println ,w ,@in)))
 
 (defun _print (x)
-  (println x))
+  (print x))
 
-(defmacro println (w &rest in)
+(defmacro print (w &rest in)
   (if (string? w)
       `(_print (fmt ,w ,@in))
       `(_print ,w ,@in)))
