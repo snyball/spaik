@@ -608,11 +608,6 @@ mod sysfns {
         }
         fn name(&self) -> &'static str { "dump-stack" }
     }
-
-    // struct Fns;
-    // #[spaikfn(Fns)]
-    // fn push(v: &mut Vec<PV>) {
-    // }
 }
 
 pub type ArgInt = u16;
