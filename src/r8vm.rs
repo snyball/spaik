@@ -2241,9 +2241,6 @@ impl R8VM {
                     };
                 }
                 CALL(pos, nargs) => {
-                    if self.mem.stack.len() > 3000 {
-                        panic!("Stack Overflow");
-                    }
                     let pre_ip = self.ip_delta(ip);
                     self.call_pre(ip);
                     self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
