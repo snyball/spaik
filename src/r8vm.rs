@@ -17,7 +17,7 @@ use crate::{
     sym_db::SymDB, FmtErr, tok::Token, limits,
 };
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::HashMap, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr, slice, sync::Mutex};
+use std::{io, fs, borrow::Cow, cmp, collections::{HashMap, hash_map::Entry}, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr, slice, sync::Mutex};
 
 chasm_def! {
     r8c:
@@ -54,7 +54,7 @@ chasm_def! {
     JNZ(dip: i32),
     // JSYM(dip: i32, sym: SymIDInt),
     // JNSYM(dip: i32, sym: SymIDInt),
-    // CALL(dip: i32, nargs: u16),
+    CALL(pos: u32, nargs: u16),
     VCALL(func: SymIDInt, nargs: u16),
     // TODO: APPLY()
     CLZCALL(nargs: u16),
@@ -687,9 +687,9 @@ impl ArgSpec {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Func {
-    pos: usize,
-    sz: usize,
-    args: ArgSpec,
+    pub pos: usize,
+    pub sz: usize,
+    pub args: ArgSpec,
 }
 
 impl Func {
@@ -1340,7 +1340,7 @@ impl R8VM {
                         let excv = Excavator::new(&self.mem);
                         let ast = excv.to_ast(v)?;
                         cc.compile_top(ast)?;
-                        cc.take(self);
+                        cc.take(self)?;
 
                         self.mem.push(v)
                     } else {
@@ -1719,7 +1719,20 @@ impl R8VM {
                  pos: usize,
                  sz: usize)
     {
-        self.funcs.insert(name.into(), Func { pos, sz, args });
+        match self.funcs.entry(name.into()) {
+            Entry::Occupied(mut e) => {
+                let ppos = e.get().pos as u32;
+                use r8c::Op::*;
+                for op in self.pmem.iter_mut() {
+                    *op = match *op {
+                        CALL(p, nargs) if p == ppos => CALL(pos as u32, nargs),
+                        op => op,
+                    }
+                }
+                e.insert(Func { pos, sz, args });
+            },
+            Entry::Vacant(e) => { e.insert(Func { pos, sz, args }); }
+        }
         self.func_arg_syms.insert(name, arg_names);
     }
 
@@ -2033,9 +2046,7 @@ impl R8VM {
                         if idx >= v.len() {
                             err!(IndexError, idx)
                         } else {
-                            let p = &mut v[idx] as *mut PV;
-                            *p = val;
-                            // v[idx] = val;
+                            *v.get_unchecked_mut(idx) = val;
                             Ok(())
                         }
                     }).map_err(|e| e.op(Builtin::Set.sym()))?;
@@ -2073,8 +2084,6 @@ impl R8VM {
                 }
                 ARGSPEC(_nargs, _nopt, _env, _rest) => {}
                 CLZR(pos, nenv) => {
-                    dbg!(std::mem::size_of::<PV>());
-                    dbg!(std::mem::size_of::<r8c::Op>());
                     let ARGSPEC(nargs, nopt, env, rest) = *ip.sub(2) else {
                         panic!("CLZR without ARGSPEC");
                     };
@@ -2193,6 +2202,7 @@ impl R8VM {
                         Some(func) => {
                             func.args.check((*sym).into(), *nargs)?;
                             let pos = func.pos;
+                            (*ip.sub(1)) = CALL(pos as u32, *nargs);
                             self.call_pre(ip);
                             self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
                             ip = self.ret_to(pos);
@@ -2210,6 +2220,11 @@ impl R8VM {
                             }.into())
                         }
                     };
+                }
+                CALL(pos, nargs) => {
+                    self.call_pre(ip);
+                    self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
+                    ip = self.ret_to(*pos as usize);
                 }
                 RET() => {
                     let rv = self.mem.pop()?;

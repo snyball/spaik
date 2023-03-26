@@ -608,7 +608,11 @@ impl R8Compiler {
             pv => {
                 let idx = self.const_offset + self.consts.len();
                 self.consts.push(pv);
-                chasm!(INST idx)
+                if pv.bt_type_of() == Builtin::String {
+                    chasm!(GET idx) // Strings are immutable, no need to clone
+                } else {
+                    chasm!(INST idx)
+                }
             }
         };
         self.unit().op(op);
@@ -716,13 +720,26 @@ impl R8Compiler {
         self.compile(false, code)
     }
 
-    pub fn take(&mut self, vm: &mut R8VM) {
+    pub fn take(&mut self, vm: &mut R8VM) -> Result<()> {
+        for op in self.code.iter_mut() {
+            *op = match *op {
+                R8C::VCALL(sym, nargs) => match vm.get_func(sym.into()) {
+                    Some(funk) => {
+                        funk.args.check(sym.into(), nargs)?;
+                        R8C::CALL(funk.pos.try_into()?, nargs)
+                    }
+                    None => *op
+                },
+                op => op
+            };
+        }
         vm.pmem.append(&mut self.code);
         vm.mem.env.append(&mut self.consts);
         for (name, spec, names, pos, sz) in self.new_fns.drain(..) {
             vm.defun(name, spec, names, pos, sz);
         }
         self.set_offsets(vm);
+        Ok(())
     }
 
     fn set_offsets(&mut self, vm: &R8VM) {
