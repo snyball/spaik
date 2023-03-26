@@ -761,7 +761,7 @@ impl R8Compiler {
             }};
         }
 
-        self.set_source(dbg!(src.clone()));
+        self.set_source(src.clone());
 
         match kind {
             M::Var(var) => match self.get_var_idx(var, &src)? {
