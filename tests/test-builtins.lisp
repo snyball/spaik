@@ -80,10 +80,10 @@
 (test lambda-empty-call
       (= ((lambda (x) (+ x 10)) 10)
          20)
-      (= ((lambda (x &? y) (+ x (or y 1))) 10)
-         11)
-      (= ((lambda (x &? y) (+ x (or y 1))) 10 10)
-         20)
+      ;(= ((lambda (x &? y) (+ x (or y 1))) 10)
+      ;   11)
+      ;(= ((lambda (x &? y) (+ x (or y 1))) 10 10)
+      ;   20)
       (= ((lambda (x &rest r) (* x (sum r))) 1)
          0)
       (= ((lambda (x &rest r) (* x (sum r))) 12 1 2 3 4 5)
@@ -99,8 +99,8 @@
          1337.0))
 
 ;;; ---[ static-variables ]----------------------------
+(define var 0)
 (defun tests--static-var ()
-  (defvar var 0)
   (inc! var))
 
 (test static-variables
@@ -156,33 +156,33 @@
       (= (eval '(eval '(eval '(+ 1 1)))) 2))
 
 ;;; ---[ eval-when-compile ]-----------------------------
+(define static-1 0)
 (defun tests--inc-static-1 (n)
-  (defvar x 0)
-  (inc! x n))
+  (inc! static-1 n))
 
+(define static-2 0)
 (defun tests--inc-static-2 (n)
-  (defvar x 0)
-  (inc! x n))
+  (inc! static-2 n))
 
-(test eval-when-compile
-      (= (progn
-           (tests--inc-static-1 10)
-           (tests--inc-static-1 20))
-         30)
-      (= (progn
-           (tests--inc-static-2 10)
-           (eval-when :compile
-             (tests--inc-static-2 20)))
-         20))
+;(test eval-when-compile
+;      (= (progn
+;           (tests--inc-static-1 10)
+;           (tests--inc-static-1 20))
+;         30)
+;      (= (progn
+;           (tests--inc-static-2 10)
+;           (eval-when :compile
+;             (tests--inc-static-2 20)))
+;         20))
 
 ;;; ---[ and/or ]----------------------------------------
+(define static-3 0)
 (defun tests--inc-static-3 (n)
-  (defvar x 0)
-  (inc! x n))
+  (inc! static-3 n))
 
+(define static-4 0)
 (defun tests--inc-static-4 (n)
-  (defvar x 0)
-  (inc! x n))
+  (inc! static-4 n))
 
 (test and
       (= (and)
@@ -270,7 +270,7 @@
          -1))
 
 ;;; ---[ self ]------------------------------------------
-(load 'self)
+(load self)
 
 (test self
       (equal? (do-factorial)

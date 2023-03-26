@@ -91,8 +91,7 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
         let test_src = fs::read_to_string(&path)?;
         let path_s = path.to_str().expect("utf8 error");
         let sym = vm.sym_id(path_s);
-        let entry = vm.load_with(path_s, sym, &test_src).fmterr(&vm)?;
-        match vm.call(entry, ()) {
+        match vm.read_compile_from(path_s) {
             Ok(_) => println!("Loaded {}", path.display()),
             Err(e) => {
                 println!("Error when loading {}", path.display());

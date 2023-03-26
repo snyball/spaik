@@ -1569,7 +1569,7 @@ impl Arena {
     }
 
     pub fn from_top(&self, d: usize) -> PV {
-        self.stack[self.stack.len() - 1 - d]
+        self.stack[self.stack.len() - d]
     }
 
     pub fn peek(&self) -> Result<PV, RuntimeError> {

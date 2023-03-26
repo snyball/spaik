@@ -78,6 +78,11 @@
   (if xs (cons (f (car xs))
                (map f (cdr xs)))))
 
+(defmacro let (defs &rest body)
+  `((lambda ,(map (lambda (x) (car x)) defs)
+      ,@body)
+    ,@(map (lambda (x) (car (cdr x))) defs)))
+
 (defmacro while (cnd &body body)
   `(loop
     (if (not ,cnd)
@@ -97,13 +102,10 @@
   (let ((num (or n 1)))
     `(set ,var (- ,var ,num))))
 
-(defmacro defvar (name value)
-  `(intr::define-static ,name ,value))
-
+(define <β>::num 0)
 (defun gensym ()
-  (defvar num-syms 0)
-  (let ((sym (make-symbol (concat "<β>::#" num-syms))))
-    (inc! num-syms)
+  (let ((sym (make-symbol (concat "<β>::" <β>::num))))
+    (inc! <β>::num)
     sym))
 
 (defmacro when (cnd &body if-true)
@@ -136,13 +138,6 @@
 
 (defmacro let* (pairs &body body)
   (let*/helper pairs body))
-
-(defun _load (lib)
-  (load lib))
-
-(defmacro load (lib)
-  `((eval (eval-when :compile
-            (_load ,lib)))))
 
 (defmacro iter-end? (res)
   `(= ,res '<ζ>::iter-stop))
@@ -328,7 +323,6 @@
          (in-sub false)
          (span (vec))
          (out '(concat)))
-    (_println in)
     (dolist (c w)
       (when (= c begin)
         (set out (cons (join span) out))
@@ -386,10 +380,18 @@
   (let ((ret nil)
         (body `(progn ,@b)))
     (dolist (cnd conds)
+      (when (= cnd :compile) (println "evaling") (eval body))
       (case cnd
         (:compile (progn (println "evaling") (eval body)))
         (:eval (set ret body))))
     ret))
+
+(defun _load (lib)
+  (load lib))
+
+(defmacro load (lib)
+  (_load lib)
+  nil)
 
 (defmacro dbg (obj)
   `(_println (concat ',obj ": " ,obj)))

@@ -734,12 +734,12 @@ pub struct R8VM {
     pub(crate) pmem: Vec<r8c::Op>,
     consts: Vec<NkSum>,
     pub(crate) mem: Arena,
-    globals: FnvHashMap<SymID, usize>,
+    pub(crate) globals: FnvHashMap<SymID, usize>,
 
     // Named locations/objects
     breaks: FnvHashMap<usize, r8c::Op>,
     macros: FnvHashMap<SymIDInt, SymID>,
-    funcs: FnvHashMap<SymIDInt, Func>,
+    pub(crate) funcs: FnvHashMap<SymIDInt, Func>,
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
     func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
     pub(crate) srctbl: SourceList,
@@ -1089,10 +1089,10 @@ impl R8VM {
         // Iter
         addfn!(iter);
 
-        vm.eval("(define (<ξ>::set-macro! macro fn) (set-macro macro fn) nil)")
-          .unwrap();
-        vm.eval("(set-macro 'set-macro! '<ξ>::set-macro!)")
-          .unwrap();
+        let src = Some(Cow::Borrowed("<ζ>::core"));
+        vm.read_compile("(define (<ξ>::set-macro! macro fn) (set-macro macro fn) nil)",
+                        src.clone()).unwrap();
+        vm.read_compile("(set-macro 'set-macro! '<ξ>::set-macro!)", src).unwrap();
 
         vm
     }
@@ -1100,11 +1100,9 @@ impl R8VM {
     pub fn new() -> R8VM {
         let mut vm = R8VM::no_std();
 
-        let core_sym = vm.sym_id("<ζ>::core");
+        let src = Some(Cow::Borrowed("<ζ>::core"));
         let core = include_str!("../lisp/core.lisp");
-        let entry = vm.load_with("<ζ>::core", core_sym, core)
-                      .fmt_unwrap(&vm);
-        vm.call(entry, ()).fmt_unwrap(&vm);
+        vm.read_compile(core, src).fmt_unwrap(&vm);
 
         vm
     }
@@ -1407,6 +1405,8 @@ impl R8VM {
                         PV::Bool(true)
                     } else if text == "false" {
                         PV::Bool(false)
+                    } else if text == "nil" {
+                        PV::Nil
                     } else {
                         PV::Sym(self.put_sym(text))
                     };
@@ -1645,22 +1645,7 @@ impl R8VM {
     }
 
     pub fn eval(&mut self, expr: &str) -> Result<PV, Error> {
-        let ast = Parser::parse(self, expr, None)?;
-        let mut cc = R8Compiler::new(self);
-        // cc.estack.push(Env::empty());
-        cc.compile_top(true, &ast)?;
-        let globs = cc.globals()
-                      .map(|v| v.map(|(u, v)| (*u, *v))
-                                .collect::<Vec<_>>());
-        let (asm, _, consts, srcs) = cc.link()?;
-        if let Some(globs) = globs {
-            for (name, idx) in globs {
-                self.globals.insert(name, idx);
-            }
-        }
-        unsafe {
-            self.add_and_run(asm, Some(consts), Some(srcs))
-        }
+        self.read_compile(expr, None)
     }
 
     pub fn push_ast(&mut self, v: &Value) {
@@ -2391,7 +2376,7 @@ impl R8VM {
         for (idx, val) in self.mem.stack.iter().enumerate().rev() {
             let (idx, frame) = (idx as i64, self.frame as i64);
             write!(stdout, "{}", if idx == frame { " -> " } else { "    " })?;
-            writeln!(stdout, "{}: {}", idx - frame, val)?;
+            writeln!(stdout, "{}: {}", idx - frame, val.lisp_to_string(&self.mem))?;
         }
         Ok(())
     }

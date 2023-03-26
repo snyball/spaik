@@ -6,7 +6,7 @@ use chasm::LblMap;
 use fnv::{FnvHashSet, FnvHashMap};
 
 use crate::nkgc::{PV, SymID};
-use crate::r8vm::{R8VM, ArgSpec, r8c};
+use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::Source;
 use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor};
@@ -39,6 +39,7 @@ pub struct R8Compiler {
     new_fns: Vec<(Sym, ArgSpec, Vec<SymID>, usize, usize)>,
     new_envs: Vec<(SymID, usize, usize)>,
     env: FnvHashMap<SymID, usize>,
+    fns: FnvHashMap<SymID, Func>,
 }
 
 #[derive(Clone, Copy)]
@@ -122,7 +123,14 @@ impl R8Compiler {
             code: Default::default(),
             units: Default::default(),
             new_envs: Default::default(),
-            env: Default::default(),
+            env: vm.globals.clone(),
+            fns: {
+                let mut map: FnvHashMap<SymID, Func> = Default::default();
+                for (sym, funk) in vm.funcs.iter() {
+                    map.insert((*sym).into(), *funk);
+                }
+                map
+            },
             code_offset: 0,
         };
         cc.begin_unit();
@@ -513,11 +521,8 @@ impl R8Compiler {
     }
 
     fn bt_let(&mut self, ret: bool, decls: Vec<VarDecl>, prog: Progn) -> Result<()> {
-        println!("let ...");
         let len = decls.len();
-        dbg!(&decls);
         for VarDecl(name, _src, val) in decls.into_iter() {
-            println!("(let {name} {val})");
             self.compile(true, *val)?;
             self.with_env(|env| env.defvar(name))?;
         }
@@ -776,9 +781,18 @@ impl R8Compiler {
         self.set_source(src.clone());
 
         match kind {
-            M::Var(var) => match self.get_var_idx(var, &src)? {
-                BoundVar::Local(idx) => asm!(MOV idx),
-                BoundVar::Env(idx) => asm!(GET idx),
+            M::Var(var) => match self.get_var_idx(var, &src) {
+                Ok(BoundVar::Local(idx)) => asm!(MOV idx),
+                Ok(BoundVar::Env(idx)) => asm!(GET idx),
+                Err(e) => match self.fns.get(&var) {
+                    Some(funk) => {
+                        let s = funk.args;
+                        let pos = funk.pos;
+                        asm!(ARGSPEC s.nargs, s.nopt, 0, s.rest as u8);
+                        asm!(CLZR pos, 0);
+                    }
+                    _ => return Err(e)
+                }
             },
             M::If(cond, if_t, if_f) =>
                 self.bt_if(ret, *cond, if_t.map(|v| *v), if_f.map(|v| *v))?,
@@ -807,6 +821,7 @@ impl R8Compiler {
                 let syms = names.iter().map(|(s,_)| *s).collect();
                 let (pos, sz) = self.lambda(spec, names, progn)?;
                 self.new_fns.push((Sym::Id(name), spec, syms, pos, sz));
+                self.fns.insert(name, Func { pos, sz, args: spec });
                 if ret {
                     asm!(ARGSPEC spec.nargs, spec.nopt, 0, spec.rest as u8);
                     asm!(CLZR pos, 0);
