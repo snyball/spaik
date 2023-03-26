@@ -14,6 +14,7 @@ use crate::error::Result;
 
 static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
 static MODULE_COUNT: AtomicUsize = AtomicUsize::new(0);
+static DEFVAR_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 pub enum Sym {
     Id(SymID),
@@ -34,6 +35,8 @@ pub struct R8Compiler {
     consts: Vec<PV>,
     code_offset: usize,
     new_fns: Vec<(Sym, ArgSpec, Vec<SymID>, usize, usize)>,
+    new_envs: Vec<(SymID, usize, usize)>,
+    env: FnvHashMap<SymID, usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -116,6 +119,8 @@ impl R8Compiler {
             srctbl: Default::default(),
             code: Default::default(),
             units: Default::default(),
+            new_envs: Default::default(),
+            env: Default::default(),
             code_offset: 0,
         };
         cc.begin_unit();
@@ -368,9 +373,9 @@ impl R8Compiler {
                 return Ok(BoundVar::Env(idx as u32))
             }
         }
-        // if let Some(idx) = self.vm.get_env_global(var) {
-        //     return Ok(BoundVar::Env(idx as u32))
-        // }
+        if let Some(idx) = self.env.get(&var) {
+            return Ok(BoundVar::Env(*idx as u32))
+        }
         err_src!(src.clone(), UndefinedVariable, var)
     }
 
@@ -449,7 +454,10 @@ impl R8Compiler {
         self.asm_set_var_idx(&bound)
     }
 
-    fn lambda(&mut self, spec: ArgSpec, names: Vec<(SymID, Source)>, prog: Progn) -> Result<(usize, usize)> {
+    fn lambda(&mut self,
+              spec: ArgSpec,
+              names: Vec<(SymID, Source)>,
+              prog: impl IntoIterator<Item = AST2>) -> Result<(usize, usize)> {
         self.begin_unit();
         self.enter_fn(names.into_iter().map(|(s,_)| s), spec);
         self.compile_seq(true, prog)?;
@@ -768,7 +776,7 @@ impl R8Compiler {
         match kind {
             M::Var(var) => match self.get_var_idx(var, &src)? {
                 BoundVar::Local(idx) => asm!(MOV idx),
-                BoundVar::Env(_) => todo!(),
+                BoundVar::Env(idx) => asm!(GET idx),
             },
             M::If(cond, if_t, if_f) =>
                 self.bt_if(ret, *cond, if_t.map(|v| *v), if_f.map(|v| *v))?,
@@ -778,7 +786,20 @@ impl R8Compiler {
             M::App(op, args) => self.gapp(ret, *op, args)?,
             M::Lambda(ArgList2(spec, names), progn) =>
                 self.bt_lambda(spec, names, progn, src)?,
-            M::Defvar(_sym, _init) => todo!(),
+            M::Defvar(sym, init) => {
+                let spec = ArgSpec::none();
+                let (pos, sz) = self.lambda(spec, vec![], Some(*init))?;
+                let num = DEFVAR_COUNT.fetch_add(1, Ordering::SeqCst);
+                let name = format!("<δ>::{num}");
+                self.new_fns.push((Sym::Str(name), spec, vec![], pos, sz));
+                let idx = self.const_offset + self.consts.len();
+                self.consts.push(PV::Nil);
+                self.new_envs.push((sym, idx, pos));
+                self.env.insert(sym, idx);
+                if ret {
+                    asm!(GET idx);
+                }
+            },
             M::Set(dst, init) => self.bt_set(ret, src, dst, *init)?,
             M::Defun(name, ArgList2(spec, names), progn) => {
                 let syms = names.iter().map(|(s,_)| *s).collect();
@@ -876,6 +897,9 @@ impl R8Compiler {
                 Sym::Str(s) => vm.mem.symdb.put(s),
             };
             vm.defun(name, spec, names, pos, sz);
+        }
+        for (name, idx, init_pos) in self.new_envs.drain(..) {
+            vm.defvar(name, idx, init_pos)?;
         }
         self.set_offsets(vm);
         Ok(())

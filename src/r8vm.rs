@@ -1767,6 +1767,13 @@ impl R8VM {
         self.macros.insert(macro_sym.into(), fn_sym);
     }
 
+    pub fn defvar(&mut self, name: SymID, idx: usize, pos: usize) -> Result<(), Error> {
+        let res = call_with!(self, pos, 0, {});
+        self.mem.set_env(idx, res);
+        self.globals.insert(name, idx);
+        Ok(())
+    }
+
     pub fn defun(&mut self,
                  name: SymID,
                  args: ArgSpec,
