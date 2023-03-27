@@ -146,7 +146,7 @@ impl From<&str> for RuntimeError {
 #[cfg(feature = "repl")]
 const TABLE_STYLE: &str = comfy_table::presets::UTF8_BORDERS_ONLY;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TraceFrame {
     pub src: Source,
     pub func: SymID,
@@ -735,6 +735,7 @@ pub struct R8VM {
     consts: Vec<NkSum>,
     pub(crate) mem: Arena,
     pub(crate) globals: FnvHashMap<SymID, usize>,
+    pub(crate) trace_counts: FnvHashMap<SymID, usize>,
 
     // Named locations/objects
     breaks: FnvHashMap<usize, r8c::Op>,
@@ -771,6 +772,7 @@ impl Default for R8VM {
             debug_mode: false,
             frame: Default::default(),
             srctbl: Default::default(),
+            trace_counts: Default::default(),
         }
     }
 }
@@ -1296,9 +1298,12 @@ impl R8VM {
         Ok(v)
     }
 
-    pub fn read_compile_from(&mut self, path: &str) -> Result<PV, Error> {
-        let sexpr = fs::read_to_string(path)?;
-        self.read_compile(&sexpr, Some(Cow::from(path.to_string())))
+    pub fn read_compile_from(&mut self, path: impl AsRef<Path>) -> Result<PV, Error> {
+        let sexpr = fs::read_to_string(path.as_ref())?;
+        let name = path.as_ref().file_stem().map(|p| {
+            p.to_string_lossy().into_owned()
+        }).map(Cow::from);
+        self.read_compile(&sexpr, name)
     }
 
     pub fn read_compile(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV, Error> {
@@ -1374,7 +1379,9 @@ impl R8VM {
                         };
 
                         let excv = Excavator::new(&self.mem);
-                        let ast = excv.to_ast(v)?;
+                        let mut ast = excv.to_ast(v)?;
+                        // let mut pr = PrinterVisitor;
+                        // ast.visit(&mut pr)?;
                         if tokit.peek().is_some() {
                             cc.compile_top(ast)?;
                         } else {
@@ -1883,6 +1890,125 @@ impl R8VM {
         Traceback { frames, err }
     }
 
+    // FIXME: This function is super slow, unoptimized, and only for debugging
+    pub fn traceback(&self, mut ip: usize) -> Traceback {
+        let err = error!(None,);
+        let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
+        for (name, func) in self.funcs.iter() {
+            pos_to_fn.push((func.pos, *name));
+        }
+        pos_to_fn.sort_unstable();
+
+        let get_name = |pos| {
+            pos_to_fn[match pos_to_fn.binary_search_by(|s| s.0.cmp(&pos)) {
+                Ok(idx) => idx,
+                Err(idx) => ((idx as isize) - 1).max(0) as usize
+            }].1
+        };
+
+        let mut frames = Vec::new();
+
+        let mut stack = self.mem.stack.clone();
+        let mut sframe = self.frame;
+
+        while ip != 0 {
+            let mut name = get_name(ip);
+            let func = self.funcs
+                           .get(&name)
+                           .expect("Unable to find function by binary search");
+
+            let (nenv, nargs) = if func.pos + func.sz < ip {
+                name = Builtin::Unknown.sym().into();
+                (0, 0)
+            } else {
+                let spec = func.args;
+                (spec.env as usize,
+                 spec.sum_nargs() as usize)
+            };
+
+            let frame = sframe;
+            let args = stack.drain(frame..frame+nargs).collect();
+            let src = self.get_source(ip);
+            frames.push(TraceFrame { args,
+                                     func: name.into(),
+                                     src });
+
+            stack.drain(frame..frame+nenv).for_each(drop);
+            if frame >= self.mem.stack.len() {
+                break;
+            }
+            ip = match self.mem.stack[frame] {
+                PV::UInt(x) => x,
+                _ => break,
+            };
+            sframe = match self.mem.stack[frame+1] {
+                PV::UInt(x) => x,
+                _ => break,
+            };
+            stack.drain(frame..).for_each(drop);
+        }
+
+        Traceback { frames, err }
+    }
+
+    // FIXME: This function is super slow, unoptimized, and only for debugging
+    pub fn traceframe(&self, ip: usize) -> TraceFrame {
+        let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
+        for (name, func) in self.funcs.iter() {
+            pos_to_fn.push((func.pos, *name));
+        }
+        pos_to_fn.sort_unstable();
+
+        let get_name = |pos| {
+            pos_to_fn[match pos_to_fn.binary_search_by(|s| s.0.cmp(&pos)) {
+                Ok(idx) => idx,
+                Err(idx) => ((idx as isize) - 1).max(0) as usize
+            }].1
+        };
+
+        let mut stack = self.mem.stack.clone();
+        let sframe = self.frame;
+
+        let mut name = get_name(ip);
+        let func = self.funcs
+                       .get(&name)
+                       .expect("Unable to find function by binary search");
+
+        let nargs = if func.pos + func.sz < ip {
+            name = Builtin::Unknown.sym().into();
+            0
+        } else {
+            let spec = func.args;
+            spec.sum_nargs() as usize
+        };
+
+        let frame = sframe;
+        let args = stack.drain(frame..frame+nargs).collect();
+        let src = self.get_source(ip);
+        return TraceFrame { args,
+                            func: name.into(),
+                            src };
+    }
+
+    pub fn count_trace(&mut self, ip: usize) {
+        let frame = self.traceframe(ip);
+        let _v = match self.trace_counts.entry(frame.func) {
+            Entry::Occupied(mut e) => {
+                let v = *e.get();
+                e.insert(v + 1)
+            },
+            Entry::Vacant(e) => { *e.insert(1) },
+        };
+    }
+
+    pub fn count_trace_report(&self) {
+        let mut xs: Vec<_> = self.trace_counts.iter().collect();
+        xs.sort_unstable_by_key(|(_, v)| **v);
+        for (k, v) in xs.into_iter() {
+            println!("{} ({v})", self.sym_name(*k));
+        }
+    }
+
     unsafe fn run_from_unwind(&mut self, offs: usize) -> Result<usize, Traceback> {
         self.catch();
         let res = match self.run_from(offs) {
@@ -2018,7 +2144,13 @@ impl R8VM {
                         Ok(())
                     }).map_err(|e| e.op(Builtin::Cdr.sym()))?
                 },
-                LIST(n) => self.mem.list(*n),
+                LIST(n) => {
+                    let ipd = self.ip_delta(ip);
+                    // let tb: Error = self.traceback(ipd).into();
+                    // println!("{}", tb.to_string(&self.mem));
+                    self.count_trace(ipd);
+                    self.mem.list(*n)
+                },
                 VLIST() => {
                     let len = self.mem.pop()?.force_int() as u32;
                     self.mem.list(len);
@@ -2275,7 +2407,6 @@ impl R8VM {
                     };
                 }
                 CALL(pos, nargs) => {
-                    let pre_ip = self.ip_delta(ip);
                     self.call_pre(ip);
                     self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
                     ip = self.ret_to(*pos as usize);

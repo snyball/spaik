@@ -859,6 +859,7 @@ impl AST2 {
         AST2 { src, kind: M::Atom(PV::Nil) }
     }
 
+    #[allow(dead_code)]
     pub fn sym(sym: SymID, src: Source) -> AST2 {
         AST2 { src, kind: M::Atom(PV::Sym(sym)) }
     }
@@ -907,7 +908,7 @@ impl AST2 {
             M::If(ref mut a, None, Some(ref mut c)) => visit!(a, c),
             M::If(ref mut a, Some(ref mut b), None) => visit!(a, b),
             M::If(ref mut a, Some(ref mut b), Some(ref mut c)) => visit!(a, b, c),
-            M::Atom(a) => (),
+            M::Atom(_a) => (),
             M::Progn(ref mut prog) => vvisit!(prog),
             M::SymApp(_, ref mut prog) => vvisit!(prog),
             M::App(ref mut prog, ref mut progn) => { visit!(prog); vvisit!(progn) },

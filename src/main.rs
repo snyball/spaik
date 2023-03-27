@@ -6,6 +6,7 @@ use jemallocator::Jemalloc;
 static GLOBAL: Jemalloc = Jemalloc;
 #[macro_use]
 extern crate spaik;
+use spaik::Builtin;
 use spaik::Error;
 use spaik::Spaik;
 use std::env;
@@ -31,6 +32,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => (),
         Err(e) => eprintln!("{}", e),
     }
+    // match vm.load_with("lisp/core.lisp", Builtin::ZCore.sym(), &code) {
+    //     Ok(_) => (),
+    //     Err(e) => eprintln!("{}", e),
+    // }
+    vm.trace_report();
 
     Ok(())
 }

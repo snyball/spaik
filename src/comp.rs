@@ -9,9 +9,9 @@ use crate::nkgc::{PV, SymID};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::Source;
-use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor};
+use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor, PrinterVisitor};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
-use crate::{compile::*, SymDB};
+use crate::compile::*;
 use crate::error::Result;
 
 static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -481,7 +481,7 @@ impl R8Compiler {
                  mut spec: ArgSpec,
                  names: Vec<(SymID, Source)>,
                  mut prog: Progn,
-                 src: Source) -> Result<()> {
+                 _src: Source) -> Result<()> {
         let outside = self.with_env(|env| env.as_map())?;
         let mut args: Vec<_> = names.iter().map(|(s,_)| *s).collect();
         let lowered = ClzScoper::scope(args.clone(),
@@ -752,6 +752,47 @@ impl R8Compiler {
         Ok(())
     }
 
+    fn bt_append(&mut self, ret: bool, mut xs: Vec<AST2>, src: Source) -> Result<()> {
+        if xs.iter().all(|e| matches!(e.kind, M::List(..))) {
+            let ast = AST2 {
+                src,
+                kind: M::List(xs.into_iter().map(|xs| if let M::List(src) = xs.kind {
+                    src.into_iter()
+                } else {
+                    unreachable!()
+                }).flatten().collect())
+            };
+            self.compile(ret, ast)
+        } else {
+            if let Some(mut i) = xs.iter().position(|m| matches!(m.kind, M::List(..))) {
+                let mut it = (i+1)..xs.len();
+                while let Some(j) = it.next() {
+                    match xs[j].kind {
+                        M::List(..) => {
+                            let (pre, post) = xs.split_at_mut(j);
+                            let M::List(dst) = &mut pre[i].kind else {
+                                i = j;
+                                continue
+                            };
+                            let M::List(src) = &mut post[0].kind else { unreachable!() };
+                            dst.append(src);
+                        }
+                        _ => i = j,
+                    }
+                }
+                xs.retain(|s| if let M::List(xs) = &s.kind {
+                    !xs.is_empty()
+                } else { true });
+            }
+            let nargs = xs.len();
+            for arg in xs.into_iter() {
+                self.compile(ret, arg)?;
+            }
+            if ret { self.unit().op(chasm!(APPEND nargs)); }
+            Ok(())
+        }
+    }
+
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
         macro_rules! asm {
             ($($args:tt)*) => {{ self.unit().op(chasm!($($args)*)); }};
@@ -864,7 +905,7 @@ impl R8Compiler {
             M::Cdr(x) => opcall!(CDR *x),
             M::Cons(x, y) => opcall!(CONS *x, *y),
             M::List(xs) => vopcall!(LIST xs),
-            M::Append(xs) => vopcall!(APPEND xs),
+            M::Append(xs) => self.bt_append(ret, xs, src)?,
             M::Vector(xs) => vopcall!(VEC xs),
             M::Push(vec, elem) => self.bt_vpush(ret, *vec, *elem)?,
             M::Get(vec, idx) => opcall!(VGET *vec, *idx),

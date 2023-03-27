@@ -20,7 +20,7 @@ pub type SourceFileName = Option<Cow<'static, str>>;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Source {
     pub file: SourceFileName,
     pub line: u32,
@@ -218,6 +218,7 @@ pub enum ErrorKind {
     UnclosedDelimiter { open: &'static str },
     TrailingModifiers { mods: String },
     MacroexpandRecursionLimit { lim: usize },
+    None,
 }
 
 impl From<std::io::Error> for Error {
@@ -441,6 +442,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             write!(f, "Trailing Modifiers: Unexpected end of input at: {}", mods)?,
         MacroexpandRecursionLimit { lim } =>
             write!(f, "Macro Recursion Error: Macro expansion was recursive beyond {} levels", lim)?,
+        None => write!(f, "")?,
         x => unimplemented!("{:?}", x),
     }
 

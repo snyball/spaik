@@ -216,7 +216,7 @@ impl Spaik {
     /// Create a new SPAIK VM
     #[inline]
     pub fn new() -> Spaik {
-        Spaik { vm: R8VM::new() }
+        Spaik { vm: R8VM::no_std() }
     }
 
     /// Register a subroutine (function) with the vm
@@ -302,6 +302,10 @@ impl Spaik {
     pub fn exec(&mut self, expr: impl AsRef<str>) -> Result<(), Error> {
         let _: Ignore = self.eval(expr)?;
         Ok(())
+    }
+
+    pub fn trace_report(&self) {
+        self.vm.count_trace_report()
     }
 
     /// Load library from the load-path, by default this is `./lisp/`.

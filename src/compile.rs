@@ -280,6 +280,7 @@ builtins! {
     (DebugVarIdx, "dbg::var-idx"),
     (LambdaObject, "<ζ>::lambda-object"),
     (IterStop, "<ζ>::iter-stop"),
+    (ZCore, "<ζ>::core"),
     (Subr, "subr"),
     (Nil, "nil"),
     (Iter, "iter"),

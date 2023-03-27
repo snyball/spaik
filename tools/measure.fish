@@ -3,7 +3,7 @@
 set -l bin $argv[1]
 set -l tries 400
 
-set -gx RUSTFLAGS "-C target-cpu=native"
+#set -gx RUSTFLAGS "-C target-cpu=native"
 
 cargo build --release --bin $bin
 or exit 1
