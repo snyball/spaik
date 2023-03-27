@@ -1231,7 +1231,8 @@ impl R8VM {
             for ext in &[".sp", ".spk", ".lisp"] {
                 path.push_str(ext);
                 if let Ok(src) = fs::read_to_string(&path) {
-                    return self.load_with(path, lib, src);
+                    self.read_compile(&src, Some(Cow::from(path)))?;
+                    return Ok(Builtin::Unknown.sym())
                 }
                 path.drain(extd..).for_each(drop);
             }
