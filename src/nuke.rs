@@ -911,13 +911,13 @@ impl Nuke {
         };
 
         unsafe { nk.mem.set_len(sz) }
-        nk.last = nk.fst();
+        nk.last = nk.fst_mut();
         nk.free = nk.offset(mem::size_of::<NkAtom>());
         nk.used = mem::size_of::<NkAtom>();
         unsafe {
-            (*nk.fst()).init(NkT::Cons);
-            (*nk.fst()).next = ptr::null_mut();
-            (*nk.fst()).sz = 0;
+            (*nk.fst_mut()).init(NkT::Cons);
+            (*nk.fst_mut()).next = ptr::null_mut();
+            (*nk.fst_mut()).sz = 0;
         }
         nk.num_atoms = 1;
 
@@ -925,7 +925,7 @@ impl Nuke {
     }
 
     pub unsafe fn compact(&mut self) -> RelocateToken {
-        let mut node = self.fst();
+        let mut node = self.fst_mut();
         let mut npos;
         let mut start = node as *mut u8;
 
@@ -956,15 +956,15 @@ impl Nuke {
         for atom in self.iter_mut() {
             atom.destroy();
         }
-        self.last = self.fst();
+        self.last = self.fst_mut();
         self.free = self.offset(mem::size_of::<NkAtom>());
         self.used = mem::size_of::<NkAtom>();
-        (*self.fst()).next = ptr::null_mut();
+        (*self.fst_mut()).next = ptr::null_mut();
         self.num_atoms = 1;
     }
 
     pub unsafe fn sweep_compact(&mut self) -> RelocateToken {
-        let mut node = self.fst();
+        let mut node = self.fst_mut();
         let mut npos;
         let mut start = node as *mut u8;
 
@@ -1008,7 +1008,7 @@ impl Nuke {
         }
 
         self.last = npos;
-        (*self.fst()).set_color(Color::Black);
+        (*self.fst_mut()).set_color(Color::Black);
         self.free = start;
 
         RelocateToken
@@ -1027,7 +1027,7 @@ impl Nuke {
         let mut mem = align(new_vec.as_mut_ptr(),
                             mem::align_of::<NkAtom>() as isize);
         let mut new_node = ptr::null_mut();
-        let mut node = self.fst();
+        let mut node = self.fst_mut();
         while !node.is_null() {
             let sz = (*node).full_size();
             memcpy(mem, node, sz);
@@ -1065,10 +1065,14 @@ impl Nuke {
         self.reloc.0.clear();
     }
 
-    pub fn fst(&mut self) -> *mut NkAtom {
+    pub fn fst_mut(&mut self) -> *mut NkAtom {
         align(self.mem.as_mut_ptr() as *mut NkAtom,
               mem::align_of::<NkAtom>() as isize)
+    }
 
+    pub fn fst(&self) -> *const NkAtom {
+        align(self.mem.as_ptr() as *mut NkAtom,
+              mem::align_of::<NkAtom>() as isize)
     }
 
     pub fn offset<T>(&mut self, n: usize) -> *mut T {
@@ -1123,20 +1127,22 @@ impl Nuke {
         }
     }
 
-    pub fn head(&mut self) -> *mut NkAtom {
+    pub fn head_mut(&mut self) -> *mut NkAtom {
+        unsafe { (*self.fst_mut()).next }
+    }
+
+    pub fn head(&self) -> *const NkAtom {
         unsafe { (*self.fst()).next }
     }
 
     pub fn iter_mut(&mut self) -> NukeIterMut<'_> {
-        NukeIterMut { item: self.head(),
+        NukeIterMut { item: self.head_mut(),
                       _phantom: Default::default() }
     }
 
     pub fn iter(&self) -> NukeIter<'_> {
-        let item = unsafe {
-            (*(self.mem.as_ptr() as *const NkAtom)).next
-        };
-        NukeIter { item, _phantom: Default::default() }
+        NukeIter { item: self.head(),
+                   _phantom: Default::default() }
     }
 
     pub fn reloc(&self) -> &PtrMap {
