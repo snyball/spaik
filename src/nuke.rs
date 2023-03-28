@@ -1082,7 +1082,7 @@ impl Nuke {
         let pa = align(p, align_of::<T>() as isize);
         let full_sz = mem::size_of::<T>()
                     + mem::size_of::<NkAtom>()
-                    + ((pa as *const u8).sub(p as *const u8 as usize)) as usize;
+                    + ((pa as *const u8 as usize) - (p as *const u8 as usize));
         let ret = (self.free.add(full_sz) >= self.offset(self.sz))
                   .then(|| self.make_room(full_sz));
 
