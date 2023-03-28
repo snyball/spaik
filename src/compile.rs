@@ -180,6 +180,7 @@ macro_rules! builtins {
 
 builtins! {
     (Unknown, "?"),
+    (ConsDot, "."),
     (AyyLmao, "ayy-lmao"),
     (Unwind, "unwind"),
     (SysLoadPath, "sys/load-path"),

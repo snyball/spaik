@@ -1358,6 +1358,14 @@ impl R8VM {
                     num = 0;
                 }
                 ")" if close.is_empty() => bail!(TrailingDelimiter { close: ")" }),
+                "." if close.is_empty() => bail!(OutsideContext {
+                    ctx: Builtin::List.sym(),
+                    op: Builtin::ConsDot.sym()
+                }),
+                "." if dot => bail!(SyntaxError {
+                    msg: "Illegal use of the dot (.) operator".to_string()
+                }),
+                "." => dot = true,
                 ")" => {
                     assert_no_trailing!(Meta::Source(LineCol { line, col }));
                     let cur_srcs = srcs.drain(src_idx.pop().unwrap()..)
@@ -1391,6 +1399,7 @@ impl R8VM {
                         wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot));
                     }
 
+                    dot = dots.pop().unwrap();
                     num = close.pop()
                                .ok_or_else(
                                    || error!(TrailingDelimiter, close: ")")
