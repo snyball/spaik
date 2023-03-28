@@ -640,16 +640,9 @@ impl PV {
     }
 
     pub fn is_atom(&self) -> bool {
-        use PV::*;
         match *self {
-            Nil => true,
-            Int(_) => true,
-            UInt(_) => true,
-            Real(_) => true,
-            Sym(_) => true,
-            Bool(_) => true,
-            Ref(p) => !matches!(unsafe{(*p).type_of()}, NkT::Cons),
-            _ => false,
+            PV::Ref(p) => !matches!(unsafe{(*p).type_of()}, NkT::Cons),
+            _ => true
         }
     }
 
@@ -1270,12 +1263,12 @@ enum GCState {
     Sleep(i32),
 }
 
-const DEFAULT_MEMSZ: usize = 8192;
+const DEFAULT_MEMSZ: usize = 32768;
 const DEFAULT_GRAYSZ: usize = 256;
 const DEFAULT_STACKSZ: usize = 256;
 const DEFAULT_ENVSZ: usize = 0;
 // const GC_SLEEP_CYCLES: i32 = 10000;
-const GC_SLEEP_MEM_BYTES: i32 = 1024 * 10;
+const GC_SLEEP_MEM_BYTES: i32 = 16384;
 
 fn size_of_ast(v: &Value) -> usize {
     match &v.kind {
@@ -1294,7 +1287,7 @@ pub struct GCStats {
     #[cfg(not(target_arch = "wasm32"))]
     pub time: Duration,
     pub total_allocs: usize,
-    pub total_frees: usize
+    pub total_frees: usize,
 }
 
 impl Default for Arena {
@@ -1747,6 +1740,10 @@ impl Arena {
         self.tags.insert(item, tag);
     }
 
+    pub fn clear_tags(&mut self) {
+        self.tags.clear();
+    }
+
     pub fn get_tag(&self, item: *mut NkAtom) -> Option<&Source> {
         self.tags.get(&item)
     }
@@ -1765,10 +1762,9 @@ impl Arena {
             panic!("Reordering forbidden");
         }
 
-        let tags = self.tags.keys().map(|ptr| {
-            (*ptr, self.nuke.reloc().get(*ptr))
-        }).collect::<Vec<_>>();
-        for (old, new) in tags.into_iter() {
+        let tags = self.tags.keys().copied().collect::<Vec<_>>();
+        for old in tags.into_iter() {
+            let new = self.nuke.reloc().get(old);
             let src = self.tags.remove(&old).unwrap();
             self.tags.insert(new as *mut NkAtom, src);
         }

@@ -816,8 +816,6 @@ pub struct Nuke {
     num_frees: usize,
     num_allocs: usize,
     num_atoms: usize,
-    load_factor: f64,
-    load_max: usize,
     min_block_sz: NkSz,
     sz: usize,
     reloc: PtrMap,
@@ -871,13 +869,10 @@ pub struct RelocateToken;
 
 impl Nuke {
     pub fn new(sz: usize) -> Nuke {
-        let load_factor = 0.90;
         let min_block_sz = minimal_fissile_sz();
 
         assert!(min_block_sz > 0, "Minimum allocation size cannot be 0.");
         assert!(sz >= 128, "Nuke too small");
-        assert!((0.5..1.0).contains(&load_factor),
-               "Load factor outside of [0.5, 1.0) range.");
 
         let mut nk = Nuke {
             free: ptr::null_mut(),
@@ -886,8 +881,6 @@ impl Nuke {
             num_frees: 0,
             num_allocs: 0,
             num_atoms: 0,
-            load_factor,
-            load_max: (load_factor * sz as f64) as usize,
             min_block_sz,
             sz,
             reloc: PtrMap(Vec::new()),
@@ -1005,7 +998,6 @@ impl Nuke {
     pub unsafe fn grow(&mut self, fit: usize) -> RelocateToken {
         let new_sz = (self.sz << 1).max(self.sz + fit);
         self.sz = new_sz;
-        self.load_max = (self.load_factor * self.sz as f64) as usize;
 
         let mut used = 0;
         let mut num_atoms = 0;
@@ -1041,7 +1033,7 @@ impl Nuke {
     }
 
     pub unsafe fn make_room(&mut self, fit: usize) -> RelocateToken {
-        if self.used + fit > self.load_max {
+        if self.used + fit > self.sz {
             self.grow(fit)
         } else {
             self.compact()
@@ -1098,7 +1090,12 @@ impl Nuke {
 
     #[inline]
     pub unsafe fn fit<T: Fissile>(&mut self, num: usize) -> RelocateToken {
-        self.make_room(Nuke::size_of::<T>() * num)
+        let full_sz = Nuke::size_of::<T>() * num;
+        if self.free.add(full_sz) >= self.offset(self.sz) {
+            self.make_room(Nuke::size_of::<T>() * num)
+        } else {
+            RelocateToken
+        }
     }
 
     pub fn head(&mut self) -> *mut NkAtom {

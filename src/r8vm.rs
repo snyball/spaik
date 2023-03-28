@@ -1379,17 +1379,14 @@ impl R8VM {
                         };
 
                         let excv = Excavator::new(&self.mem);
-                        let mut ast = excv.to_ast(v)?;
-                        // let mut pr = PrinterVisitor;
-                        // ast.visit(&mut pr)?;
+                        let ast = excv.to_ast(v)?;
+                        self.mem.clear_tags();
                         if tokit.peek().is_some() {
                             cc.compile_top(ast)?;
                         } else {
                             modfn_pos = cc.compile_top_tail(ast)?;
                         }
                         cc.take(self)?;
-
-                        self.mem.push(v)
                     } else {
                         wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot));
                     }
@@ -1418,7 +1415,10 @@ impl R8VM {
                     } else {
                         PV::Sym(self.put_sym(text))
                     };
-                    wrap!(self.mem.push(pv));
+
+                    if !close.is_empty() {
+                        wrap!(self.mem.push(pv));
+                    }
 
                     if tokit.peek().is_none() && close.is_empty() {
                         modfn_pos = cc.compile_top_tail(
@@ -1436,7 +1436,6 @@ impl R8VM {
             bail!(UnclosedDelimiter { open: "(" })
         }
         assert_no_trailing!();
-        self.mem.popn(num as usize);
         if modfn_pos != 0 {
             Ok(call_with!(self, modfn_pos, 0, {}))
         } else {
@@ -1952,7 +1951,7 @@ impl R8VM {
     }
 
     // FIXME: This function is super slow, unoptimized, and only for debugging
-    pub fn traceframe(&self, ip: usize) -> TraceFrame {
+    pub fn traceframe(&self, ip: usize) -> SymID {
         let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
         for (name, func) in self.funcs.iter() {
             pos_to_fn.push((func.pos, *name));
@@ -1966,33 +1965,12 @@ impl R8VM {
             }].1
         };
 
-        let mut stack = self.mem.stack.clone();
-        let sframe = self.frame;
-
-        let mut name = get_name(ip);
-        let func = self.funcs
-                       .get(&name)
-                       .expect("Unable to find function by binary search");
-
-        let nargs = if func.pos + func.sz < ip {
-            name = Builtin::Unknown.sym().into();
-            0
-        } else {
-            let spec = func.args;
-            spec.sum_nargs() as usize
-        };
-
-        let frame = sframe;
-        let args = stack.drain(frame..frame+nargs).collect();
-        let src = self.get_source(ip);
-        return TraceFrame { args,
-                            func: name.into(),
-                            src };
+        get_name(ip).into()
     }
 
     pub fn count_trace(&mut self, ip: usize) {
         let frame = self.traceframe(ip);
-        let _v = match self.trace_counts.entry(frame.func) {
+        let _v = match self.trace_counts.entry(frame) {
             Entry::Occupied(mut e) => {
                 let v = *e.get();
                 e.insert(v + 1)
@@ -2125,6 +2103,12 @@ impl R8VM {
         let mut regs: Regs<2> = Regs::new();
         let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
         use r8c::Op::*;
+        macro_rules! trace {
+            () => {{
+                let ipd = self.ip_delta(ip);
+                self.count_trace(ipd);
+            }};
+        }
         let mut run = || loop {
             let op = &*ip;
             ip = ip.offset(1);
@@ -2145,10 +2129,6 @@ impl R8VM {
                     }).map_err(|e| e.op(Builtin::Cdr.sym()))?
                 },
                 LIST(n) => {
-                    let ipd = self.ip_delta(ip);
-                    // let tb: Error = self.traceback(ipd).into();
-                    // println!("{}", tb.to_string(&self.mem));
-                    self.count_trace(ipd);
                     self.mem.list(*n)
                 },
                 VLIST() => {
