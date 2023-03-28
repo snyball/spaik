@@ -1072,16 +1072,11 @@ impl Iterator for PVIter {
     fn next(&mut self) -> Option<Self::Item> {
         Some(match self.item {
             PV::Nil => return None,
-            PV::Ref(r) => match_gcell!(r, {
-                Cons(Cons { car, cdr }) => {
-                    self.item = *cdr;
-                    *car
-                },
-                String(_) => {
-                    self.item = PV::Nil;
-                    PV::Ref(r)
-                }
-            }).unwrap(),
+            PV::Ref(r) if unsafe{(*r).type_of()} == NkT::Cons => unsafe {
+                let Cons { car, cdr } = *(*r).fastcast::<Cons>();
+                self.item = cdr;
+                car
+            }
             x => {
                 self.item = PV::Nil;
                 x
