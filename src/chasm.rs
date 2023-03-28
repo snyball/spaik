@@ -223,10 +223,7 @@ macro_rules! chasm_def {
                 let op = match $name::OpName::from_num(op_buf[0])? {
                     $($name::OpName::$en => {
                         $(rd_sz += std::mem::size_of::<$targ>();)*
-                        $(let mut $arg: [u8; std::mem::size_of::<$targ>()] = unsafe {
-                            #[allow(invalid_value)]
-                            std::mem::MaybeUninit::uninit().assume_init()
-                         };
+                        $(let mut $arg: [u8; std::mem::size_of::<$targ>()] = Default::default();
                          inp.read_exact(&mut $arg)?;)*
                         $name::Op::$en($(unsafe { std::mem::transmute($arg) }),*)
                     }),+
