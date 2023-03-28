@@ -4,7 +4,7 @@
 use comfy_table::Table;
 
 use crate::{
-    ast::{Value, ValueKind, Excavator, PrinterVisitor, AST2, M},
+    ast::{Value, ValueKind, Excavator, AST2, M},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
@@ -2103,12 +2103,6 @@ impl R8VM {
         let mut regs: Regs<2> = Regs::new();
         let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
         use r8c::Op::*;
-        macro_rules! trace {
-            () => {{
-                let ipd = self.ip_delta(ip);
-                self.count_trace(ipd);
-            }};
-        }
         let mut run = || loop {
             let op = &*ip;
             ip = ip.offset(1);
