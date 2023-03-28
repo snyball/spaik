@@ -216,7 +216,7 @@ impl Spaik {
     /// Create a new SPAIK VM
     #[inline]
     pub fn new() -> Spaik {
-        Spaik { vm: R8VM::no_std() }
+        Spaik { vm: R8VM::new() }
     }
 
     /// Register a subroutine (function) with the vm
