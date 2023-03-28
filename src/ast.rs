@@ -1,5 +1,6 @@
 //! Abstract Syntax Tree Tools
 
+use crate::fmt::LispFmt;
 use crate::nkgc::Arena;
 use crate::nkgc::Cons;
 use crate::nkgc::ConsItem;

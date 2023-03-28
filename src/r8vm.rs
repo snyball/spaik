@@ -1321,15 +1321,22 @@ impl R8VM {
         let mut src_idx = vec![0];
         let mut cc = crate::comp::R8Compiler::new(self);
         macro_rules! wrap {
-            ($push:expr) => {
+            ($push:expr) => {{
                 $push;
+                let mut last = None;
                 while let Some(m) = mods.pop() {
                     let p = self.mem.pop().expect("No expr to wrap");
                     self.mem.push(PV::Sym(m.sym()));
                     self.mem.push(p);
                     self.mem.list(2);
+                    last = Some(m);
                 }
-            };
+                // Special case for `(x y . ,(f x)) and `(x y . ,z)
+                if last == Some(Builtin::Unquote) &&
+                   (dot || dots.get(dots.len()-1).copied() == Some(true)) {
+                    self.mem.list(1);
+                }
+            }};
         }
         macro_rules! assert_no_trailing {
             ($($meta:expr),*) => {
@@ -1427,15 +1434,15 @@ impl R8VM {
 
                     if !close.is_empty() {
                         wrap!(self.mem.push(pv));
-                    }
-
-                    if tokit.peek().is_none() && close.is_empty() {
+                    } else if tokit.peek().is_none() {
                         wrap!(self.mem.push(pv));
                         let pv = self.mem.pop().unwrap();
                         let excv = Excavator::new(&self.mem);
                         let ast = excv.to_ast(pv)?;
                         modfn_pos = cc.compile_top_tail(ast)?;
                         cc.take(self)?;
+                    } else {
+                        continue;
                     }
 
                     num += 1;

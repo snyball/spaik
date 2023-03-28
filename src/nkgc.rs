@@ -994,6 +994,20 @@ pub enum ConsItem {
     Cdr(PV),
 }
 
+impl LispFmt for ConsItem {
+    fn lisp_fmt(&self,
+                db: &dyn SymDB,
+                visited: &mut VisitSet,
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let x = match self {
+            ConsItem::Car(x) => { write!(f, "Car(")?; x },
+            ConsItem::Cdr(x) => { write!(f, "Cdr(")?; x },
+        };
+        x.lisp_fmt(db, visited, f)?;
+        write!(f, ")")
+    }
+}
+
 impl ConsItem {
     pub fn any(self) -> PV {
         match self {
