@@ -433,7 +433,7 @@ impl Object {
         };
         let mem = unsafe {
             let p = alloc(layout) as *mut T;
-            *p = obj;
+            ptr::write(p, obj);
             (*(p as *mut RcMem<T>)).rc.inc();
             p as *mut u8
         };
