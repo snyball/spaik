@@ -1065,7 +1065,9 @@ impl Nuke {
     }
 
     pub fn fst(&mut self) -> *mut NkAtom {
-        self.mem.as_mut_ptr() as *mut NkAtom
+        align(self.mem.as_mut_ptr() as *mut NkAtom,
+              mem::align_of::<NkAtom>() as isize)
+
     }
 
     pub fn offset<T>(&mut self, n: usize) -> *mut T {
