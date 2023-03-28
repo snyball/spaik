@@ -297,6 +297,20 @@ pub struct VTable {
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
 }
 
+impl Debug for VTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VTable")
+         .field("type_name", &self.type_name)
+         .field("get_rc", &self.get_rc)
+         .field("trace", &(self.trace as *mut u8))
+         .field("update_ptrs", &(self.update_ptrs as *mut u8))
+         .field("drop", &self.drop)
+         .field("lisp_fmt", &(self.lisp_fmt as *mut u8))
+         .field("fmt", &(self.fmt as *mut u8))
+         .finish()
+    }
+}
+
 unsafe impl Send for VTable {}
 
 /// How SPAIK sees objects internally, for referring to objects outside of the
