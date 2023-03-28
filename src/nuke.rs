@@ -645,12 +645,38 @@ impl LispFmt for Continuation {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct Intr {
+    pub op: Builtin,
+    pub arg: PV,
+}
+
+impl LispFmt for Intr {
+    fn lisp_fmt(&self,
+                db: &dyn SymDB,
+                visited: &mut VisitSet,
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", db.name(self.op.sym()))?;
+        self.arg.lisp_fmt(db, visited, f)
+    }
+}
+
+impl Traceable for Intr {
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+        self.arg.trace(gray)
+    }
+
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
+        self.arg.update_ptrs(reloc)
+    }
+}
+
 fissile_types! {
     (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
+    (Intr, Builtin::Intr.sym(), crate::nuke::Intr),
     (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
     (VLambda, Builtin::Lambda.sym(), crate::nkgc::VLambda),
     (String, Builtin::String.sym(), std::string::String),
-    // (Str, Builtin::String.sym(), crate::string::Str),
     (PV, Builtin::Ref.sym(), crate::nkgc::PV),
     (Vector, Builtin::Vector.sym(), Vec<PV>),
     (Vec4, Builtin::Vec4.sym(), glam::Vec4),
@@ -722,6 +748,15 @@ impl NkAtom {
                 }
                 NkAtom::make_raw_ref(p)
             },
+            NkRef::Intr(Intr { op, arg }) => {
+                let p = mem.alloc::<Intr>();
+                NkAtom::make_raw_ref(unsafe {
+                    ptr::write(p, Intr {
+                        op: *op,
+                        arg: arg.deep_clone(mem),
+                    }); p
+                })
+            }
             NkRef::Lambda(_l) => todo!(),
             NkRef::VLambda(_l) => todo!(),
             NkRef::String(s) => clone!(s),

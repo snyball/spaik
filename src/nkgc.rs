@@ -429,6 +429,16 @@ impl Iterator for PVVecIter {
     }
 }
 
+pub enum Quasi {
+    USplice(PV),
+    Unquote(PV),
+}
+
+pub enum QuasiMut {
+    USplice(*mut PV),
+    Unquote(*mut PV),
+}
+
 impl PV {
     pub fn is_zero(&self) -> bool {
            *self == PV::Int(0)
@@ -619,6 +629,36 @@ impl PV {
     #[inline]
     pub fn bt_op(&self) -> Option<Builtin> {
         self.op().and_then(Builtin::from_sym)
+    }
+
+    #[inline]
+    pub fn intr_mut(&self) -> Option<(Builtin, *mut PV)> {
+        let PV::Ref(p) = *self else { return None };
+        (unsafe{(*p).type_of()} == NkT::Intr).then(|| unsafe {
+            let intr = (*p).fastcast_mut::<Intr>();
+            ((*intr).op, (ptr::addr_of_mut!((*intr).arg)))
+        })
+    }
+
+    pub fn quasi_mut(&self) -> Option<QuasiMut> {
+        self.intr_mut().and_then(|(op, arg)| Some(match op {
+            Builtin::USplice => QuasiMut::USplice(arg),
+            Builtin::Unquote => QuasiMut::Unquote(arg),
+            _ => return None
+        }))
+    }
+
+    #[inline]
+    pub fn intr(&self) -> Option<(Builtin, PV)> {
+        self.intr_mut().map(|(op, arg)| unsafe { (op, *arg) })
+    }
+
+    pub fn quasi(&self) -> Option<Quasi> {
+        self.intr().and_then(|(op, arg)| Some(match op {
+            Builtin::USplice => Quasi::USplice(arg),
+            Builtin::Unquote => Quasi::Unquote(arg),
+            _ => return None
+        }))
     }
 
     #[inline]

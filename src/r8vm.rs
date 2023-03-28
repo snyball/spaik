@@ -11,7 +11,7 @@ use crate::{
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
     nuke::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self},
+    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self, Quasi, QuasiMut},
     sexpr_parse::{Parser, sexpr_modified_sym_to_str, sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits,
@@ -1323,19 +1323,26 @@ impl R8VM {
         macro_rules! wrap {
             ($push:expr) => {{
                 $push;
-                let mut last = None;
-                while let Some(m) = mods.pop() {
+                // let mut last = None;
+                while let Some(op) = mods.pop() {
                     let p = self.mem.pop().expect("No expr to wrap");
-                    self.mem.push(PV::Sym(m.sym()));
-                    self.mem.push(p);
-                    self.mem.list(2);
-                    last = Some(m);
+                    match op {
+                        Builtin::Unquote | Builtin::USplice => {
+                            let intr = Intr { op, arg: p };
+                            self.mem.push_new(intr);
+                        }
+                        _ => {
+                            self.mem.push(PV::Sym(op.sym()));
+                            self.mem.push(p);
+                            self.mem.list(2);
+                        }
+                    }
                 }
                 // Special case for `(x y . ,(f x)) and `(x y . ,z)
-                if last == Some(Builtin::Unquote) &&
-                   (dot || dots.get(dots.len()-1).copied() == Some(true)) {
-                    self.mem.list(1);
-                }
+                // if last == Some(Builtin::Unquote) &&
+                //    (dot || dots.get(dots.len()-1).copied() == Some(true)) {
+                //     self.mem.list(1);
+                // }
             }};
         }
         macro_rules! assert_no_trailing {
@@ -1513,12 +1520,12 @@ impl R8VM {
         let ind_lim = self.varor(Builtin::LimitsMacroexpandRecursion.sym(),
                                  limits::MACROEXPAND_RECURSION)?;
 
-        if quasi && v.bt_op() == Some(Builtin::Unquote) {
-            let i = self.macroexpand_pv(v.inner().map_err(|e| e.op(sym!(Unquote)))?,
-                                        false)?;
-            v.set_inner(i)?;
-            return Ok(v)
-        } else if !quasi {
+        if quasi {
+            if let Some(QuasiMut::Unquote(s) | QuasiMut::USplice(s)) = v.quasi_mut() {
+                unsafe { *s = self.macroexpand_pv(*s, false)? }
+                return Ok(v)
+            }
+        } else {
             let mut inds = 0;
             while let Some(m) = v.op().and_then(|op| self.macros.get(&op.into())).copied() {
                 let func = self.funcs.get(&m.into()).ok_or("No such function")?;

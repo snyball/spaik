@@ -5,6 +5,7 @@ use crate::nkgc::Arena;
 use crate::nkgc::Cons;
 use crate::nkgc::ConsItem;
 use crate::nkgc::PV;
+use crate::nkgc::Quasi;
 use crate::nkgc::SymID;
 use crate::error::*;
 use crate::nuke::NkRef;
@@ -1253,26 +1254,31 @@ impl<'a> Excavator<'a> {
     }
 
     fn quasi(&self, args: PV, src: Source) -> Result<AST2> {
-        if args.is_atom() {
-            return Ok(AST2 { src, kind: M::Atom(args) })
+        match args.quasi() {
+            Some(_) => (),
+            _ if args.is_atom() => return Ok(AST2 { src, kind: M::Atom(args) }),
+            _ => (),
         }
-
         let root_src = src;
         let mut li = vec![];
         for (item, src) in args.iter_src(self.mem, root_src.clone()) {
             li.push(match item {
-                ConsItem::Car(x) => match x.bt_op() {
-                    Some(Builtin::Unquote) =>
-                        AST2 { src: src.clone(),
-                               kind: M::List(vec![
-                                   self.dig(x.cdr().unwrap().car().expect("car"),
-                                            src)? ]) },
-                    Some(Builtin::USplice) =>
-                        self.dig(x.cdr().unwrap().car().expect("car"), src)?,
-                    _ => AST2 { kind: M::List(vec![self.quasi(x, src.clone())?]),
-                                src },
-                },
-                ConsItem::Cdr(x) => self.quasi(x, src)?,
+                ConsItem::Car(x) => match x.quasi() {
+                    Some(Quasi::USplice(arg)) => self.dig(arg, src)?,
+                    Some(Quasi::Unquote(arg)) =>
+                        AST2 { kind: M::List(vec![self.dig(arg, src.clone())?]),
+                               src },
+                    None =>
+                        AST2 { kind: M::List(vec![self.quasi(x, src.clone())?]),
+                               src }
+                }
+                ConsItem::Cdr(x) => match x.quasi() {
+                    Some(Quasi::USplice(arg)) => bail!(SyntaxError {
+                        msg: "Splice after dot".to_string()
+                    }),
+                    Some(Quasi::Unquote(arg)) => self.dig(arg, src.clone())?,
+                    None => self.quasi(x, src.clone())?,
+                }
             })
         }
 
