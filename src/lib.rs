@@ -33,6 +33,10 @@
 // FIXME: Write documentation for the unsafe functions.
 #![allow(clippy::missing_safety_doc)]
 
+// FIXME: DO NOT COMMIT THESE TO VERSION CONTROL
+#![allow(unused_variables)]
+#![allow(dead_code)]
+
 #[macro_use]
 extern crate lazy_static;
 #[allow(unused_imports)]
@@ -75,7 +79,6 @@ pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
 pub use nuke::Gc;
 pub type Str = Arc<str>;
-use nkgc::Cons;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
 
@@ -269,14 +272,15 @@ impl Spaik {
     pub fn objref_mut<T>(&mut self, var: impl AsSym) -> Result<&mut T, Error>
         where T: Userdata
     {
-        let name = var.as_sym(&mut self.vm);
-        let idx = self.vm.get_env_global(name)
-                         .ok_or(error!(UndefinedVariable, var: name))
-                         .map_err(|e| Error::from_source(e, self))?;
-        let ObjRef(x): ObjRef<&mut T> = self.vm.mem.get_env(idx)
-                                                   .try_into()
-                                                   .map_err(|e| Error::from_source(e, self))?;
-        Ok(x)
+        unimplemented!()
+        // let name = var.as_sym(&mut self.vm);
+        // let idx = self.vm.get_env_global(name)
+        //                  .ok_or(error!(UndefinedVariable, var: name))
+        //                  .map_err(|e| Error::from_source(e, self))?;
+        // let ObjRef(x): ObjRef<&mut T> = self.vm.mem.get_env(idx)
+        //                                            .try_into()
+        //                                            .map_err(|e| Error::from_source(e, self))?;
+        // Ok(x)
     }
 
     /// Run an expression.
@@ -417,7 +421,7 @@ impl Spaik {
                        .fmt_unwrap(&self.vm);
         let s = self.vm.mem.put(path.as_ref().to_string());
         with_ref_mut!(p, Vector(v) => {
-            v.push(s);
+            (*v).push(s);
             Ok(())
         }).fmt_unwrap(&self.vm);
     }
@@ -530,14 +534,16 @@ impl<T> DerefMut for Promise<T> {
 
 impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
     fn from_lisp(self, mem: &mut nkgc::Arena) -> Result<Promise<T>, IError> {
-        with_ref!(self, Cons(Cons { car: msg, cdr: cont }) => {
-            let msg = deserialize::from_pv(*msg, mem)?;
+        with_ref!(self, Cons(p) => {
+            let msg = (*p).car;
+            let cont = (*p).cdr;
+            let msg = deserialize::from_pv(msg, mem)?;
             if cont.type_of() != Builtin::Continuation.sym() {
                 return err!(TypeError,
                             expect: Builtin::Continuation.sym(),
                             got: cont.type_of());
             }
-            let cont = Some(mem.make_extref(*cont));
+            let cont = Some(mem.make_extref(cont));
             Ok(Promise { msg, cont })
         })
     }

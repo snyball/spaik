@@ -183,7 +183,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        with_ref!(self.input, String(s) => { visitor.visit_borrowed_str(s.as_ref()) })
+        with_ref!(self.input, String(s) => { visitor.visit_borrowed_str((*s).as_ref()) })
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>

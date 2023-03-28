@@ -13,7 +13,7 @@ use crate::sexpr_parse::{tokenize, Fragment, standard_lisp_tok_tree, string_pars
 use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::mem::{replace, take};
+use std::mem::take;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
@@ -81,37 +81,40 @@ macro_rules! __with_ref_common {
     ($ref:ident($ptr:ident) => $get:expr,
      $pv:expr,
      $($t:ident($m:pat) => $action:block),+) => {{
-        let err = || $crate::error::Error {
-            ty: $crate::error::ErrorKind::TypeNError {
-                expect: vec![
-                    $($crate::nuke::NkT::$t.into()),+
-                ],
-                got: $pv.type_of(),
-            },
-            meta: Default::default(),
-        };
-        match $pv {
-            #[allow(unused_unsafe)]
-            $crate::nkgc::PV::Ref($ptr) => match $get {
-                $($crate::nuke::$ref::$t($m) => $action,)+
-                _ => Err(err())
-            }
-            _ => Err(err())
-        }
-    }}
+         #[allow(unused_unsafe)]
+         unsafe {
+             let err = || $crate::error::Error {
+                 ty: $crate::error::ErrorKind::TypeNError {
+                     expect: vec![
+                         $($crate::nuke::NkT::$t.into()),+
+                     ],
+                     got: $pv.type_of(),
+                 },
+                 meta: Default::default(),
+             };
+             match $pv {
+                 #[allow(unused_unsafe)]
+                 $crate::nkgc::PV::Ref($ptr) => match $get {
+                     $($crate::nuke::$ref::$t($m) => $action,)+
+                         _ => Err(err())
+                 }
+                 _ => Err(err())
+             }
+         }
+     }}
 }
 
 
 macro_rules! with_ref {
     ($pv:expr, $($t:ident($m:pat) => $action:block),+) => {
-        __with_ref_common!(NkRef(p) => unsafe { (*p).match_ref() },
+        __with_ref_common!(NkRef(p) => $crate::nuke::to_fissile_ref(p),
                            $pv, $($t($m) => $action),+)
     };
 }
 
 macro_rules! with_ref_mut {
     ($pv:expr, $($t:ident($m:pat) => $action:block),+) => {
-        __with_ref_common!(NkMut(p) => unsafe { (*p).match_mut() },
+        __with_ref_common!(NkMut(p) => $crate::nuke::to_fissile_mut(p),
                            $pv, $($t($m) => $action),+)
     };
 }
@@ -127,12 +130,12 @@ pub trait Traceable {
 
 pub struct ObjRef<T>(pub T);
 
-impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a T> {
+impl<'a, T: Userdata> TryFrom<PV> for ObjRef<*const T> {
     type Error = Error;
 
-    fn try_from(v: PV) -> Result<ObjRef<&'a T>, Self::Error> {
+    fn try_from(v: PV) -> Result<ObjRef<*const T>, Self::Error> {
         Ok(ObjRef(with_ref!(v, Struct(v) => {
-            v.cast::<T>()
+            (*v).cast::<T>()
         })?))
     }
 }
@@ -148,17 +151,17 @@ impl TryFrom<PV> for String {
 
     fn try_from(v: PV) -> Result<Self, Self::Error> {
         with_ref!(v, String(s) => {
-            Ok(s.clone())
+            Ok((*s).clone())
         })
     }
 }
 
-impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a mut T> {
+impl<'a, T: Userdata> TryFrom<PV> for ObjRef<*mut T> {
     type Error = Error;
 
-    fn try_from(v: PV) -> Result<ObjRef<&'a mut T>, Self::Error> {
+    fn try_from(v: PV) -> Result<ObjRef<*mut T>, Self::Error> {
         Ok(ObjRef(with_ref_mut!(v, Struct(v) => {
-            v.cast_mut::<T>()
+            (*v).cast_mut::<T>()
         })?))
     }
 }
@@ -252,8 +255,8 @@ impl PartialEq for PV {
             (Self::Ref(l), Self::Ref(r)) => unsafe {
                 let tl = (**l).type_of();
                 if tl == NkT::String && tl == (**r).type_of() {
-                    let sl = (**l).fastcast::<String>();
-                    let sr = (**r).fastcast::<String>();
+                    let sl = fastcast::<String>(*l);
+                    let sr = fastcast::<String>(*r);
                     (*sl).eq(&*sr)
                 } else {
                     l == r
@@ -368,28 +371,6 @@ macro_rules! with_no_reorder {
     }};
 }
 
-fn find_cycle_nk(root: &mut NkAtom, vs: &mut VisitSet) -> bool {
-    match root.match_ref() {
-        NkRef::Cons(Cons { car, cdr }) => find_cycle_pv(*car, vs) || find_cycle_pv(*cdr, vs),
-        NkRef::Vector(v) => v.iter().any(|r| find_cycle_pv(*r, vs)),
-        NkRef::VLambda(VLambda { locals, .. }) => locals.iter().any(|r| find_cycle_pv(*r, vs)),
-        NkRef::Lambda(Lambda { locals, .. }) => locals.iter().any(|r| find_cycle_pv(*r, vs)),
-        NkRef::PV(r) => find_cycle_pv(*r, vs),
-        _ => false,
-    }
-}
-
-fn find_cycle_pv(root: PV, vs: &mut VisitSet) -> bool {
-    match root {
-        PV::Ref(p) if vs.contains(&(p as *const NkAtom)) => true,
-        PV::Ref(p) => {
-            vs.insert(p as *const NkAtom);
-            find_cycle_nk(unsafe { &mut *p }, vs)
-        }
-        _ => false,
-    }
-}
-
 #[derive(Clone, Copy)]
 struct PVVecIter {
     vec: *mut NkAtom,
@@ -452,7 +433,7 @@ impl PV {
 
     pub fn str(&self) -> Cow<str> {
         with_ref!(*self, String(s) => {
-            Ok(Cow::Borrowed(&s[..]))
+            Ok(Cow::Borrowed(&(*s)[..]))
         }).unwrap_or_else(|_| {
             Cow::from(self.to_string())
         })
@@ -472,16 +453,13 @@ impl PV {
     }
 
     pub fn set_inner(&mut self, v: PV) -> Result<PV, Error> {
-        with_ref_mut!(*self, Cons(Cons { ref mut cdr, .. }) => {
-            with_ref_mut!(*cdr, Cons(Cons { ref mut car, .. }) => {
-                Ok(replace(car, v))
+        with_ref_mut!(*self, Cons(p) => {
+            with_ref_mut!((*p).cdr, Cons(p) => {
+                let pre = (*p).car;
+                (*p).car = v;
+                Ok(pre)
             })
         })
-    }
-
-    pub fn has_cycle(&self) -> bool {
-        let mut vs = VisitSet::default();
-        find_cycle_pv(*self, &mut vs)
     }
 
     #[inline]
@@ -547,9 +525,11 @@ impl PV {
                                   self.it.next()
                               }
                           }
-                          let it = xs.chars().map(PV::Char);
-                          let it: IT = Box::new(Wrapper{it});
-                          Ok(it)
+                          unsafe {
+                              let it = (*xs).chars().map(PV::Char);
+                              let it: IT = Box::new(Wrapper{it});
+                              Ok(it)
+                          }
                       },
                       // XXX: SAFETY: This is safe because PVVecIter implements
                       //              Traceable and will update the pointer on GC
@@ -593,15 +573,7 @@ impl PV {
     }
 
     pub fn with_cell(&self, f: fn(PV, PV) -> PV) -> Option<PV> {
-        gcell!(*self, {
-            Cons(Cons { car, cdr }) => { f(*car, *cdr) }
-        }).ok()
-    }
-
-    pub fn with_mut_cell(&mut self, f: fn(&mut PV, &mut PV) -> PV) -> Option<PV> {
-        gcell!(mut *self, {
-            Cons(Cons { car, cdr }) => { f(car, cdr) }
-        }).ok()
+        with_ref!(*self, Cons(p) => { Ok(f((*p).car, (*p).cdr)) }).ok()
     }
 
     #[inline]
@@ -635,7 +607,7 @@ impl PV {
     pub fn intr_mut(&self) -> Option<(Builtin, *mut PV)> {
         let PV::Ref(p) = *self else { return None };
         (unsafe{(*p).type_of()} == NkT::Intr).then(|| unsafe {
-            let intr = (*p).fastcast_mut::<Intr>();
+            let intr = fastcast_mut::<Intr>(p);
             ((*intr).op, (ptr::addr_of_mut!((*intr).arg)))
         })
     }
@@ -690,7 +662,7 @@ impl PV {
         use PV::*;
         match *self {
             Nil => true,
-            Ref(p) => match_gcell!(p, {Cons(_) => {}}).is_ok(),
+            Ref(p) => unsafe { (*p).type_of() == NkT::Cons },
             _ => false,
         }
     }
@@ -731,13 +703,24 @@ impl PV {
     //     })
     // }
 
-    pub fn append(&mut self, new_tail: &PV) -> Result<(), RuntimeError> {
-        let cell = gcell!(mut *self, { Cons(cell) => { cell } })?;
-        unsafe {
-            let last_cell = (*cell).last_mut()?;
-            (*last_cell).cdr = *new_tail;
-        }
-        Ok(())
+    pub fn append(&mut self, new_tail: PV) -> Result<(), Error> {
+        let e = 'err: {
+            let PV::Ref(p) = *self else { break 'err *self };
+            unsafe {
+                let Some(mut cell) = cast_mut::<Cons>(p) else { break 'err *self };
+                while (*cell).cdr != PV::Nil {
+                    let pv = (*cell).cdr;
+                    if pv == PV::Nil { break }
+                    let PV::Ref(p) = pv else { break 'err pv };
+                    let Some(ncell) = cast_mut::<Cons>(p) else { break 'err pv };
+                    cell = ncell;
+                }
+                (*cell).cdr = new_tail;
+                return Ok(())
+            }
+        };
+        Err(ErrorKind::TypeError { expect: Builtin::Cons.sym(),
+                                   got: e.type_of() }.into())
     }
 
     // TODO: Create force_real, force_bool, etc, as well as int()->Option<i64>
@@ -758,19 +741,21 @@ impl PV {
     }
 
     pub fn equalp(&self, other: PV) -> bool {
-        match (*self, other) {
-            (PV::Ref(u), PV::Ref(v)) => match unsafe { ((*u).match_ref(),
-                                                        (*v).match_ref()) } {
-                (NkRef::String(u), NkRef::String(v)) => u == v,
-                (NkRef::Cons(u), NkRef::Cons(v)) =>
-                    u.car.equalp(v.car) && u.cdr.equalp(v.cdr),
-                (NkRef::PV(u), NkRef::PV(v)) => u.equalp(*v),
-                (NkRef::Vector(u), NkRef::Vector(v)) =>
-                    u.len() == v.len() &&
-                    u.iter().zip(v.iter()).all(|(u, v)| u.equalp(*v)),
-                _ => u == v,
-            },
-            _ => *self == other
+        unsafe {
+            match (*self, other) {
+                (PV::Ref(u), PV::Ref(v)) => match ((*u).match_ref(),
+                                                   (*v).match_ref()) {
+                    (NkRef::String(u), NkRef::String(v)) => u == v,
+                    (NkRef::Cons(u), NkRef::Cons(v)) =>
+                        (*u).car.equalp((*v).car) && (*u).cdr.equalp((*v).cdr),
+                    (NkRef::PV(u), NkRef::PV(v)) => (*u).equalp(*v),
+                    (NkRef::Vector(u), NkRef::Vector(v)) =>
+                        (*u).len() == (*v).len() &&
+                        (*u).iter().zip((*v).iter()).all(|(u, v)| u.equalp(*v)),
+                    _ => u == v,
+                },
+                _ => *self == other
+            }
         }
     }
 
@@ -910,16 +895,6 @@ impl Cons {
         Cons { car, cdr }
     }
 
-    fn last_mut(&mut self) -> Result<*mut Cons, RuntimeError> {
-        let mut node = self;
-        while node.cdr != PV::Nil {
-            gcell!(mut node.cdr, {
-                Cons(cell) => {node = cell}
-            })?;
-        }
-        Ok(node.as_mut_ptr())
-    }
-
     fn as_mut_ptr(&mut self) -> *mut Cons {
         self as *mut Cons
     }
@@ -1009,23 +984,25 @@ pub struct ConsIter {
 impl Iterator for ConsIter {
     type Item = ConsElem;
     fn next(&mut self) -> Option<Self::Item> {
-        Some(match self.item {
-            PV::Nil => return None,
-            PV::Ref(r) => match unsafe { (*r).match_ref() } {
-                NkRef::Cons(Cons { car, cdr }) => {
-                    self.item = *cdr;
-                    ConsElem::Head(*car)
+        unsafe {
+            Some(match self.item {
+                PV::Nil => return None,
+                PV::Ref(r) => match (*r).match_ref() {
+                    NkRef::Cons(p) => {
+                        self.item = (*p).cdr;
+                        ConsElem::Head((*p).car)
+                    },
+                    _ => {
+                        self.item = PV::Nil;
+                        ConsElem::Tail(PV::Ref(r))
+                    }
                 },
-                _ => {
+                x => {
                     self.item = PV::Nil;
-                    ConsElem::Tail(PV::Ref(r))
+                    ConsElem::Tail(x)
                 }
-            },
-            x => {
-                self.item = PV::Nil;
-                ConsElem::Tail(x)
-            }
-        })
+            })
+        }
     }
 }
 
@@ -1080,23 +1057,25 @@ impl From<PVIterSrc<'_>> for PV {
 impl Iterator for PVIterSrc<'_> {
     type Item = (ConsItem, Source);
     fn next(&mut self) -> Option<Self::Item> {
-        Some(match self.item {
-            PV::Nil => return None,
-            PV::Ref(r) => {
-                let src = self.nk.get_tag(r).cloned().unwrap_or(self.src.clone());
-                if let NkRef::Cons(Cons { car, cdr }) = unsafe{(*r).match_ref()} {
-                    self.item = *cdr;
-                    (ConsItem::Car(*car), src)
-                } else {
-                    self.item = PV::Nil;
-                    (ConsItem::Cdr(PV::Ref(r)), src)
+        unsafe {
+            Some(match self.item {
+                PV::Nil => return None,
+                PV::Ref(r) => {
+                    let src = self.nk.get_tag(r).cloned().unwrap_or(self.src.clone());
+                    if let NkRef::Cons(p) = to_fissile_ref(r) {
+                        self.item = (*p).cdr;
+                        (ConsItem::Car((*p).car), src)
+                    } else {
+                        self.item = PV::Nil;
+                        (ConsItem::Cdr(PV::Ref(r)), src)
+                    }
                 }
-            }
-            x => {
-                self.item = PV::Nil;
-                (ConsItem::Cdr(x), self.src.clone())
-            }
-        })
+                x => {
+                    self.item = PV::Nil;
+                    (ConsItem::Cdr(x), self.src.clone())
+                }
+            })
+        }
     }
 }
 
@@ -1127,7 +1106,7 @@ impl Iterator for PVIter {
         Some(match self.item {
             PV::Nil => return None,
             PV::Ref(r) if unsafe{(*r).type_of()} == NkT::Cons => unsafe {
-                let Cons { car, cdr } = *(*r).fastcast::<Cons>();
+                let Cons { car, cdr } = *fastcast::<Cons>(r);
                 self.item = cdr;
                 car
             }
@@ -1414,13 +1393,13 @@ impl Arena {
     #[inline]
     pub fn clz_expand(&mut self, idx: usize) -> Result<(), Error> {
         let lambda = self.stack[idx];
-        with_ref!(lambda, VLambda(VLambda { locals, .. }) => {
-            for v in locals.iter() {
+        with_ref!(lambda, VLambda(p) => {
+            for v in (*p).locals.iter() {
                 self.push(*v);
             }
             Ok(())
-        }, Lambda(Lambda { locals, .. }) => {
-            for v in locals.iter() {
+        }, Lambda(p) => {
+            for v in (*p).locals.iter() {
                 self.push(*v);
             }
             Ok(())
@@ -1581,8 +1560,8 @@ impl Arena {
 
     pub fn has_mut_extrefs(&self) -> bool {
         for val in self.nuke.iter() {
-            if let NkRef::Struct(s) = val.match_ref() {
-                if s.rc() > 1 {
+            if let NkRef::Struct(s) = to_fissile_ref(val) {
+                if unsafe{(*s).rc()} > 1 {
                     return true;
                 }
             }
@@ -1700,10 +1679,12 @@ impl Arena {
 
     pub fn untag_ast(&mut self, v: PV) {
         if let PV::Ref(p) = v {
-            if let NkRef::Cons(Cons { car, cdr }) = unsafe { (*p).match_ref() } {
+            if let NkRef::Cons(cns) = unsafe { (*p).match_ref() } {
                 self.untag(p);
-                self.untag_ast(*car);
-                self.untag_ast(*cdr);
+                unsafe {
+                    self.untag_ast((*cns).car);
+                    self.untag_ast((*cns).cdr);
+                }
             }
         }
     }
@@ -1743,13 +1724,13 @@ impl Arena {
         }
     }
 
-    pub fn append(&mut self, n: u32) -> Result<(), RuntimeError> {
+    pub fn append(&mut self, n: u32) -> Result<(), Error> {
         let top = self.stack.len();
         let idx = top - (n as usize);
         let top_it = self.stack[idx + 1..top].iter();
         for (item_ref, next) in self.stack[idx..top - 1].iter().zip(top_it) {
             let mut item = *item_ref;
-            item.append(next)?;
+            item.append(*next)?;
         }
         self.stack.truncate(idx + 1);
         Ok(())
@@ -1824,9 +1805,8 @@ impl Arena {
         for ptr in self.gray.iter_mut() {
             *ptr = self.nuke.reloc().get(*ptr) as *mut NkAtom;
         }
-        let reloc_p = self.nuke.reloc() as *const PtrMap;
         for obj in self.nuke.iter_mut() {
-            update_ptr_atom(obj, unsafe { &*reloc_p });
+            update_ptr_atom(obj, self.nuke.reloc());
         }
         for pv in self.stack.iter_mut().chain(self.env.iter_mut()) {
             pv.update_ptrs(self.nuke.reloc());
@@ -1880,9 +1860,7 @@ impl Arena {
     fn mark_step(&mut self, steps: u32) {
         for _ in 0..steps {
             match self.gray.pop() {
-                Some(obj) => {
-                    mark_atom(unsafe { &mut *obj }, &mut self.gray)
-                },
+                Some(obj) => mark_atom(obj, &mut self.gray),
                 None => {
                     self.state = GCState::Sweep;
                     break;
@@ -1971,7 +1949,9 @@ impl Arena {
         self.env.clear();
         self.gray.clear();
         for obj in self.nuke.iter_mut() {
-            obj.set_color(Color::White);
+            unsafe {
+                (*obj).set_color(Color::White);
+            }
         }
         self.sweep_compact();
     }

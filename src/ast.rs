@@ -1,6 +1,5 @@
 //! Abstract Syntax Tree Tools
 
-use crate::fmt::LispFmt;
 use crate::nkgc::Arena;
 use crate::nkgc::Cons;
 use crate::nkgc::ConsItem;
@@ -9,6 +8,7 @@ use crate::nkgc::Quasi;
 use crate::nkgc::SymID;
 use crate::error::*;
 use crate::nuke::NkRef;
+use crate::raw::nuke::to_fissile_ref;
 use crate::tok::*;
 use crate::perr::*;
 use crate::sexpr_parse::string_parse;
@@ -1405,10 +1405,10 @@ impl<'a> Excavator<'a> {
 
     fn dig(&self, v: PV, src: Source) -> Result<AST2> {
         match v {
-            PV::Ref(p) => match unsafe {(*p).match_ref()} {
+            PV::Ref(p) => match to_fissile_ref(p) {
                 NkRef::Cons(cell) => {
                     let src = self.mem.get_tag(p).cloned().unwrap_or(src);
-                    self.cons(*cell, src)
+                    self.cons(unsafe { *cell }, src)
                 },
                 _ => Ok(AST2 { src, kind: v.into() })
             }

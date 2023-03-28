@@ -171,7 +171,7 @@ impl<T> TryFrom<PV> for Vec<T>
     type Error = Error;
     fn try_from(v: PV) -> Result<Vec<T>, Self::Error> {
         with_ref!(v, Vector(v) => {
-            v.iter().map(|&x| x.try_into())
+            (*v).iter().map(|&x| x.try_into())
                     .collect::<Result<_, _>>()
         })
     }
@@ -183,7 +183,7 @@ impl<T> TryFrom<PV> for Vec<T>
 impl<'a> TryFrom<PV> for &'a str {
     type Error = Error;
     fn try_from(v: PV) -> Result<&'a str, Self::Error> {
-        with_ref!(v, String(s) => { Ok(s) })
+        with_ref!(v, String(s) => { Ok(&*s) })
     }
 }
 

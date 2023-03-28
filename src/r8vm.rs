@@ -4,20 +4,20 @@
 use comfy_table::Table;
 
 use crate::{
-    ast::{Value, ValueKind, Excavator, AST2, M},
+    ast::{Value, Excavator},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
-    compile::{pv_to_value, Builtin, Linked, R8Compiler, SourceList},
+    compile::{Builtin, Linked, R8Compiler, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
     fmt::LispFmt,
     module::{LispModule, Export, ExportKind},
     nuke::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self, Quasi, QuasiMut},
+    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self, QuasiMut},
     sexpr_parse::{Parser, sexpr_modified_sym_to_str, sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits,
 };
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::{HashMap, hash_map::Entry}, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr, slice, sync::Mutex, path::Path};
+use std::{io, fs, borrow::Cow, cmp, collections::{HashMap, hash_map::Entry}, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::{self, addr_of_mut}, slice, sync::Mutex, path::Path};
 
 chasm_def! {
     r8c:
@@ -172,7 +172,7 @@ impl RuntimeError {
 fn tostring(vm: &R8VM, x: PV) -> String {
     match x {
         PV::Ref(y) => match unsafe { (*y).match_ref() } {
-            NkRef::String(s) => s.clone(),
+            NkRef::String(s) => unsafe { (*s).clone() },
             _ => x.lisp_to_string(&vm.mem),
         },
         PV::Char(c) => format!("{c}"),
@@ -261,7 +261,7 @@ mod sysfns {
                 had_out = true;
             }
             with_ref!(val, String(s) => {
-                write!(&mut out, "{s}").unwrap();
+                write!(&mut out, "{}", &*s).unwrap();
                 Ok(())
             }).or_else(|_| -> Result<(), Infallible> {
                 match val {
@@ -337,7 +337,7 @@ mod sysfns {
                 [xs, PV::Sym(s)] => (xs.make_iter().map_err(emap)?,
                                      Cow::from(vm.sym_name(*s))),
                 [xs, o] => (xs.make_iter().map_err(emap)?, with_ref!(*o, String(s) => {
-                    Ok(Cow::from(s))
+                    Ok(Cow::from(&(*s)[..]))
                 }).map_err(|e| e.op(Builtin::Join.sym()).argn(2))?),
                 [xs] => (xs.make_iter()?, Cow::from("")),
                 _ => return Err(error!(ArgError,
@@ -409,12 +409,12 @@ mod sysfns {
         }
 
         fn read_compile(&mut self, vm: &mut R8VM, args: (code)) -> Result<PV, Error> {
-            with_ref_mut!(*code, String(s) => { vm.read_compile(s, None) })
+            with_ref_mut!(*code, String(s) => { vm.read_compile((*s).as_ref(), None) })
         }
 
         fn read_compile_from(&mut self, vm: &mut R8VM, args: (arg)) -> Result<PV, Error> {
             with_ref_mut!(*arg, String(s) => {
-                vm.read_compile_from(s)
+                vm.read_compile_from(&*s)
             })
         }
 
@@ -445,7 +445,7 @@ mod sysfns {
             match args {
                 [s @ PV::Sym(_)] => Ok(*s),
                 [r] => with_ref!(*r, String(s) => {
-                    Ok(PV::Sym(vm.mem.symdb.put_ref(s)))
+                    Ok(PV::Sym(vm.mem.symdb.put_ref(&*s)))
                 }),
                 _ => Err(error!(ArgError,
                                 expect: ArgSpec::normal(1),
@@ -809,6 +809,13 @@ impl<const N: usize> Regs<N> {
         }
     }
 }
+
+struct PMem {
+    code: *mut r8c::Op,
+}
+
+// TODO
+impl PMem {}
 
 macro_rules! call_with {
     ($vm:expr, $pos:expr, $nargs:expr, $body:block) => {{
@@ -1570,9 +1577,8 @@ impl R8VM {
             let mut idx = 0;
             loop {
                 let PV::Ref(p) = v else { unreachable!("{v:?}") };
-                let rf = unsafe{(*p).match_ref()};
-                let NkRef::Cons(Cons { car, cdr }) = rf else { unreachable!("{rf:?}") };
-                let r = if dot {*cdr} else {*car};
+                let Cons { car, cdr } = unsafe { *fastcast(p) };
+                let r = if dot {cdr} else {car};
                 let ncar = match (bop, idx) {
                     (Some(Builtin::Lambda), 1) |
                     (Some(Builtin::Define), 1) => Ok(r),
@@ -1584,24 +1590,25 @@ impl R8VM {
                     }
                 };
                 let PV::Ref(p) = v else { unreachable!() };
-                let rf = unsafe{(*p).match_mut()};
-                let NkMut::Cons(Cons { ref mut car, ref mut cdr }) = rf else {
-                    unreachable!()
-                };
-                let dst = if dot { &mut *cdr } else { car };
-                *dst = match ncar {
-                    Ok(x) => x,
-                    Err(e) => {
-                        self.mem.pop().unwrap();
-                        return Err(e);
+                let cns = unsafe { fastcast_mut::<Cons>(p) };
+                unsafe {
+                    let dst = if dot { addr_of_mut!((*cns).cdr) }
+                              else   { addr_of_mut!((*cns).car) };
+                    *dst = match ncar {
+                        Ok(x) => x,
+                        Err(e) => {
+                            self.mem.pop().unwrap();
+                            return Err(e);
+                        }
+                    };
+
+                    idx += 1;
+                    v = match cdr.bt_type_of() {
+                        Builtin::Nil => break,
+                        Builtin::Cons => (*cns).cdr,
+                        _ if dot => break,
+                        _ => { dot = true; v }
                     }
-                };
-                idx += 1;
-                v = match cdr.bt_type_of() {
-                    Builtin::Nil => break,
-                    Builtin::Cons => *cdr,
-                    _ if dot => break,
-                    _ => { dot = true; v }
                 }
             }
             self.mem.pop()
@@ -1677,13 +1684,7 @@ impl R8VM {
     }
 
     pub fn eval_ast(&mut self, root: PV) -> Result<PV, Error> {
-        let ast = unsafe { pv_to_value(root, &Source::none()) };
-        let mut cc = R8Compiler::new(self);
-        cc.compile_top(true, &ast)?;
-        let (asm, _, consts, srcs) = cc.link()?;
-        unsafe {
-            self.add_and_run(asm, Some(consts), Some(srcs))
-        }
+        todo!()
     }
 
     pub fn eval(&mut self, expr: &str) -> Result<PV, Error> {
@@ -1695,99 +1696,11 @@ impl R8VM {
     }
 
     pub unsafe fn pull_ast(&self, v: PV, src: &Source) -> Value {
-        let kind = match v {
-            PV::Sym(sym) => ValueKind::Symbol(sym),
-            PV::Nil => ValueKind::Nil,
-            PV::Int(x) => ValueKind::Int(x),
-            PV::Bool(x) => ValueKind::Bool(x),
-            PV::Real(x) => ValueKind::Real(x),
-            PV::Ref(p) => match (*p).match_ref() {
-                NkRef::Cons(Cons { car, cdr }) => {
-                    let src = self.mem.get_tag(p).unwrap_or(src);
-                    ValueKind::Cons(Box::new(self.pull_ast(*car, src)),
-                                    Box::new(self.pull_ast(*cdr, src)))
-                },
-                NkRef::String(s) => ValueKind::String(s.clone()),
-                NkRef::PV(v) => self.pull_ast(*v, src).kind,
-                x => unimplemented!("inner: {:?}", x),
-            }
-            PV::Char(x) => ValueKind::Char(x),
-            // UInt is only an implementation detail, SPAIK code can't create or
-            // interact with these values directly.
-            PV::UInt(x) => panic!("Stray UInt: {}", x),
-        };
-        Value { kind, src: src.clone() }
-    }
-
-    pub unsafe fn pull_ast_norec(&self, v: PV, src: &Source) -> Value {
-        #[derive(Debug)]
-        enum Thing<'a> {
-            Defer(PV, &'a Source),
-            Cons(&'a Source),
-        }
-        use Thing::*;
-        let mut stack = vec![Defer(v, src)];
-        let mut ostack = vec![];
-        while let Some(action) = stack.pop() {
-            match action {
-                Defer(v, src) => match v {
-                    PV::Sym(sym) => ostack.push(Value { kind: ValueKind::Symbol(sym), src: src.clone() }),
-                    PV::Nil => ostack.push(Value { kind: ValueKind::Nil, src: src.clone() }),
-                    PV::Int(x) => ostack.push(Value { kind: ValueKind::Int(x), src: src.clone() }),
-                    PV::Bool(x) => ostack.push(Value { kind: ValueKind::Bool(x), src: src.clone() }),
-                    PV::Real(x) => ostack.push(Value { kind: ValueKind::Real(x), src: src.clone() }),
-                    PV::Ref(p) => {
-                        match (*p).match_ref() {
-                            NkRef::Cons(nkgc::Cons { car, cdr }) => {
-                                stack.push(Cons(src));
-                                let src = self.mem.get_tag(p).unwrap_or(src);
-                                stack.push(Defer(*car, src));
-                                stack.push(Defer(*cdr, src));
-                            },
-                            NkRef::String(s) => ostack.push(Value { kind: ValueKind::String(s.clone()),
-                                                                    src: src.clone() } ),
-                            NkRef::PV(v) => stack.push(Defer(*v, src)),
-                            x => unimplemented!("inner: {:?}", x),
-                        }
-                    }
-                    PV::UInt(x) => panic!("Stray UInt: {}", x),
-                    PV::Char(x) => panic!("Stray char: {}", x),
-                },
-                Cons(cons_src) => {
-                    let car = ostack.pop().unwrap();
-                    let cdr = ostack.pop().unwrap();
-                    ostack.push(Value { kind: ValueKind::Cons(Box::new(car), Box::new(cdr)),
-                                        src: cons_src.clone() })
-                }
-            }
-        }
-        debug_assert!(ostack.len() <= 1, "Multiple objects in output stack");
-        ostack.pop().expect("No objects in output")
+        unimplemented!()
     }
 
     pub fn expand(&mut self, ast: &Value) -> Option<Result<Value, Error>> {
-        ast.op()
-           .and_then(|sym| self.macros.get(&sym.into()).copied())
-           .map(|sym| {
-               let args = ast.args().collect::<Vec<_>>();
-               let mut asts = vec![];
-               let pv = symcall_with!(self, sym, args.len(), {
-                   for arg in args.iter() {
-                       let pv = self.mem.push_ast(arg);
-                       asts.push(self.mem.make_extref(pv));
-                   }
-               });
-
-               let out = unsafe { self.pull_ast(pv, &ast.src) };
-               // FIXME: vm_call_with can error out, meaning this code won't
-               //        run:
-               for ast in asts.into_iter() {
-                   let pv = ast.pv(self);
-                   self.mem.untag_ast(pv);
-               }
-
-               Ok(out)
-           })
+        unimplemented!()
     }
 
     pub fn set_macro(&mut self, macro_sym: SymID, fn_sym: SymID) {
@@ -2039,29 +1952,11 @@ impl R8VM {
         let idx = self.mem.stack.len() - nargs as usize - 1;
         let lambda_pv = self.mem.stack[idx];
         with_ref_mut!(lambda_pv, VLambda(lambda) => {
-            lambda.args.check(lambda.name, nargs)?;
-            let has_env = lambda.args.has_env();
-            if !has_env {
-                self.mem.stack.drain(idx..(idx+1)).for_each(drop); // drain gang
-            }
-            let sym = lambda.name;
-            let pos = self.funcs
-                          .get(&sym.into())
-                          .ok_or_else(|| Error::from(
-                              ErrorKind::UndefinedFunction {
-                                  name: sym
-                              }))
-                          .map(|func| func.pos)?;
-            self.call_pre(ip);
-            self.frame = self.mem.stack.len()
-                       - 2
-                       - nargs as usize
-                       - has_env as usize;
-            Ok(self.ret_to(pos))
+            unimplemented!()
         }, Lambda(lambda) => {
             let sym = Builtin::GreekLambda.sym();
-            lambda.args.check(sym, nargs)?;
-            let has_env = lambda.args.has_env();
+            (*lambda).args.check(sym, nargs)?;
+            let has_env = (*lambda).args.has_env();
             if !has_env {
                 self.mem.stack.drain(idx..(idx+1)).for_each(drop); // drain gang
             }
@@ -2070,7 +1965,7 @@ impl R8VM {
                        - 2
                        - nargs as usize
                        - has_env as usize;
-            Ok(self.ret_to(lambda.pos))
+            Ok(self.ret_to((*lambda).pos))
         }, Subroutine(subr) => {
             // SAFETY: The Subr trait is marked unsafe, read the associated
             //         safety documentation in Subr as to why this is safe. The
@@ -2082,13 +1977,13 @@ impl R8VM {
                 slice::from_raw_parts(ptr, nargs as usize)
             };
             let dip = self.ip_delta(ip);
-            let res = subr.call(self, args);
+            let res = (*subr).call(self, args);
             self.mem.stack.drain(idx..).for_each(drop); // drain gang
             self.mem.push(res?);
             Ok(self.ret_to(dip))
         }, Continuation(cont) => {
             ArgSpec::normal(1).check(Builtin::Continuation.sym(), nargs)?;
-            let cont_stack = cont.take_stack()?;
+            let cont_stack = (*cont).take_stack()?;
 
             let pv = self.mem.pop().unwrap();
             self.mem.stack.drain(idx..).for_each(drop); // drain gang
@@ -2101,8 +1996,8 @@ impl R8VM {
 
             // call continuation
             self.mem.stack.push(pv);
-            self.frame = cont.frame;
-            let res = unsafe { self.run_from_unwind(cont.dip) };
+            self.frame = (*cont).frame;
+            let res = unsafe { self.run_from_unwind((*cont).dip) };
 
             // pop state
             let mut stack = mem::replace(&mut self.mem.stack,
@@ -2122,7 +2017,7 @@ impl R8VM {
                     .amend(Meta::Op(OpName::OpStr("continuation"))))
             };
 
-            cont.put_stack(stack);
+            (*cont).put_stack(stack);
 
             res
         })
@@ -2139,42 +2034,45 @@ impl R8VM {
         let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
         use r8c::Op::*;
         let mut run = || loop {
-            let op = &*ip;
+            // let op = *ip;
+            let ipd = self.ip_delta(ip);
+            let op = self.pmem[ipd];
+
             ip = ip.offset(1);
             match op {
                 // List processing
                 CAR() => {
                     let it = self.mem.pop()?;
-                    with_ref_mut!(it, Cons(Cons { car, .. }) => {
-                        self.mem.push(*car);
+                    with_ref_mut!(it, Cons(p) => {
+                        self.mem.push((*p).car);
                         Ok(())
                     }).map_err(|e| e.op(Builtin::Car.sym()))?
                 },
                 CDR() => {
                     let it = self.mem.pop()?;
-                    with_ref_mut!(it, Cons(Cons { cdr, .. }) => {
-                        self.mem.push(*cdr);
+                    with_ref_mut!(it, Cons(p) => {
+                        self.mem.push((*p).cdr);
                         Ok(())
                     }).map_err(|e| e.op(Builtin::Cdr.sym()))?
                 },
                 LIST(n) => {
-                    self.mem.list(*n)
+                    self.mem.list(n)
                 },
                 VLIST() => {
                     let len = self.mem.pop()?.force_int() as u32;
                     self.mem.list(len);
                 }
                 CONS() => self.mem.cons_unchecked(),
-                APPEND(n) => self.mem.append(*n)?,
+                APPEND(n) => self.mem.append(n)?,
 
                 // Iterators
                 NXIT(var) => {
-                    let offset = (self.frame as isize) + (*var as isize);
+                    let offset = (self.frame as isize) + (var as isize);
                     let it = *self.mem.stack.as_ptr().offset(offset);
                     with_ref_mut!(it, Iter(it) => {
-                        let elem = it.next()
-                                     .unwrap_or_else(
-                                         || PV::Sym(Builtin::IterStop.sym()));
+                        let elem = (*it).next()
+                                        .unwrap_or_else(
+                                            || PV::Sym(Builtin::IterStop.sym()));
                         self.mem.push(elem);
                         Ok(())
                     }).map_err(|e| e.op(Builtin::Next.sym()))?;
@@ -2184,7 +2082,7 @@ impl R8VM {
                 VEC(n) => {
                     let len = self.mem.stack.len();
                     let vec = self.mem.stack
-                                      .drain(len-(*n as usize)..)
+                                      .drain(len-(n as usize)..)
                                       .collect::<Vec<_>>();
                     let ptr = self.mem.alloc::<Vec<PV>>();
                     ptr::write(ptr, vec);
@@ -2194,14 +2092,14 @@ impl R8VM {
                     let vec = self.mem.pop()?;
                     let elem = self.mem.pop()?;
                     with_ref_mut!(vec, Vector(v) => {
-                        v.push(elem);
+                        (*v).push(elem);
                         Ok(())
                     }).map_err(|e| e.op(Builtin::Push.sym()))?
                 }
                 VPOP() => {
                     let vec = self.mem.pop()?;
                     with_ref_mut!(vec, Vector(v) => {
-                        let elem = v.pop().unwrap_or(PV::Nil);
+                        let elem = (*v).pop().unwrap_or(PV::Nil);
                         self.mem.push(elem);
                         Ok(())
                     }).map_err(|e| e.op(Builtin::Pop.sym()))?;
@@ -2216,7 +2114,7 @@ impl R8VM {
                     };
                     let vec = self.mem.pop()?;
                     let elem = with_ref!(vec, Vector(v) => {
-                        v.get(idx).ok_or(error!(IndexError, idx))
+                        (*v).get(idx).ok_or(error!(IndexError, idx))
                     }).map_err(|e| e.op(op))?;
                     self.mem.push(*elem);
                 }
@@ -2232,10 +2130,10 @@ impl R8VM {
                     let vec = self.mem.pop()?;
                     let val = self.mem.pop()?;
                     with_ref_mut!(vec, Vector(v) => {
-                        if idx >= v.len() {
+                        if idx >= (*v).len() {
                             err!(IndexError, idx)
                         } else {
-                            *v.get_unchecked_mut(idx) = val;
+                            *(*v).get_unchecked_mut(idx) = val;
                             Ok(())
                         }
                     }).map_err(|e| e.op(Builtin::Set.sym()))?;
@@ -2243,8 +2141,8 @@ impl R8VM {
                 LEN() => {
                     let li = self.mem.pop()?;
                     let len = with_ref!(li,
-                                        Vector(v) => { Ok(v.len()) },
-                                        String(s) => { Ok(s.len()) },
+                                        Vector(v) => { Ok((*v).len()) },
+                                        String(s) => { Ok((*s).len()) },
                                         Cons(_) => { Ok(li.iter().count()) })
                         .map_err(|e| e.op(Builtin::Len.sym()))?;
                     self.mem.push(PV::Int(len as i64));
@@ -2252,25 +2150,25 @@ impl R8VM {
 
                 // Value creation
                 NIL() => self.mem.push(PV::Nil),
-                CONSTREF(n) => self.consts[*n as usize].push_to(&mut self.mem),
+                CONSTREF(n) => self.consts[n as usize].push_to(&mut self.mem),
                 INST(idx) => {
-                    let pv = self.mem.get_env(*idx as usize).deep_clone(&mut self.mem);
+                    let pv = self.mem.get_env(idx as usize).deep_clone(&mut self.mem);
                     self.mem.push(pv);
                 },
-                BOOL(i) => self.mem.push(PV::Bool(*i != 0)),
+                BOOL(i) => self.mem.push(PV::Bool(i != 0)),
                 CLZAV(nargs, nenv) => {
-                    let start_idx = self.frame + *nargs as usize;
-                    let end_idx = start_idx + *nenv as usize;
+                    let start_idx = self.frame + nargs as usize;
+                    let end_idx = start_idx + nenv as usize;
                     let lambda = self.mem.stack[self.frame];
                     let new_env = &self.mem.stack[start_idx..end_idx];
                     // Save environment
                     with_ref_mut!(lambda, VLambda(lambda) => {
-                        for (dst, var) in lambda.locals.iter_mut().zip(new_env.iter()) {
+                        for (dst, var) in (*lambda).locals.iter_mut().zip(new_env.iter()) {
                             *dst = *var;
                         }
                         Ok(())
                     }, Lambda(lambda) => {
-                        for (dst, var) in lambda.locals.iter_mut().zip(new_env.iter()) {
+                        for (dst, var) in (*lambda).locals.iter_mut().zip(new_env.iter()) {
                             *dst = *var;
                         }
                         Ok(())
@@ -2278,24 +2176,25 @@ impl R8VM {
                 }
                 ARGSPEC(_nargs, _nopt, _env, _rest) => {}
                 CLZR(pos, nenv) => {
-                    let ARGSPEC(nargs, nopt, env, rest) = *ip.sub(2) else {
+                    let ipd = self.ip_delta(ip);
+                    let ARGSPEC(nargs, nopt, env, rest) = self.pmem[ipd-2] else {
                         panic!("CLZR without ARGSPEC");
                     };
                     let spec = ArgSpec { nargs, nopt, env, rest: rest == 1 };
                     let to = self.mem.stack.len();
-                    let from = to - *nenv as usize;
+                    let from = to - nenv as usize;
                     let locals = self.mem.stack.drain(from..to).collect();
-                    self.mem.push_new(nkgc::Lambda { pos: *pos as usize,
+                    self.mem.push_new(nkgc::Lambda { pos: pos as usize,
                                                      args: spec,
                                                      locals });
                 }
                 CLZ(sym, nenv) => {
                     let to = self.mem.stack.len();
-                    let from = to - *nenv as usize;
+                    let from = to - nenv as usize;
                     let locals = self.mem.stack.drain(from..to).collect();
-                    let name = (*sym).into();
+                    let name = sym.into();
                     let args = self.funcs
-                                   .get(sym)
+                                   .get(&sym)
                                    .ok_or(error_src!(Source::none(),
                                                      UndefinedFunction,
                                                      name))?.args;
@@ -2325,14 +2224,14 @@ impl R8VM {
                     let x = self.mem.stack.pop().unwrap_unchecked();
                     self.mem.stack.push(x.mul(&y)?);
                 },
-                INC(v, d) => match self.mem.stack[self.frame + (*v as usize)] {
-                    PV::Int(ref mut x) => *x += i64::from(*d),
-                    PV::Real(ref mut x) => *x += f32::from(*d),
+                INC(v, d) => match self.mem.stack[self.frame + (v as usize)] {
+                    PV::Int(ref mut x) => *x += i64::from(d),
+                    PV::Real(ref mut x) => *x += f32::from(d),
                     x => return Err(RuntimeError::new(format!("Cannot increment: {}", x)).into()),
                 },
-                DEC(v, d) => match self.mem.stack[self.frame + (*v as usize)] {
-                    PV::Int(ref mut x) => *x -= i64::from(*d),
-                    PV::Real(ref mut x) => *x -= f32::from(*d),
+                DEC(v, d) => match self.mem.stack[self.frame + (v as usize)] {
+                    PV::Int(ref mut x) => *x -= i64::from(d),
+                    PV::Real(ref mut x) => *x -= f32::from(d),
                     x => return Err(RuntimeError::new(format!("Cannot decrement: {}", x)).into()),
                 },
 
@@ -2373,52 +2272,52 @@ impl R8VM {
                 },
 
                 // Flow control
-                JMP(d) => ip = ip.offset(*d as isize - 1),
+                JMP(d) => ip = ip.offset(d as isize - 1),
                 JT(d) => if bool::from(self.mem.pop()?) {
-                    ip = ip.offset(*d as isize - 1);
+                    ip = ip.offset(d as isize - 1);
                 }
                 JN(d) => if !bool::from(self.mem.pop()?) {
-                    ip = ip.offset(*d as isize - 1);
+                    ip = ip.offset(d as isize - 1);
                 }
                 JZ(d) => if self.mem.stack.pop() == Some(PV::Int(0)) {
-                    ip = ip.offset(*d as isize - 1);
+                    ip = ip.offset(d as isize - 1);
                 }
                 JNZ(d) => if self.mem.stack.pop() != Some(PV::Int(0)) {
-                    ip = ip.offset(*d as isize - 1);
+                    ip = ip.offset(d as isize - 1);
                 }
                 JV(mul, max) => {
                     let n = self.mem.pop()?.force_int() as isize;
-                    let d = cmp::min((*mul as isize) * n, *max as isize);
+                    let d = cmp::min((mul as isize) * n, max as isize);
                     ip = ip.offset(d);
                 }
                 VCALL(sym, nargs) => {
-                    match self.funcs.get(sym) {
+                    match self.funcs.get(&sym) {
                         Some(func) => {
-                            func.args.check((*sym).into(), *nargs)?;
+                            func.args.check(sym.into(), nargs)?;
                             let pos = func.pos;
-                            (*ip.sub(1)) = CALL(pos as u32, *nargs);
+                            (*ip.sub(1)) = CALL(pos as u32, nargs);
                             self.call_pre(ip);
-                            self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
+                            self.frame = self.mem.stack.len() - 2 - (nargs as usize);
                             ip = self.ret_to(pos);
                         },
-                        None => if let Some(idx) = self.get_env_global((*sym).into()) {
+                        None => if let Some(idx) = self.get_env_global(sym.into()) {
                             let var = self.mem.get_env(idx);
-                            let sidx = self.mem.stack.len() - *nargs as usize;
+                            let sidx = self.mem.stack.len() - nargs as usize;
                             // FIXME: This can be made less clunky by modifying
                             // op_clzcall so that it takes the callable as a parameter.
                             self.mem.stack.insert(sidx, var);
-                            ip = self.op_clzcall(ip, *nargs)?;
+                            ip = self.op_clzcall(ip, nargs)?;
                         } else {
                             return Err(ErrorKind::UndefinedFunction {
-                                name: (*sym).into()
+                                name: sym.into()
                             }.into())
                         }
                     };
                 }
                 CALL(pos, nargs) => {
                     self.call_pre(ip);
-                    self.frame = self.mem.stack.len() - 2 - (*nargs as usize);
-                    ip = self.ret_to(*pos as usize);
+                    self.frame = self.mem.stack.len() - 2 - (nargs as usize);
+                    ip = self.ret_to(pos as usize);
                 }
                 RET() => {
                     let rv = self.mem.pop()?;
@@ -2433,9 +2332,9 @@ impl R8VM {
                     self.mem.stack.truncate(old_frame);
                     self.mem.push(rv);
                 }
-                CLZCALL(nargs) => ip = self.op_clzcall(ip, *nargs)?,
+                CLZCALL(nargs) => ip = self.op_clzcall(ip, nargs)?,
                 CALLCC(dip) => {
-                    let dip = self.ip_delta(ip) as isize + *dip as isize;
+                    let dip = self.ip_delta(ip) as isize + dip as isize;
                     let mut stack_dup = self.mem.stack.clone();
                     stack_dup.pop();
                     let cnt = self.mem.put(
@@ -2450,18 +2349,18 @@ impl R8VM {
 
                 // Stack manipulation
                 MOV(var) => {
-                    let offset = (self.frame as isize) + (*var as isize);
+                    let offset = (self.frame as isize) + (var as isize);
                     self.mem
                         .push(*self.mem.stack.as_ptr().offset(offset))
                 }
                 STR(var) => {
-                    let offset = (self.frame as isize) + (*var as isize);
+                    let offset = (self.frame as isize) + (var as isize);
                     *(self.mem.stack.as_mut_ptr().offset(offset)) = self.mem.pop()?
                 },
-                POP(n) => self.mem.popn(*n as usize),
+                POP(n) => self.mem.popn(n as usize),
                 POPA(keep, pop) => {
-                    let keep = *keep as usize;
-                    let pop = *pop as usize;
+                    let keep = keep as usize;
+                    let pop = pop as usize;
                     let st = &mut self.mem.stack;
                     let top = st.len();
                     for (hi, lo) in (top - keep..top).zip(top - pop - keep..top) {
@@ -2469,27 +2368,27 @@ impl R8VM {
                     }
                     st.truncate(top - pop);
                 }
-                PUSH(n) => self.mem.push(PV::Int(i64::from(*n))),
-                PUSHF(n) => self.mem.push(PV::Real(f32::from_bits(*n))),
-                CHAR(c) => self.mem.push(PV::Char(char::from_u32_unchecked(*c))),
-                SYM(id) => self.mem.push(PV::Sym((*id).into())),
-                SAV(num) => regs.save(&mut self.mem, *num)?,
+                PUSH(n) => self.mem.push(PV::Int(i64::from(n))),
+                PUSHF(n) => self.mem.push(PV::Real(f32::from_bits(n))),
+                CHAR(c) => self.mem.push(PV::Char(char::from_u32_unchecked(c))),
+                SYM(id) => self.mem.push(PV::Sym(id.into())),
+                SAV(num) => regs.save(&mut self.mem, num)?,
                 RST() => regs.restore(&mut self.mem),
                 TOP(d) => {
                     let top = self.mem.stack.len() - self.frame;
-                    self.mem.push(PV::Int((top as i64) - (*d as i64)));
+                    self.mem.push(PV::Int((top as i64) - (d as i64)));
                 }
                 DUP() => self.mem.dup()?,
                 CLZEXP() => self.mem.clz_expand(self.frame)?,
 
                 // Static/env variables
                 GET(var) => {
-                    let val = self.mem.get_env(*var as usize);
+                    let val = self.mem.get_env(var as usize);
                     self.mem.push(val);
                 },
                 SET(var) => {
                     let val = self.mem.pop()?;
-                    self.mem.set_env(*var as usize, val);
+                    self.mem.set_env(var as usize, val);
                 }
 
                 HCF() => return Ok(()),

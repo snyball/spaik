@@ -1,7 +1,7 @@
 //! SPAIK Compiler
 
-use crate::nuke::{NkSum, NkRef};
-use crate::nkgc::{PV, SymID, SymIDInt, Cons};
+use crate::nuke::NkSum;
+use crate::nkgc::{PV, SymID, SymIDInt};
 use crate::r8vm::{R8VM, r8c, ArgSpec};
 use crate::r8vm::r8c::Op as R8C;
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl};
@@ -519,23 +519,7 @@ impl ClzScoper<'_> {
 }
 
 pub unsafe fn pv_to_value(v: PV, src: &Source) -> Value {
-    let kind = match v {
-        PV::Sym(sym) => ValueKind::Symbol(sym),
-        PV::Nil => ValueKind::Nil,
-        PV::Int(x) => ValueKind::Int(x),
-        PV::Bool(x) => ValueKind::Bool(x),
-        PV::Real(x) => ValueKind::Real(x),
-        PV::Ref(p) => match (*p).match_ref() {
-            NkRef::Cons(Cons { car, cdr }) =>
-                ValueKind::Cons(Box::new(pv_to_value(*car, src)),
-                                Box::new(pv_to_value(*cdr, src))),
-            NkRef::String(s) => ValueKind::String(s.clone()),
-            NkRef::PV(v) => pv_to_value(*v, src).kind,
-            x => unimplemented!("{:?}", x),
-        }
-        x => unimplemented!("{:?}", x)
-    };
-    Value { kind, src: src.clone() }
+    unimplemented!()
 }
 
 /**

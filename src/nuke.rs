@@ -10,7 +10,6 @@ use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::mem::{self, size_of, align_of};
 use std::ptr::{drop_in_place, self};
-use std::marker::PhantomData;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt;
 use core::fmt::Debug;
@@ -26,9 +25,9 @@ use std::sync::atomic;
 macro_rules! with_atom {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
         unsafe {
-            match $item.type_of() {
+            match (*$item).type_of() {
                 $(NkT::$t => {
-                    let $item = &*$item.fastcast::<$path>();
+                    let $item = fastcast::<$path>($item);
                     $fn
                 }),+
             }
@@ -39,9 +38,9 @@ macro_rules! with_atom {
 macro_rules! with_atom_mut {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
         unsafe {
-            match $item.type_of() {
+            match (*$item).type_of() {
                 $(NkT::$t => {
-                    let $item = &mut *$item.fastcast_mut::<$path>();
+                    let $item = fastcast_mut::<$path>($item);
                     $fn
                 }),+
             }
@@ -52,9 +51,9 @@ macro_rules! with_atom_mut {
 macro_rules! with_atom_inst {
     ($item:ident, $what:ident, $fn:block, $(($t:ident, $path:path)),+) => {
         unsafe {
-            match $item.type_of() {
+            match (*$item).type_of() {
                 $(NkT::$t => $what::$t({
-                    let $item = &mut *$item.fastcast_mut::<$path>();
+                    let $item = fastcast_mut::<$path>($item);
                     $fn
                 })),+
             }
@@ -93,10 +92,10 @@ macro_rules! fissile_types {
         pub enum NkT { $($t),+ }
 
         #[derive(Debug)]
-        pub enum NkMut<'a> { $($t(&'a mut $path)),+ }
+        pub enum NkMut { $($t(*mut $path)),+ }
 
         #[derive(Debug)]
-        pub enum NkRef<'a> { $($t(&'a $path)),+ }
+        pub enum NkRef { $($t(* const $path)),+ }
 
         impl From<NkT> for SymID {
             fn from(src: NkT) -> SymID {
@@ -104,13 +103,13 @@ macro_rules! fissile_types {
             }
         }
 
-        impl NkRef<'_> {
+        impl NkRef {
             pub fn type_of(&self) -> NkT {
                 match self { $(Self::$t(..) => NkT::$t ),+ }
             }
         }
 
-        impl NkMut<'_> {
+        impl NkMut {
             pub fn type_of(&self) -> NkT {
                 match self { $(Self::$t(..) => NkT::$t ),+ }
             }
@@ -150,29 +149,28 @@ macro_rules! fissile_types {
         ];
 
         #[inline]
-        pub fn update_ptr_atom(atom: &mut NkAtom, reloc: &PtrMap) {
-            with_atom_mut!(atom, {atom.update_ptrs(reloc)},
+        pub fn update_ptr_atom(atom: *mut NkAtom, reloc: &PtrMap) {
+            with_atom_mut!(atom, {(*atom).update_ptrs(reloc)},
                            $(($t,$path)),+)
         }
 
         #[inline]
-        pub fn mark_atom(atom: &mut NkAtom, gray: &mut Vec<*mut NkAtom>) {
-            with_atom_mut!(atom, {atom.trace(gray)}, $(($t,$path)),+);
-            atom.set_color(Color::Black)
+        pub fn mark_atom(atom: *mut NkAtom, gray: &mut Vec<*mut NkAtom>) {
+            with_atom_mut!(atom, {(*atom).trace(gray)}, $(($t,$path)),+);
+            unsafe {
+                (*atom).set_color(Color::Black)
+            }
         }
 
         #[inline]
-        fn to_fissile_mut<'a>(atom: *mut NkAtom) -> NkMut<'a> {
-            let atom = unsafe { &mut *atom };
+        pub fn to_fissile_mut<'a>(atom: *mut NkAtom) -> NkMut {
             with_atom_inst!(atom, NkMut, {atom}, $(($t,$path)),+)
         }
 
         #[inline]
-        fn to_fissile_ref<'a>(atom: *const NkAtom) -> NkRef<'a> {
-            // FIXME: with_atom(_inst)! is not flexible enough, it needs to be able
-            //        to deal with both &ref and &mut ref. Hence this war crime:
-            let atom = unsafe { &mut *(atom as *mut NkAtom) };
-            with_atom_inst!(atom, NkRef, {&*atom}, $(($t,$path)),+)
+        pub fn to_fissile_ref<'a>(atom: *const NkAtom) -> NkRef {
+            let atom = atom as *mut NkAtom;
+            with_atom_inst!(atom, NkRef, {atom}, $(($t,$path)),+)
         }
 
         impl LispFmt for NkAtom {
@@ -186,7 +184,7 @@ macro_rules! fissile_types {
                     write!(f, "(...)")
                 } else {
                     visited.insert(p);
-                    with_atom!(atom, { atom.lisp_fmt(db, visited, f) },
+                    with_atom!(atom, { (*atom).lisp_fmt(db, visited, f) },
                                $(($t,$path)),+)
                 }
             }
@@ -448,7 +446,7 @@ impl Object {
         unsafe { (self.vt.get_rc)(self.mem) }
     }
 
-    pub fn cast_mut_ptr<T: Userdata>(&self) -> Result<*mut T, Error> {
+    pub fn cast_mut<T: Userdata>(&self) -> Result<*mut T, Error> {
         if TypeId::of::<T>() != self.type_id {
             let expect_t = type_name::<T>();
             let actual_t = self.vt.type_name;
@@ -461,24 +459,16 @@ impl Object {
         Ok(self.mem as *mut T)
     }
 
-    pub fn cast_ptr<T: Userdata>(&self) -> Result<*const T, Error> {
-        Ok(self.cast_mut_ptr()? as *const T)
+    pub fn cast<T: Userdata>(&self) -> Result<*const T, Error> {
+        Ok(self.cast_mut()? as *const T)
     }
 
-    pub fn cast<T: Userdata>(&self) -> Result<&T, Error> {
-        Ok(unsafe { &*(self.cast_mut_ptr()?) })
+    pub unsafe fn fastcast_mut<T: Userdata>(&mut self) -> *mut T {
+        self.mem as *mut T
     }
 
-    pub fn cast_mut<T: Userdata>(&mut self) -> Result<&mut T, Error> {
-        Ok(unsafe { &mut *(self.cast_mut_ptr()?) })
-    }
-
-    pub unsafe fn fastcast_mut<T: Userdata>(&mut self) -> &mut T {
-        &mut*(self.mem as *mut T)
-    }
-
-    pub unsafe fn fastcast<T: Userdata>(&self) -> &T {
-        &*(self.mem as *const T)
+    pub unsafe fn fastcast<T: Userdata>(&self) -> *const T {
+        self.mem as *const T
     }
 }
 
@@ -566,7 +556,7 @@ impl<T> fmt::Display for Gc<T> where T: fmt::Display + Userdata {
 impl<T> FromLisp<Gc<T>> for PV where T: Userdata {
     fn from_lisp(self, _mem: &mut Arena) -> Result<Gc<T>, Error> {
         with_ref!(self, Struct(s) => {
-            let this = (s.cast_mut_ptr()? as *mut T) as *mut RcMem<T>;
+            let this = ((*s).cast_mut()? as *mut T) as *mut RcMem<T>;
             unsafe { (*this).rc.inc() }
             Ok(Gc { this })
         })
@@ -735,25 +725,25 @@ impl NkAtom {
         macro_rules! clone {
             ($x:expr) => {{
                 let p = mem.alloc();
-                unsafe { ptr::write(p, $x.clone()) }
+                unsafe { ptr::write(p, (*$x).clone()) }
                 NkAtom::make_raw_ref(p)
             }};
         }
         match self.match_ref() {
-            NkRef::Cons(Cons { car, cdr }) => {
+            NkRef::Cons(cns) => {
                 let p = mem.alloc::<Cons>();
                 unsafe {
-                    (*p).car = car.deep_clone(mem);
-                    (*p).cdr = cdr.deep_clone(mem);
+                    (*p).car = (*cns).car.deep_clone(mem);
+                    (*p).cdr = (*cns).cdr.deep_clone(mem);
                 }
                 NkAtom::make_raw_ref(p)
             },
-            NkRef::Intr(Intr { op, arg }) => {
+            NkRef::Intr(intr) => {
                 let p = mem.alloc::<Intr>();
                 NkAtom::make_raw_ref(unsafe {
                     ptr::write(p, Intr {
-                        op: *op,
-                        arg: arg.deep_clone(mem),
+                        op: (*intr).op,
+                        arg: (*intr).arg.deep_clone(mem),
                     }); p
                 })
             }
@@ -761,10 +751,10 @@ impl NkAtom {
             NkRef::VLambda(_l) => todo!(),
             NkRef::String(s) => clone!(s),
             NkRef::PV(_p) => todo!(),
-            NkRef::Vector(xs) => {
-                let nxs = xs.iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
+            NkRef::Vector(xs) => unsafe {
+                let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
                 let p = mem.alloc();
-                unsafe { ptr::write(p, nxs) }
+                ptr::write(p, nxs);
                 NkAtom::make_raw_ref(p)
             },
             NkRef::Vec4(v4) => clone!(v4),
@@ -833,12 +823,12 @@ impl NkAtom {
     }
 
     #[inline]
-    pub fn match_ref(&self) -> NkRef<'_> {
+    pub fn match_ref(&self) -> NkRef {
         to_fissile_ref(self as *const NkAtom)
     }
 
     #[inline]
-    pub fn match_mut(&mut self) -> NkMut<'_> {
+    pub fn match_mut(&mut self) -> NkMut {
         to_fissile_mut(self as *mut NkAtom)
     }
 
@@ -861,6 +851,32 @@ impl NkAtom {
     pub fn full_size(&self) -> usize {
         mem::size_of::<NkAtom>() + self.sz as usize
     }
+}
+
+#[inline]
+pub unsafe fn fastcast<T>(atom: *const NkAtom) -> *const T {
+    const DELTA: isize = mem::size_of::<NkAtom>() as isize;
+    (atom as *const u8).offset(DELTA) as *mut T
+}
+
+#[inline]
+pub unsafe fn fastcast_mut<T>(atom: *mut NkAtom) -> *mut T {
+    const DELTA: isize = mem::size_of::<NkAtom>() as isize;
+    (atom as *mut u8).offset(DELTA) as *mut T
+}
+
+#[inline]
+pub fn cast_mut<T: Fissile>(atom: *mut NkAtom) -> Option<*mut T> {
+    unsafe {
+        let ty = T::type_of();
+        let got = mem::transmute((*atom).meta.typ());
+        (ty == got).then(|| fastcast_mut::<T>(atom))
+    }
+}
+
+#[inline]
+pub fn cast<T: Fissile>(atom: *const NkAtom) -> Option<*const T> {
+    cast_mut(atom as *mut NkAtom).map(|p| p as *const T)
 }
 
 #[allow(dead_code)]
@@ -989,7 +1005,9 @@ impl Nuke {
 
     pub unsafe fn destroy_the_world(&mut self) {
         for atom in self.iter_mut() {
-            atom.destroy();
+            unsafe {
+                (*atom).destroy();
+            }
         }
         self.last = self.fst_mut();
         self.free = self.offset(mem::size_of::<NkAtom>());
@@ -1170,14 +1188,12 @@ impl Nuke {
         unsafe { (*self.fst()).next }
     }
 
-    pub fn iter_mut(&mut self) -> NukeIterMut<'_> {
-        NukeIterMut { item: self.head_mut(),
-                      _phantom: Default::default() }
+    pub fn iter_mut(&mut self) -> NukeIterMut {
+        NukeIterMut { item: self.head_mut() }
     }
 
-    pub fn iter(&self) -> NukeIter<'_> {
-        NukeIter { item: self.head(),
-                   _phantom: Default::default() }
+    pub fn iter(&self) -> NukeIter {
+        NukeIter { item: self.head() }
     }
 
     pub fn reloc(&self) -> &PtrMap {
@@ -1267,38 +1283,35 @@ impl fmt::Debug for Nuke {
     }
 }
 
-pub struct NukeIterMut<'a> {
+pub struct NukeIterMut {
     item: *mut NkAtom,
-    _phantom: PhantomData<&'a NkAtom>
 }
 
-impl<'a> Iterator for NukeIterMut<'a> {
-    type Item = &'a mut NkAtom;
+impl Iterator for NukeIterMut {
+    type Item = *mut NkAtom;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.item.is_null() { return None; }
         unsafe {
-            let ret = &mut *self.item;
-            let item = &*self.item;
-            self.item = item.next;
+            let ret = self.item;
+            self.item = (*self.item).next;
             Some(ret)
         }
     }
 }
 
-pub struct NukeIter<'a> {
+pub struct NukeIter {
     item: *const NkAtom,
-    _phantom: PhantomData<&'a NkAtom>
 }
 
-impl<'a> Iterator for NukeIter<'a> {
-    type Item = &'a NkAtom;
+impl Iterator for NukeIter {
+    type Item = *const NkAtom;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.item.is_null() { return None; }
         unsafe {
-            let item = &*self.item;
-            self.item = item.next;
+            let item = self.item;
+            self.item = (*self.item).next;
             Some(item)
         }
     }
