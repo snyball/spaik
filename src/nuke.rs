@@ -935,7 +935,7 @@ impl Nuke {
             let sz = mem::size_of::<NkAtom>() + (*node).sz as usize;
             if npos != node {
                 self.reloc.push(node, npos);
-                memcpy(npos, node, sz);
+                memmove(npos, node, sz); // memcpy should work, but miri no likey
             }
             start = align(start.add(sz), ALIGNMENT);
             if next_node.is_null() {
