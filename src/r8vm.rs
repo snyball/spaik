@@ -1421,10 +1421,11 @@ impl R8VM {
                     }
 
                     if tokit.peek().is_none() && close.is_empty() {
-                        modfn_pos = cc.compile_top_tail(
-                            AST2 { src: Source::new(line, col, file.clone()),
-                                   kind: M::Atom(pv) }
-                        )?;
+                        wrap!(self.mem.push(pv));
+                        let pv = self.mem.pop().unwrap();
+                        let excv = Excavator::new(&self.mem);
+                        let ast = excv.to_ast(pv)?;
+                        modfn_pos = cc.compile_top_tail(ast)?;
                         cc.take(self)?;
                     }
 
