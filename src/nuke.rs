@@ -434,7 +434,7 @@ impl Object {
         let mem = unsafe {
             let p = alloc(layout) as *mut T;
             ptr::write(p, obj);
-            (*(p as *mut RcMem<T>)).rc.inc();
+            (*(p as *mut RcMem<T>)).rc = GcRc(1.into());
             p as *mut u8
         };
         Object {
@@ -927,7 +927,7 @@ impl Nuke {
     pub unsafe fn compact(&mut self) -> RelocateToken {
         let mut node = self.fst();
         let mut npos;
-        let mut start = self.offset::<u8>(0);
+        let mut start = node as *mut u8;
 
         loop {
             let next_node = (*node).next;
@@ -966,7 +966,7 @@ impl Nuke {
     pub unsafe fn sweep_compact(&mut self) -> RelocateToken {
         let mut node = self.fst();
         let mut npos;
-        let mut start = self.offset::<u8>(0);
+        let mut start = node as *mut u8;
 
         loop {
             let next_node = {
@@ -992,7 +992,7 @@ impl Nuke {
 
             if npos != node {
                 self.reloc.push(node, npos);
-                memcpy(npos, node, sz);
+                memmove(npos, node, sz); // memcpy should work, but miri no likey
             }
 
             (*npos).set_color(Color::White);
@@ -1024,7 +1024,8 @@ impl Nuke {
         let mut new_vec: Vec<u8> = Vec::with_capacity(new_sz);
         #[allow(clippy::uninit_vec)]
         new_vec.set_len(new_sz);
-        let mut mem = new_vec.as_mut_ptr();
+        let mut mem = align(new_vec.as_mut_ptr(),
+                            mem::align_of::<NkAtom>() as isize);
         let mut new_node = ptr::null_mut();
         let mut node = self.fst();
         while !node.is_null() {
@@ -1108,10 +1109,14 @@ impl Nuke {
         mem::size_of::<T>() + mem::size_of::<NkAtom>()
     }
 
+    pub fn will_overflow(&mut self, sz: usize) -> bool {
+        self.free as usize + sz >= self.offset::<u8>(self.sz) as usize
+    }
+
     #[inline]
     pub unsafe fn fit<T: Fissile>(&mut self, num: usize) -> RelocateToken {
         let full_sz = Nuke::size_of::<T>() * num;
-        if self.free.add(full_sz) >= self.offset(self.sz) {
+        if self.will_overflow(full_sz) {
             self.make_room(Nuke::size_of::<T>() * num)
         } else {
             RelocateToken
