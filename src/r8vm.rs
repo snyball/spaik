@@ -1555,9 +1555,10 @@ impl R8VM {
             }
         }
 
-        if v.bt_op() == Some(Builtin::Quote) {
+        let bop = v.bt_op();
+        if bop == Some(Builtin::Quote) {
             Ok(v)
-        } else if v.bt_op() == Some(Builtin::Quasi) {
+        } else if bop == Some(Builtin::Quasi) {
             let i = v.inner()?;
             v.set_inner(self.macroexpand_pv(i, true)?)?;
             Ok(v)
@@ -1566,13 +1567,22 @@ impl R8VM {
         } else {
             self.mem.push(v);
             let mut dot = false;
+            let mut idx = 0;
             loop {
                 let PV::Ref(p) = v else { unreachable!("{v:?}") };
                 let rf = unsafe{(*p).match_ref()};
                 let NkRef::Cons(Cons { car, cdr }) = rf else { unreachable!("{rf:?}") };
-                self.mem.push(v);
-                let ncar = self.macroexpand_pv(if dot {*cdr} else {*car}, quasi);
-                v = self.mem.pop().unwrap();
+                let r = if dot {*cdr} else {*car};
+                let ncar = match (bop, idx) {
+                    (Some(Builtin::Lambda), 1) |
+                    (Some(Builtin::Define), 1) => Ok(r),
+                    _ => {
+                        self.mem.push(v);
+                        let ncar = self.macroexpand_pv(r, quasi);
+                        v = self.mem.pop().unwrap();
+                        ncar
+                    }
+                };
                 let PV::Ref(p) = v else { unreachable!() };
                 let rf = unsafe{(*p).match_mut()};
                 let NkMut::Cons(Cons { ref mut car, ref mut cdr }) = rf else {
@@ -1586,6 +1596,7 @@ impl R8VM {
                         return Err(e);
                     }
                 };
+                idx += 1;
                 v = match cdr.bt_type_of() {
                     Builtin::Nil => break,
                     Builtin::Cons => *cdr,
