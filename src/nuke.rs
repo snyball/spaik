@@ -125,15 +125,6 @@ macro_rules! fissile_types {
             fn from(item: $path) -> Self { NkSum::$t(item) }
         })+
 
-        #[inline]
-        fn clone_atom(item: &NkAtom) -> NkSum {
-            unsafe {
-                match item.type_of() {
-                    $(NkT::$t => (&*item.fastcast::<$path>()).clone().into()),+
-                }
-            }
-        }
-
         // TODO: When `if` inside const is stabilized you can make this a const fn,
         //       by calling a recursive const fn min()
         fn minimal_fissile_sz() -> NkSz {
@@ -717,65 +708,8 @@ trivial_trace!(glam::Vec2, glam::Vec3, glam::Vec4,
 
 impl NkAtom {
     #[inline]
-    pub unsafe fn destroy(&mut self) {
-        DESTRUCTORS[self.meta.typ() as usize](self.fastcast_mut::<u8>());
-    }
-
-    pub fn deep_clone(&self, mem: &mut Arena) -> *mut NkAtom {
-        macro_rules! clone {
-            ($x:expr) => {{
-                let p = mem.alloc();
-                unsafe { ptr::write(p, (*$x).clone()) }
-                NkAtom::make_raw_ref(p)
-            }};
-        }
-        match self.match_ref() {
-            NkRef::Cons(cns) => {
-                let p = mem.alloc::<Cons>();
-                unsafe {
-                    (*p).car = (*cns).car.deep_clone(mem);
-                    (*p).cdr = (*cns).cdr.deep_clone(mem);
-                }
-                NkAtom::make_raw_ref(p)
-            },
-            NkRef::Intr(intr) => {
-                let p = mem.alloc::<Intr>();
-                NkAtom::make_raw_ref(unsafe {
-                    ptr::write(p, Intr {
-                        op: (*intr).op,
-                        arg: (*intr).arg.deep_clone(mem),
-                    }); p
-                })
-            }
-            NkRef::Lambda(_l) => todo!(),
-            NkRef::VLambda(_l) => todo!(),
-            NkRef::String(s) => clone!(s),
-            NkRef::PV(_p) => todo!(),
-            NkRef::Vector(xs) => unsafe {
-                let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
-                let p = mem.alloc();
-                ptr::write(p, nxs);
-                NkAtom::make_raw_ref(p)
-            },
-            NkRef::Vec4(v4) => clone!(v4),
-            NkRef::Mat2(m2) => clone!(m2),
-            NkRef::Mat3(m3) => clone!(m3),
-            NkRef::Mat4(m4) => clone!(m4),
-            NkRef::Stream(s) => clone!(s),
-            NkRef::Struct(s) => clone!(s),
-            NkRef::Iter(i) => clone!(i),
-            NkRef::Continuation(_c) => todo!(),
-            NkRef::Subroutine(s) => clone!(s),
-        }
-    }
-
-    #[inline]
     pub fn make_ref<T: Fissile>(p: *mut T) -> PV {
         PV::Ref(NkAtom::make_raw_ref(p))
-    }
-
-    pub fn as_sum(&self) -> NkSum {
-        clone_atom(self)
     }
 
     #[allow(clippy::cast_ptr_alignment)]
@@ -787,18 +721,6 @@ impl NkAtom {
         }
     }
 
-    #[inline]
-    pub unsafe fn fastcast_mut<T>(&mut self) -> *mut T {
-        const DELTA: isize = mem::size_of::<NkAtom>() as isize;
-        (self as *mut NkAtom as *mut u8).offset(DELTA) as *mut T
-    }
-
-    #[inline]
-    pub unsafe fn fastcast<T>(&self) -> *const T {
-        const DELTA: isize = mem::size_of::<NkAtom>() as isize;
-        (self as *const NkAtom as *const u8).offset(DELTA) as *mut T
-    }
-
     pub fn raw(&self) -> &[u8] {
         const DELTA: isize = mem::size_of::<NkAtom>() as isize;
         unsafe {
@@ -808,28 +730,8 @@ impl NkAtom {
     }
 
     #[inline]
-    pub fn cast<T: Fissile>(&mut self) -> Option<&mut T> {
-        let ty = T::type_of() as u8;
-        if ty == self.meta.typ() {
-            unsafe { Some(&mut*self.fastcast_mut::<T>()) }
-        } else {
-            None
-        }
-    }
-
-    #[inline]
     pub fn color(&self) -> Color {
         unsafe { mem::transmute(self.meta.color()) }
-    }
-
-    #[inline]
-    pub fn match_ref(&self) -> NkRef {
-        to_fissile_ref(self as *const NkAtom)
-    }
-
-    #[inline]
-    pub fn match_mut(&mut self) -> NkMut {
-        to_fissile_mut(self as *mut NkAtom)
     }
 
     #[inline]
@@ -877,6 +779,59 @@ pub fn cast_mut<T: Fissile>(atom: *mut NkAtom) -> Option<*mut T> {
 #[inline]
 pub fn cast<T: Fissile>(atom: *const NkAtom) -> Option<*const T> {
     cast_mut(atom as *mut NkAtom).map(|p| p as *const T)
+}
+
+#[inline]
+pub unsafe fn destroy_atom(atom: *mut NkAtom) {
+    DESTRUCTORS[(*atom).meta.typ() as usize](fastcast_mut::<u8>(atom));
+}
+
+pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
+    macro_rules! clone {
+        ($x:expr) => {{
+            let p = mem.alloc();
+            unsafe { ptr::write(p, (*$x).clone()) }
+            NkAtom::make_raw_ref(p)
+        }};
+    }
+    match to_fissile_ref(atom) {
+        NkRef::Cons(cns) => {
+            let p = mem.alloc::<Cons>();
+            unsafe {
+                (*p).car = (*cns).car.deep_clone(mem);
+                (*p).cdr = (*cns).cdr.deep_clone(mem);
+            }
+            NkAtom::make_raw_ref(p)
+        },
+        NkRef::Intr(intr) => {
+            let p = mem.alloc::<Intr>();
+            NkAtom::make_raw_ref(unsafe {
+                ptr::write(p, Intr {
+                    op: (*intr).op,
+                    arg: (*intr).arg.deep_clone(mem),
+                }); p
+            })
+        }
+        NkRef::Lambda(_l) => todo!(),
+        NkRef::VLambda(_l) => todo!(),
+        NkRef::String(s) => clone!(s),
+        NkRef::PV(_p) => todo!(),
+        NkRef::Vector(xs) => unsafe {
+            let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
+            let p = mem.alloc();
+            ptr::write(p, nxs);
+            NkAtom::make_raw_ref(p)
+        },
+        NkRef::Vec4(v4) => clone!(v4),
+        NkRef::Mat2(m2) => clone!(m2),
+        NkRef::Mat3(m3) => clone!(m3),
+        NkRef::Mat4(m4) => clone!(m4),
+        NkRef::Stream(s) => clone!(s),
+        NkRef::Struct(s) => clone!(s),
+        NkRef::Iter(i) => clone!(i),
+        NkRef::Continuation(_c) => todo!(),
+        NkRef::Subroutine(s) => clone!(s),
+    }
 }
 
 #[allow(dead_code)]
@@ -1006,7 +961,7 @@ impl Nuke {
     pub unsafe fn destroy_the_world(&mut self) {
         for atom in self.iter_mut() {
             unsafe {
-                (*atom).destroy();
+                destroy_atom(atom);
             }
         }
         self.last = self.fst_mut();
@@ -1027,7 +982,7 @@ impl Nuke {
                 let mut n = (*node).next;
                 while !n.is_null() {
                     if (*n).color() == Color::White {
-                        (*n).destroy();
+                        destroy_atom(n);
                         self.used -= (*n).full_size();
                         num_frees += 1;
                     } else {

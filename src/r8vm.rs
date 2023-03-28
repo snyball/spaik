@@ -171,7 +171,7 @@ impl RuntimeError {
 
 fn tostring(vm: &R8VM, x: PV) -> String {
     match x {
-        PV::Ref(y) => match unsafe { (*y).match_ref() } {
+        PV::Ref(y) => match to_fissile_ref(y) {
             NkRef::String(s) => unsafe { (*s).clone() },
             _ => x.lisp_to_string(&vm.mem),
         },
@@ -2295,7 +2295,8 @@ impl R8VM {
                         Some(func) => {
                             func.args.check(sym.into(), nargs)?;
                             let pos = func.pos;
-                            (*ip.sub(1)) = CALL(pos as u32, nargs);
+                            // FIXME: This does not pass in miri because of aliasing
+                            // (*ip.sub(1)) = CALL(pos as u32, nargs);
                             self.call_pre(ip);
                             self.frame = self.mem.stack.len() - 2 - (nargs as usize);
                             ip = self.ret_to(pos);

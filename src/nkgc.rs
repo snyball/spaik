@@ -25,58 +25,6 @@ use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::borrow::Cow;
 
-// #[deprecated = "This is a compatability macro for conversion to Nuclear"]
-macro_rules! match_gcell {
-    (mut $p:expr, $($rest:tt)*) => {
-        match_gcell!(@mut (*$p).type_of(), $p, $($rest)*)
-    };
-    ($p:expr, $($rest:tt)*) => {
-        match_gcell!(@emit (*$p).type_of(), $p, $($rest)*)
-    };
-    (@emit $ty:expr, $val:expr, {$($case:ident($e:pat) => $action:block),*}) => {{
-        let one_of = [$(stringify!($case)),*];
-        match unsafe { $ty } {
-            $(
-                NkT::$case => match unsafe { &*((*$val).fastcast::<$case>()) } {
-                    $e => Ok($action),
-                }
-            ),*
-            x => Err(crate::r8vm::RuntimeError::new(
-                format!("Expected one of {:?}, got {:?}", one_of, x)))
-        }
-    }};
-    (@mut $ty:expr, $val:expr, {$($case:ident($e:pat) => $action:block),*}) => {{
-        let one_of = [$(stringify!($case)),*];
-        match unsafe { $ty } {
-            $(
-                NkT::$case => match unsafe { &mut *((*$val).fastcast_mut::<$case>()) } {
-                    $e => Ok($action),
-                }
-            ),*
-            x => Err(crate::r8vm::RuntimeError::new(
-                format!("Expected one of {:?}, got {:?}", one_of, x)))
-        }
-    }}
-}
-
-// #[deprecated = "This is a compatability macro for conversion to Nuclear"]
-macro_rules! gcell {
-    (mut $pv:expr, $($rest:tt)*) => {
-        match $pv {
-            PV::Ref(ptr) => match_gcell!(mut ptr, $($rest)*),
-            x => Err(crate::r8vm::RuntimeError::new(
-                format!("Expected reference, got: {}", x)))
-        }
-    };
-    ($pv:expr, $($rest:tt)*) => {
-        match $pv {
-            PV::Ref(ptr) => match_gcell!(ptr, $($rest)*),
-            x => Err(crate::r8vm::RuntimeError::new(
-                format!("Expected reference, got: {}", x)))
-        }
-    };
-}
-
 macro_rules! __with_ref_common {
     ($ref:ident($ptr:ident) => $get:expr,
      $pv:expr,
@@ -406,7 +354,9 @@ impl Iterator for PVVecIter {
     fn next(&mut self) -> Option<Self::Item> {
         let idx = self.idx;
         self.idx += 1;
-        unsafe { &*(*self.vec).fastcast::<Vec<PV>>() }.get(idx).copied()
+        unsafe {
+            (*fastcast::<Vec<PV>>(self.vec)).get(idx).copied()
+        }
     }
 }
 
@@ -489,10 +439,16 @@ impl PV {
         matches!(self, PV::Ref(_))
     }
 
+    pub fn rf(&self) -> Option<*mut NkAtom> {
+        let PV::Ref(p) = *self else { return None };
+        Some(p)
+    }
+
     pub fn set_op(&mut self, op: Builtin) {
-        gcell!(mut *self, {
-            Cons(Cons { ref mut car, .. }) => { *car = PV::Sym(op.sym()) }
-        }).unwrap();
+        self.rf()
+            .and_then(|p| cast_mut::<Cons>(p))
+            .and_then(|cell| unsafe { (*cell).car = PV::Sym(op.sym()); Some(()) })
+            .unwrap();
     }
 
     pub fn make_iter(&self) -> Result<nuke::Iter, Error> {
@@ -552,13 +508,6 @@ impl PV {
 
     pub fn iter_src<'b>(&self, nk: &'b Arena, src: Source) -> PVIterSrc<'b> {
         PVIterSrc { item: *self, src, nk }
-    }
-
-    pub fn iter_ref(&self) -> PVRefIter<'_> {
-        PVRefIter {
-            done: false,
-            item: self,
-        }
     }
 
     pub fn ref_inner(&self) -> Option<*mut NkAtom> {
@@ -644,11 +593,6 @@ impl PV {
     #[inline]
     pub fn args(&self) -> impl Iterator<Item = PV> {
         self.iter().skip(1)
-    }
-
-    #[inline]
-    pub fn args_ref(&self) -> impl Iterator<Item = &PV> {
-        self.iter_ref().skip(1)
     }
 
     pub fn is_atom(&self) -> bool {
@@ -743,8 +687,8 @@ impl PV {
     pub fn equalp(&self, other: PV) -> bool {
         unsafe {
             match (*self, other) {
-                (PV::Ref(u), PV::Ref(v)) => match ((*u).match_ref(),
-                                                   (*v).match_ref()) {
+                (PV::Ref(u), PV::Ref(v)) => match (to_fissile_ref(u),
+                                                   to_fissile_ref(v)) {
                     (NkRef::String(u), NkRef::String(v)) => u == v,
                     (NkRef::Cons(u), NkRef::Cons(v)) =>
                         (*u).car.equalp((*v).car) && (*u).cdr.equalp((*v).cdr),
@@ -799,7 +743,7 @@ impl PV {
 
     pub fn deep_clone(&self, mem: &mut Arena) -> PV {
         match self {
-            PV::Ref(p) => PV::Ref(unsafe { (**p).deep_clone(mem) }),
+            PV::Ref(p) => PV::Ref(clone_atom(*p, mem)),
             x => *x,
         }
     }
@@ -815,8 +759,8 @@ impl PartialOrd for PV {
             (PV::Ref(l), PV::Ref(r)) => unsafe {
                 let tl = (*l).type_of();
                 if tl == NkT::String && tl == (*r).type_of() {
-                    let sl = (*l).fastcast::<String>();
-                    let sr = (*r).fastcast::<String>();
+                    let sl = fastcast::<String>(l);
+                    let sr = fastcast::<String>(r);
                     Some((*sl).cmp(&*sr))
                 } else {
                     None
@@ -838,7 +782,7 @@ impl Hash for PV {
             PV::Real(x) => x.to_ne_bytes().hash(state),
             PV::Char(x) => x.hash(state),
             PV::Ref(r) => if unsafe { (*r).type_of() } == NkT::String {
-                unsafe { (*r).fastcast::<String>().hash(state) }
+                unsafe { fastcast::<String>(r).hash(state) }
             } else {
                 unimplemented!("Hash only implemented for string references");
             }
@@ -987,7 +931,7 @@ impl Iterator for ConsIter {
         unsafe {
             Some(match self.item {
                 PV::Nil => return None,
-                PV::Ref(r) => match (*r).match_ref() {
+                PV::Ref(r) => match to_fissile_ref(r) {
                     NkRef::Cons(p) => {
                         self.item = (*p).cdr;
                         ConsElem::Head((*p).car)
@@ -1112,38 +1056,6 @@ impl Iterator for PVIter {
             }
             x => {
                 self.item = PV::Nil;
-                x
-            }
-        })
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct PVRefIter<'a> {
-    done: bool,
-    item: &'a PV,
-}
-
-impl<'a> Iterator for PVRefIter<'a> {
-    type Item = &'a PV;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.done {
-            return None;
-        }
-        Some(match self.item {
-            PV::Nil => return None,
-            PV::Ref(r) => match_gcell!(*r, {
-                Cons(Cons { car, cdr }) => {
-                    self.item = cdr;
-                    car
-                },
-                String(_) => {
-                    self.done = true;
-                    self.item
-                }
-            }).unwrap(),
-            x => {
-                self.done = true;
                 x
             }
         })
@@ -1678,14 +1590,12 @@ impl Arena {
     }
 
     pub fn untag_ast(&mut self, v: PV) {
-        if let PV::Ref(p) = v {
-            if let NkRef::Cons(cns) = unsafe { (*p).match_ref() } {
-                self.untag(p);
-                unsafe {
-                    self.untag_ast((*cns).car);
-                    self.untag_ast((*cns).cdr);
-                }
-            }
+        let PV::Ref(p) = v else {return};
+        let NkRef::Cons(cns) = to_fissile_ref(p) else {return};
+        self.untag(p);
+        unsafe {
+            self.untag_ast((*cns).car);
+            self.untag_ast((*cns).cdr);
         }
     }
 
