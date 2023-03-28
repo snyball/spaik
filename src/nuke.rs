@@ -813,6 +813,12 @@ impl NkAtom {
     }
 
     #[inline]
+    pub fn init(&mut self, typ: NkT) {
+        unsafe { self.meta.init(mem::transmute(Color::Black),
+                                mem::transmute(typ)) }
+    }
+
+    #[inline]
     pub fn type_of(&self) -> NkT {
         unsafe { mem::transmute(self.meta.typ()) }
     }
@@ -909,8 +915,7 @@ impl Nuke {
         nk.free = nk.offset(mem::size_of::<NkAtom>());
         nk.used = mem::size_of::<NkAtom>();
         unsafe {
-            (*nk.fst()).set_color(Color::Black);
-            (*nk.fst()).meta.set_typ(0);
+            (*nk.fst()).init(NkT::Cons);
             (*nk.fst()).next = ptr::null_mut();
             (*nk.fst()).sz = 0;
         }
@@ -1089,8 +1094,7 @@ impl Nuke {
 
         (*cur).next = ptr::null_mut();
         (*cur).sz = mem::size_of::<T>() as NkSz;
-        (*cur).set_color(Color::Black);
-        (*cur).meta.set_typ(T::type_of() as u8);
+        (*cur).init(T::type_of());
 
         (*last).next = cur;
 
@@ -1288,6 +1292,13 @@ impl AtomMeta {
     pub fn set_typ(&mut self, typ: u8) {
         debug_assert!(typ < 64, "Type number too large");
         self.0 = (self.0 & META_COLOR_MASK) | (typ << 2);
+    }
+
+    #[inline]
+    pub fn init(&mut self, color: u8, typ: u8) {
+        debug_assert!(color < 4, "Bitfield content out of range");
+        debug_assert!(typ < 64, "Type number too large");
+        self.0 = color | (typ << 2);
     }
 }
 
