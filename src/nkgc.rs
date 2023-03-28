@@ -88,6 +88,26 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<*const T> {
     }
 }
 
+impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a T> {
+    type Error = Error;
+
+    fn try_from(v: PV) -> Result<ObjRef<&'a T>, Self::Error> {
+        Ok(ObjRef(with_ref!(v, Struct(v) => {
+            (*v).cast::<T>().map(|p| &*p)
+        })?))
+    }
+}
+
+impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a mut T> {
+    type Error = Error;
+
+    fn try_from(v: PV) -> Result<ObjRef<&'a mut T>, Self::Error> {
+        Ok(ObjRef(with_ref!(v, Struct(v) => {
+            (*v).cast_mut::<T>().map(|p| &mut *p)
+        })?))
+    }
+}
+
 impl<T> FromLisp<T> for PV where T: TryFrom<PV, Error = Error> {
     fn from_lisp(self, _mem: &mut Arena) -> Result<T, Error> {
         self.try_into()

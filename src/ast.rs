@@ -14,12 +14,10 @@ use crate::perr::*;
 use crate::sexpr_parse::string_parse;
 use crate::r8vm::{R8VM, ArgInt, ArgSpec};
 use crate::compile::Builtin;
-use crate::compile::arg_parse;
 use crate::sym_db::{SymDB, SYM_DB};
 use std::fmt;
 use std::fmt::Display;
 use std::iter;
-use std::ptr;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueKind {
@@ -188,37 +186,7 @@ impl Value {
     }
 
     pub fn bt_define(&self) -> Result<Define> {
-        let op = Builtin::Define.sym();
-        let expect = ArgSpec::rest(1, 1);
-        let mut it = self.args();
-        let src = self.src.clone();
-        match it.next() {
-            Some(Value { kind: ValueKind::Symbol(var), .. }) => {
-                let init = it.next().ok_or(
-                    error!(ArgError, expect, got_num: 1).op(op).src(src)
-                )?;
-                Ok(Define::Var(*var, init))
-            }
-            Some(fn_def @ Value { kind: ValueKind::Cons(..), .. }) => {
-                let mut def_it = fn_def.iter();
-                let name = match def_it.next() {
-                    Some(Value { kind: ValueKind::Symbol(name), .. }) =>
-                        Ok(name),
-                    Some(x) => Err(error!(TypeError,
-                                          expect: Builtin::Symbol.sym(),
-                                          got: x.type_of())
-                                   .op(op).argn(1).src(fn_def.src.clone())),
-                    _ => unreachable!(),
-                }?;
-                let (syms, spec) = arg_parse(def_it.head())?;
-                Ok(Define::Func(*name, ArgList(spec, syms), it.head()))
-            }
-            None => Err(error!(ArgError, expect, got_num: 0).op(op).src(src)),
-            Some(x) => Err(error!(TypeError,
-                                  expect: Builtin::Symbol.sym(),
-                                  got: x.type_of())
-                           .op(op).src(src).argn(1))
-        }
+        unimplemented!()
     }
 
     pub fn bt_get(&self) -> Option<Result<Get>> {
@@ -267,17 +235,7 @@ impl Value {
     }
 
     pub fn bt_lambda(&self) -> Result<Lambda> {
-        let mut it = self.args();
-        let (args, spec) = if let Some(args) = it.next() {
-            arg_parse(args)?
-        } else {
-            return Err(error!(ArgError,
-                              expect: ArgSpec::rest(1, 0),
-                              got_num: 0)
-                       .op(Builtin::Lambda.sym())
-                       .src(self.src.clone()))
-        };
-        Ok(Lambda(ArgList(spec, args), it.head()))
+        unimplemented!()
     }
 
     pub fn new(kind: ValueKind, src: Source) -> Value {
@@ -581,44 +539,6 @@ impl From<Vec<Value>> for Value {
             root = Value::cons(Box::new(v), Box::new(root));
         }
         root
-    }
-}
-
-pub struct ListBuilder {
-    root: Box<Value>,
-    last: *mut Value,
-}
-
-impl ListBuilder {
-    pub fn new() -> ListBuilder {
-        let mut lisb = ListBuilder { root: Box::new(Value::new_nil()),
-                                     last: ptr::null_mut::<Value>() };
-        lisb.last = &mut *lisb.root as *mut Value;
-        lisb
-    }
-
-    pub fn push(&mut self, v: Value) {
-        unsafe {
-            let mut new = Box::new(Value::new_nil());
-            let last = &mut *new as *mut Value;
-            *self.last = Value::cons(Box::new(v), new);
-            self.last = last;
-        }
-    }
-
-    pub fn push_sym(&mut self, sym: SymID, src: Source) {
-        self.push(Value { kind: ValueKind::Symbol(sym),
-                          src })
-    }
-
-    pub fn get(self) -> Value {
-        *self.root
-    }
-}
-
-impl Default for ListBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -1434,26 +1354,5 @@ impl Visitor for PrinterVisitor {
     fn visit(&mut self, elem: &mut AST2) -> Result<()> {
         println!("{elem}");
         elem.visit(self)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builder() {
-        let mut lisb = ListBuilder::new();
-        for i in 0..10000 {
-            lisb.push(Value::new(ValueKind::Int(i), Source::none()));
-        }
-        let li = lisb.get();
-        for (u, v) in li.iter().enumerate() {
-            if let Value { kind: ValueKind::Int(v), .. } = v {
-                assert_eq!(u as i64, *v);
-            } else {
-                panic!("Not an integer");
-            }
-        }
     }
 }
