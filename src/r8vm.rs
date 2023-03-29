@@ -594,24 +594,6 @@ pub struct ArgSpec {
     pub rest: bool,
 }
 
-impl TryFrom<PV> for ArgSpec {
-    type Error = Error;
-
-    fn try_from(value: PV) -> Result<Self, Self::Error> {
-        let PV::UInt(val) = value else {bail!(TypeError {
-            expect: Builtin::UnsignedInteger.sym(),
-            got: value.type_of(),
-        })};
-        Ok(unsafe { std::mem::transmute(val) })
-    }
-}
-
-impl From<ArgSpec> for PV {
-    fn from(value: ArgSpec) -> Self {
-        PV::UInt(unsafe { std::mem::transmute(value) })
-    }
-}
-
 impl fmt::Display for ArgSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         if self.rest {

@@ -200,7 +200,7 @@ macro_rules! chasm_def {
 
             fn write(&self, out: &mut dyn std::io::Write) -> Result<usize, std::io::Error> {
                 let mut sz = std::mem::size_of::<$crate::chasm::OpCode>();
-                let dscr: u64 = unsafe {
+                let dscr: usize = unsafe {
                     std::mem::transmute(std::mem::discriminant(self))
                 };
                 assert!(dscr < 256);
