@@ -84,7 +84,7 @@ impl Env {
         self.statics.get(&var).copied()
     }
 
-    pub fn get_idx(&mut self, var: SymID) -> Option<VarIdx> {
+    pub fn get_idx(&self, var: SymID) -> Option<VarIdx> {
         for (i, &v) in self.vars.iter().enumerate().rev() {
             if var == v {
                 return Some(i as VarIdx);

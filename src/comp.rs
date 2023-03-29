@@ -55,15 +55,15 @@ type VarSet = FnvHashSet<(SymID, BoundVar)>;
 
 struct ClzScoper<'a> {
     env: Env,
-    outside: &'a EnvMap,
+    outside: &'a Env,
     lowered: VarSet,
 }
 
 impl Visitor for ClzScoper<'_> {
     fn visit(&mut self, elem: &mut AST2) -> Result<()> {
         match elem.kind {
-            M::SymApp(op, _) => if let Some(&var) = self.outside.get(&op) {
-                self.lowered.insert((op, var));
+            M::SymApp(op, _) => if let Some(var) = self.outside.get_idx(op) {
+                self.lowered.insert((op, BoundVar::Local(var)));
             }
             M::Let(ref vars, _) => {
                 let len = vars.len();
@@ -81,8 +81,8 @@ impl Visitor for ClzScoper<'_> {
             }
             M::Var(var) => {
                 if self.env.get_idx(var).is_some() {
-                } else if let Some(&bound) = self.outside.get(&var) {
-                    self.lowered.insert((var, bound));
+                } else if let Some(bound) = self.outside.get_idx(var) {
+                    self.lowered.insert((var, BoundVar::Local(bound)));
                 } else if var == Builtin::Nil.sym() {
                 } else {
                     return err_src!(elem.src.clone(), UndefinedVariable, var);
@@ -96,7 +96,7 @@ impl Visitor for ClzScoper<'_> {
 
 impl ClzScoper<'_> {
     pub fn scope<'a>(args: Vec<SymID>,
-                     outside: &EnvMap,
+                     outside: &Env,
                      body: impl Iterator<Item = &'a mut AST2>) -> Result<VarSet> {
         let mut scoper = ClzScoper {
             lowered: FnvHashSet::default(),
@@ -482,10 +482,10 @@ impl R8Compiler {
                  names: Vec<(SymID, Source)>,
                  mut prog: Progn,
                  _src: Source) -> Result<()> {
-        let outside = self.with_env(|env| env.as_map())?;
         let mut args: Vec<_> = names.iter().map(|(s,_)| *s).collect();
+        let Some(outside) = self.estack.last() else { unimplemented!() };
         let lowered = ClzScoper::scope(args.clone(),
-                                       &outside,
+                                       outside,
                                        prog.iter_mut())?;
         let num = LAMBDA_COUNT.fetch_add(1, Ordering::SeqCst);
         let name = format!("<λ>::{num}");
