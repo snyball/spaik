@@ -83,7 +83,7 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<*const T> {
 
     fn try_from(v: PV) -> Result<ObjRef<*const T>, Self::Error> {
         Ok(ObjRef(with_ref!(v, Struct(v) => {
-            (*v).cast::<T>()
+            ObjPtr(v).cast::<T>()
         })?))
     }
 }
@@ -93,7 +93,7 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a T> {
 
     fn try_from(v: PV) -> Result<ObjRef<&'a T>, Self::Error> {
         Ok(ObjRef(with_ref!(v, Struct(v) => {
-            (*v).cast::<T>().map(|p| &*p)
+            ObjPtr(v).cast::<T>().map(|p| &*p)
         })?))
     }
 }
@@ -102,8 +102,8 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a mut T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<&'a mut T>, Self::Error> {
-        Ok(ObjRef(with_ref!(v, Struct(v) => {
-            (*v).cast_mut::<T>().map(|p| &mut *p)
+        Ok(ObjRef(with_ref_mut!(v, Struct(v) => {
+            ObjPtrMut(v).cast_mut::<T>().map(|p| &mut *p)
         })?))
     }
 }
@@ -129,7 +129,7 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<*mut T> {
 
     fn try_from(v: PV) -> Result<ObjRef<*mut T>, Self::Error> {
         Ok(ObjRef(with_ref_mut!(v, Struct(v) => {
-            (*v).cast_mut::<T>()
+            ObjPtrMut(v).cast_mut::<T>()
         })?))
     }
 }
@@ -824,7 +824,7 @@ impl LispFmt for PV {
             PV::Real(a) => write!(f, "{}", a),
             PV::Sym(id) => write!(f, "{}", db.name(id)),
             PV::Char(c) => write!(f, "(char {})", c),
-            PV::Ref(p) => unsafe { (*p).lisp_fmt(db, visited, f) }
+            PV::Ref(p) => atom_fmt(p, db, visited, f)
         }
     }
 }
@@ -1890,6 +1890,7 @@ impl Arena {
 impl Drop for Arena {
     fn drop(&mut self) {
         unsafe {
+            self.finish_cycle();
             self.nuke.destroy_the_world();
         }
     }

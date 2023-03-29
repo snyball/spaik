@@ -11,7 +11,7 @@ use std::any::{TypeId, Any, type_name};
 use std::mem::{self, size_of, align_of};
 use std::ptr::{drop_in_place, self};
 use std::cmp::{Ordering, PartialEq, PartialOrd};
-use std::fmt;
+use std::fmt::{self, Display};
 use core::fmt::Debug;
 use std::sync::atomic::AtomicU32;
 #[cfg(not(target_arch = "wasm32"))]
@@ -164,21 +164,32 @@ macro_rules! fissile_types {
             with_atom_inst!(atom, NkRef, {atom}, $(($t,$path)),+)
         }
 
-        impl LispFmt for NkAtom {
-            fn lisp_fmt(&self,
+        #[inline]
+        pub fn atom_fmt(p: *const NkAtom,
                         db: &dyn SymDB,
                         visited: &mut VisitSet,
                         f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                let p = self as *const NkAtom;
-                let atom = self;
-                if visited.get(&p).is_some() {
-                    write!(f, "(...)")
-                } else {
-                    visited.insert(p);
-                    with_atom!(atom, { (*atom).lisp_fmt(db, visited, f) },
-                               $(($t,$path)),+)
+            if visited.get(&p).is_some() {
+                write!(f, "(...)")
+            } else {
+                visited.insert(p);
+                with_atom!(p, { (*p).lisp_fmt(db, visited, f) },
+                           $(($t,$path)),+)
+            }
+        }
+
+        #[inline]
+        pub fn atom_to_str(p: *const NkAtom, db: &dyn SymDB) -> String {
+            struct P(*const NkAtom);
+            impl LispFmt for P {
+                fn lisp_fmt(&self,
+                            db: &dyn SymDB,
+                            v: &mut VisitSet,
+                            f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    atom_fmt(self.0, db, v, f)
                 }
             }
+            P(p).lisp_to_string(db)
         }
 
         $(unsafe impl Fissile for $path {
@@ -327,7 +338,7 @@ impl GcRc {
     }
 
     pub fn is_dropped(&mut self) -> bool {
-        self.0.fetch_sub(1, atomic::Ordering::SeqCst) == 0
+        self.0.fetch_sub(1, atomic::Ordering::SeqCst) == 1
     }
 }
 
@@ -386,6 +397,76 @@ pub unsafe fn ud_layout<T: Userdata>() -> Layout {
 pub unsafe fn drop_ud<T: Userdata>(obj: *mut u8) {
     drop_in_place(obj as *mut T);
     dealloc(obj, ud_layout::<T>());
+}
+
+pub struct ObjPtrMut(pub *mut Object);
+
+impl ObjPtrMut {
+    pub unsafe fn rc(&self) -> u32 {
+        ((*self.0).vt.get_rc)((*self.0).mem)
+    }
+
+    pub unsafe fn cast_mut<T: Userdata>(&self) -> Result<*mut T, Error> {
+        if TypeId::of::<T>() != (*self.0).type_id {
+            let expect_t = type_name::<T>();
+            let actual_t = (*self.0).vt.type_name;
+            let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
+            return Err(error!(STypeError,
+                        expect: format!("(object {expect_t})"),
+                        got: format!("(object {actual_t})"),)
+                        .argn(0).op(Builtin::Nil.sym()))
+        }
+        Ok((*self.0).mem as *mut T)
+    }
+
+    pub unsafe fn cast<T: Userdata>(&self) -> Result<*const T, Error> {
+        Ok((*self.0).cast_mut()? as *const T)
+    }
+
+    pub unsafe fn fastcast_mut<T: Userdata>(&mut self) -> *mut T {
+        (*self.0).mem as *mut T
+    }
+
+    pub unsafe fn fastcast<T: Userdata>(&self) -> *const T {
+        (*self.0).mem as *const T
+    }
+}
+
+impl Display for ObjPtrMut {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe { ((*self.0).vt.fmt)((*self.0).mem, f) }
+    }
+}
+
+pub struct ObjPtr(pub *const Object);
+
+impl ObjPtr {
+    pub unsafe fn rc(&self) -> u32 {
+        ((*self.0).vt.get_rc)((*self.0).mem)
+    }
+
+    pub unsafe fn cast<T: Userdata>(&self) -> Result<*const T, Error> {
+        if TypeId::of::<T>() != (*self.0).type_id {
+            let expect_t = type_name::<T>();
+            let actual_t = (*self.0).vt.type_name;
+            let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
+            return Err(error!(STypeError,
+                        expect: format!("(object {expect_t})"),
+                        got: format!("(object {actual_t})"),)
+                        .argn(0).op(Builtin::Nil.sym()))
+        }
+        Ok((*self.0).mem as *mut T)
+    }
+
+    pub unsafe fn fastcast<T: Userdata>(&self) -> *const T {
+        (*self.0).mem as *const T
+    }
+}
+
+impl Display for ObjPtr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe { ((*self.0).vt.fmt)((*self.0).mem, f) }
+    }
 }
 
 impl Object {
@@ -652,7 +733,26 @@ impl Traceable for Intr {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Void;
+
+impl Traceable for Void {
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {}
+
+    fn update_ptrs(&mut self, reloc: &PtrMap) {}
+}
+
+impl LispFmt for Void {
+    fn lisp_fmt(&self,
+                db: &dyn SymDB,
+                visited: &mut VisitSet,
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "void")
+    }
+}
+
 fissile_types! {
+    (Void, Builtin::Void.sym(), Void),
     (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
     (Intr, Builtin::Intr.sym(), crate::nuke::Intr),
     (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
@@ -768,6 +868,11 @@ pub unsafe fn fastcast_mut<T>(atom: *mut NkAtom) -> *mut T {
 }
 
 #[inline]
+pub fn atom_kind(atom: *const NkAtom) -> NkT {
+    unsafe { mem::transmute((*atom).meta.typ()) }
+}
+
+#[inline]
 pub fn cast_mut<T: Fissile>(atom: *mut NkAtom) -> Option<*mut T> {
     unsafe {
         let ty = T::type_of();
@@ -795,6 +900,7 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         }};
     }
     match to_fissile_ref(atom) {
+        NkRef::Void(v) => clone!(v),
         NkRef::Cons(cns) => {
             let p = mem.alloc::<Cons>();
             unsafe {
@@ -842,7 +948,6 @@ pub struct Nuke {
     num_frees: usize,
     num_allocs: usize,
     num_atoms: usize,
-    min_block_sz: NkSz,
     sz: usize,
     reloc: PtrMap,
     last: *mut NkAtom,
@@ -895,9 +1000,6 @@ pub struct RelocateToken;
 
 impl Nuke {
     pub fn new(sz: usize) -> Nuke {
-        let min_block_sz = minimal_fissile_sz();
-
-        assert!(min_block_sz > 0, "Minimum allocation size cannot be 0.");
         assert!(sz >= 128, "Nuke too small");
 
         let mut nk = Nuke {
@@ -907,7 +1009,6 @@ impl Nuke {
             num_frees: 0,
             num_allocs: 0,
             num_atoms: 0,
-            min_block_sz,
             sz,
             reloc: PtrMap(Vec::new()),
             last: ptr::null_mut(),
@@ -921,7 +1022,7 @@ impl Nuke {
         nk.free = nk.offset(mem::size_of::<NkAtom>());
         nk.used = mem::size_of::<NkAtom>();
         unsafe {
-            (*nk.fst_mut()).init(NkT::Cons);
+            (*nk.fst_mut()).init(NkT::Void);
             (*nk.fst_mut()).next = ptr::null_mut();
             (*nk.fst_mut()).sz = 0;
         }
@@ -961,6 +1062,12 @@ impl Nuke {
     pub unsafe fn destroy_the_world(&mut self) {
         for atom in self.iter_mut() {
             unsafe {
+                // println!("{:?} {:?}", (*atom).type_of(), (*atom).color());
+                // println!("{:?}", atom_kind(atom));
+                // println!("i-i-i-i-i want to: {}", atom_to_str(atom, &SYM_DB));
+                if let Some(obj) = cast::<Object>(atom) {
+                    println!("{}", ObjPtr(obj))
+                }
                 destroy_atom(atom);
             }
         }
@@ -1215,14 +1322,14 @@ impl fmt::Debug for DebugHexBytes<'_> {
 
 impl fmt::Debug for NkAtom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        let fmted = self.lisp_to_string(&SYM_DB);
+        // let fmted = self.lisp_to_string(&SYM_DB);
         f.debug_struct("NkAtom")
          .field("type", &self.type_of())
          .field("color", &self.color())
          .field("sz", &self.sz)
          .field("this", &(self as *const NkAtom))
          .field("next", &self.next)
-         .field("obj", &RawDebugStr(&fmted))
+         // .field("obj", &RawDebugStr(&fmted))
          .field("raw", &DebugHexBytes(self.raw()))
          .finish()
     }

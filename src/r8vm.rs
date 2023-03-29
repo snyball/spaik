@@ -2542,15 +2542,14 @@ impl R8VM {
     pub fn dump_fn_code(&self, mut name: SymID) -> Result<(), Error> {
         use colored::*;
 
-        lazy_static! {
-            static ref EMPTY_MAP: FnvHashMap<u32, Lbl> = FnvHashMap::default();
-        }
         if let Some(mac_fn) = self.macros.get(&name.into()) {
             name = *mac_fn;
         }
         let func = self.funcs.get(&name.into()).ok_or("No such function")?;
-        let labels = self.func_labels.get(&name)
-                                     .unwrap_or(&EMPTY_MAP);
+        let labels: Cow<FnvHashMap<u32, Lbl>> =
+            self.func_labels.get(&name)
+                            .map(Cow::Borrowed)
+                            .unwrap_or_else(|| Cow::Owned(FnvHashMap::default()));
         let start = func.pos as isize;
 
         let get_jmp = |op: r8c::Op| {

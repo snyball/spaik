@@ -11,14 +11,9 @@ use std::collections::HashMap;
 use fnv::FnvHashMap;
 use std::hash::Hash;
 use std::mem;
-use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 
 static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
-lazy_static! {
-    static ref LABEL_CNT: Mutex<HashMap<String, usize>> =
-        Mutex::new(HashMap::new());
-}
 
 type VarIdx = u32;
 
@@ -211,6 +206,7 @@ builtins! {
     (Cdr, "cdr"),
     (Car, "car"),
     (Cons, "cons"),
+    (Void, "void"),
     (Intr, "intr"),
     (List, "list"),
     (ArgList, "arg-list"),
