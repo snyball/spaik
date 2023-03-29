@@ -65,6 +65,7 @@ pub(crate) mod compile;
 pub(crate) mod sexpr_parse;
 pub(crate) mod tok;
 pub(crate) mod nuke;
+pub(crate) mod swym;
 #[cfg(feature = "modules")]
 pub(crate) mod module;
 #[cfg(feature = "serde")]

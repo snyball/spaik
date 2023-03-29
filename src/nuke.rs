@@ -333,6 +333,10 @@ pub struct Object {
 pub struct GcRc(AtomicU32);
 
 impl GcRc {
+    pub fn new(init: u32) -> GcRc {
+        GcRc(init.into())
+    }
+
     pub fn inc(&mut self) {
         self.0.fetch_add(1, atomic::Ordering::SeqCst);
     }
