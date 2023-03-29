@@ -9,7 +9,7 @@ use crate::nkgc::{PV, SymID};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::Source;
-use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor};
+use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor, PrinterVisitor};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
 use crate::compile::*;
 use crate::error::Result;
@@ -103,7 +103,7 @@ impl ClzScoper<'_> {
             outside
         };
         for part in body {
-            part.visit(&mut scoper)?;
+            scoper.visit(part)?;
         }
         Ok(scoper.lowered)
     }
