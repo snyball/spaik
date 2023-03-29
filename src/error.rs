@@ -1,6 +1,6 @@
 //! Structured Errors
 
-use num::Integer;
+use num_traits::PrimInt as Integer;
 
 use crate::perr::ParseErr;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};

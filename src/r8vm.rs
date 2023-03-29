@@ -1,15 +1,16 @@
 //! SPAIK R8 Virtual Machine
 
-#[cfg(feature = "repl")]
+#[cfg(feature = "extra")]
 use comfy_table::Table;
 
+#[cfg(feature = "modules")]
+use crate::module::{LispModule, Export, ExportKind};
 use crate::{
     ast::{Value, Excavator},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{Builtin, Linked, R8Compiler, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
     fmt::LispFmt,
-    module::{LispModule, Export, ExportKind},
     nuke::*,
     nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self, QuasiMut},
     sexpr_parse::{Parser, sexpr_modified_sym_to_str, sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
@@ -143,7 +144,7 @@ impl From<&str> for RuntimeError {
     }
 }
 
-#[cfg(feature = "repl")]
+#[cfg(feature = "extra")]
 const TABLE_STYLE: &str = comfy_table::presets::UTF8_BORDERS_ONLY;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -283,10 +284,12 @@ mod sysfns {
         }
 
         fn sys_freeze(&mut self, vm: &mut R8VM, args: (dst)) -> Result<PV, Error> {
-            let module = vm.freeze();
-            let file = std::fs::File::create(dst.str().as_ref())?;
-            let mut wr = std::io::BufWriter::new(file);
-            bincode::serialize_into(&mut wr, &module).unwrap();
+            featurefn!("modules", {
+                let module = vm.freeze();
+                let file = std::fs::File::create(dst.str().as_ref())?;
+                let mut wr = std::io::BufWriter::new(file);
+                bincode::serialize_into(&mut wr, &module).unwrap();
+            })?;
             Ok(PV::Nil)
         }
 
@@ -370,22 +373,22 @@ mod sysfns {
         }
 
         fn dump_macro_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
-            featurefn!("repl", vm.dump_macro_tbl()?)?;
+            featurefn!("extra", vm.dump_macro_tbl()?)?;
             Ok(PV::Nil)
         }
 
         fn dump_sym_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
-            featurefn!("repl", vm.dump_symbol_tbl()?)?;
+            featurefn!("extra", vm.dump_symbol_tbl()?)?;
             Ok(PV::Nil)
         }
 
         fn dump_env_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
-            featurefn!("repl", vm.dump_env_tbl()?)?;
+            featurefn!("extra", vm.dump_env_tbl()?)?;
             Ok(PV::Nil)
         }
 
         fn dump_fn_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
-            featurefn!("repl", vm.dump_fn_tbl()?)?;
+            featurefn!("extra", vm.dump_fn_tbl()?)?;
             Ok(PV::Nil)
         }
 
@@ -1027,7 +1030,6 @@ impl R8VM {
                 vm.set(sym, (sysfns::$fn).into_subr()).unwrap();
             };
         }
-
 
         // IO
         addfn!(println);
@@ -2585,7 +2587,7 @@ impl R8VM {
         Ok(())
     }
 
-    #[cfg(feature = "repl")]
+    #[cfg(feature = "extra")]
     pub fn dump_macro_tbl(&self) -> Result<(), Error> {
         let mut table = Table::new();
 
@@ -2602,7 +2604,7 @@ impl R8VM {
         Ok(())
     }
 
-    #[cfg(feature = "repl")]
+    #[cfg(feature = "extra")]
     pub fn dump_symbol_tbl(&self) -> Result<(), Error> {
         let mut table = Table::new();
 
@@ -2618,7 +2620,7 @@ impl R8VM {
         Ok(())
     }
 
-    #[cfg(feature = "repl")]
+    #[cfg(feature = "extra")]
     pub fn dump_env_tbl(&self) -> Result<(), Error> {
         let mut table = Table::new();
 
@@ -2652,7 +2654,7 @@ impl R8VM {
         self.pmem.len() * std::mem::size_of::<r8c::Op>()
     }
 
-    #[cfg(feature = "repl")]
+    #[cfg(feature = "extra")]
     pub fn dump_fn_tbl(&self) -> Result<(), Error> {
         let mut table = Table::new();
 
@@ -2674,6 +2676,7 @@ impl R8VM {
         &self.pmem
     }
 
+    #[cfg(feature = "modules")]
     pub fn freeze(&self) -> LispModule {
         let mut exports = Vec::new();
         exports.extend(self.funcs.iter()

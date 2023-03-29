@@ -751,6 +751,7 @@ impl LispFmt for Void {
     }
 }
 
+#[cfg(feature = "math")]
 fissile_types! {
     (Void, Builtin::Void.sym(), Void),
     (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
@@ -764,6 +765,23 @@ fissile_types! {
     (Mat2, Builtin::Mat2.sym(), glam::Mat2),
     (Mat3, Builtin::Mat3.sym(), glam::Mat3),
     (Mat4, Builtin::Mat4.sym(), glam::Mat4),
+    (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),
+    (Struct, Builtin::Struct.sym(), crate::nuke::Object),
+    (Iter, Builtin::Struct.sym(), crate::nuke::Iter),
+    (Continuation, Builtin::Continuation.sym(), crate::nuke::Continuation),
+    (Subroutine, Builtin::Subr.sym(), Box<dyn crate::subrs::Subr>)
+}
+
+#[cfg(not(feature = "math"))]
+fissile_types! {
+    (Void, Builtin::Void.sym(), Void),
+    (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
+    (Intr, Builtin::Intr.sym(), crate::nuke::Intr),
+    (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
+    (VLambda, Builtin::Lambda.sym(), crate::nkgc::VLambda),
+    (String, Builtin::String.sym(), std::string::String),
+    (PV, Builtin::Ref.sym(), crate::nkgc::PV),
+    (Vector, Builtin::Vector.sym(), Vec<PV>),
     (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),
     (Struct, Builtin::Struct.sym(), crate::nuke::Object),
     (Iter, Builtin::Struct.sym(), crate::nuke::Iter),
@@ -802,6 +820,7 @@ macro_rules! trivial_trace {
     })*};
 }
 
+#[cfg(feature = "math")]
 trivial_trace!(glam::Vec2, glam::Vec3, glam::Vec4,
                glam::Mat2, glam::Mat3, glam::Mat4,
                glam::Quat);
@@ -928,9 +947,13 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
             ptr::write(p, nxs);
             NkAtom::make_raw_ref(p)
         },
+        #[cfg(feature = "math")]
         NkRef::Vec4(v4) => clone!(v4),
+        #[cfg(feature = "math")]
         NkRef::Mat2(m2) => clone!(m2),
+        #[cfg(feature = "math")]
         NkRef::Mat3(m3) => clone!(m3),
+        #[cfg(feature = "math")]
         NkRef::Mat4(m4) => clone!(m4),
         NkRef::Stream(s) => clone!(s),
         NkRef::Struct(s) => clone!(s),

@@ -15,20 +15,29 @@ rust-version = "1.65"
 panic = "abort"
 #lto = "fat"
 
+[profile.wasm]
+inherits = "release"
+panic = "abort"
+lto = "fat"
+opt-level = "s"
+
 [features]
-default = ["repl", "lisp-test", "math", "readline"]
-repl = ["colored", "comfy-table", "dirs"]
-readline = ["rustyline"]
+default = ["repl", "lisp-test", "math", "readline", "serde"]
+repl = ["colored"]
+extra = ["comfy-table"]
+readline = ["rustyline", "dirs"]
 lisp-test = ["colored"]
 wasm = ["wasm-bindgen"]
 math = ["glam"]
+modules = ["bincode", "serde"]
+serde = []
 
 [dependencies]
 lazy_static = "1.4"
 fnv = "1.0"
 log = "0.4"
 spaik-proc-macros = { path = 'proc-macros' }
-bincode = "1.3.3"
+bincode = { version = "1.3.3", optional = true }
 serde = { version = "1.0.143", features = ["derive"] }
 convert_case = "0.6.0"
 comfy-table = { version = "5.0.0", optional = true, default-features = false, features = [] }
@@ -36,7 +45,7 @@ dirs = { version = "4.0.0", optional = true }
 rustyline = { version = "6.2", optional = true }
 colored = { version = "2.0", optional = true }
 glam = { version = "0.21.3", optional = true, features = ["mint", "serde"] }
-num = "0.4.0"
+num-traits = "0.2.15"
 
 [target.'cfg(all(target_env = "musl", target_pointer_width = "64"))'.dependencies.jemallocator]
 version = "0.3.2"

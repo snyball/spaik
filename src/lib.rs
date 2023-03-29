@@ -65,9 +65,12 @@ pub(crate) mod compile;
 pub(crate) mod sexpr_parse;
 pub(crate) mod tok;
 pub(crate) mod nuke;
+#[cfg(feature = "modules")]
 pub(crate) mod module;
+#[cfg(feature = "serde")]
 pub(crate) mod deserialize;
 pub(crate) mod limits;
+#[cfg(feature = "math")]
 pub(crate) mod math;
 pub(crate) mod comp;
 
@@ -220,6 +223,12 @@ impl Spaik {
     #[inline]
     pub fn new() -> Spaik {
         Spaik { vm: R8VM::new() }
+    }
+
+    /// Create a new SPAIK VM
+    #[inline]
+    pub fn new_no_core() -> Spaik {
+        Spaik { vm: R8VM::no_std() }
     }
 
     /// Register a subroutine (function) with the vm
@@ -531,6 +540,7 @@ impl<T> DerefMut for Promise<T> {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
     fn from_lisp(self, mem: &mut nkgc::Arena) -> Result<Promise<T>, IError> {
         with_ref!(self, Cons(p) => {
@@ -683,10 +693,10 @@ mod tests {
     #[test]
     fn spaik_fork_send_from_rust_to_lisp() {
         setup();
-        let mut vm = Spaik::new();
-        vm.exec("(defvar init-var nil)").unwrap();
-        vm.exec("(defun init () (set init-var 'init))").unwrap();
-        vm.exec("(defun event-0 (x) (set init-var (+ x 1)))").unwrap();
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define init-var nil)").unwrap();
+        vm.exec("(define (init) (set init-var 'init))").unwrap();
+        vm.exec("(define (event-0 x) (set init-var (+ x 1)))").unwrap();
         let vm = vm.fork::<i32, ()>();
         vm.send("event-0", (123,));
         let mut vm = vm.join();
@@ -703,7 +713,7 @@ mod tests {
             Test { id: i32 },
         }
         let mut vm = Spaik::new();
-        vm.exec("(defvar init-var nil)").unwrap();
+        vm.exec("(define init-var nil)").unwrap();
         vm.exec("(defun init () (set init-var 'init))").unwrap();
         vm.exec(r#"(defun event-0 (x)
                      (let ((res (await '(test :id 1337))))
@@ -722,7 +732,7 @@ mod tests {
 
     #[test]
     fn api_eval_add_numbers() {
-        let mut vm = Spaik::new();
+        let mut vm = Spaik::new_no_core();
         let result: i32 = vm.eval("(+ 2 3)").unwrap();
         assert_eq!(result, 5);
         let result: i16 = vm.eval("(+ 2 3)").unwrap();
@@ -800,7 +810,7 @@ mod tests {
             obj.y
         }
 
-        let mut vm = Spaik::new();
+        let mut vm = Spaik::new_no_core();
         vm.register(fns::my_function);
         vm.register(fns::obj_x);
         vm.register(fns::obj_y);
@@ -821,12 +831,6 @@ mod tests {
         let dst_obj_2: TestObj = vm.obj("dst-obj").unwrap();
         assert_eq!(dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                         y: dst_obj.y + src_obj.y });
-        // let dst_obj_2: *const TestObj = vm.objref("dst-obj").unwrap();
-        // assert_eq!(unsafe { *dst_obj_2 }, TestObj { x: dst_obj.x + src_obj.x,
-        //                                  y: dst_obj.y + src_obj.y });
-        // let dst_obj_2: *mut TestObj = vm.objref_mut("dst-obj").unwrap();
-        // assert_eq!(unsafe { *dst_obj_2 }, TestObj { x: dst_obj.x + src_obj.x,
-        //                                  y: dst_obj.y + src_obj.y });
         let expr = "(obj-y wrong-obj)";
         let e = match vm.exec(expr).map_err(|e| e.src()) {
             Ok(_) => panic!("Expression should fail: {expr}"),
@@ -850,10 +854,10 @@ mod tests {
             FuncB { arg0: u32, arg1: i16, arg2: &'static str },
             FuncC(u32, i8, &'static str),
         }
-        let mut vm = Spaik::new();
-        vm.exec("(defun func-a (arg-0 arg-1 arg-2) (+ arg-0 arg-1))").unwrap();
-        vm.exec("(defvar global 10)").unwrap();
-        vm.exec("(defun func-b (arg-2) (set global arg-2))").unwrap();
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define (func-a arg-0 arg-1 arg-2) (+ arg-0 arg-1))").unwrap();
+        vm.exec("(define global 10)").unwrap();
+        vm.exec("(define (func-b arg-2) (set global arg-2))").unwrap();
         let (a, b) = (10, 20);
         let r: u32 = vm.query(CallSome::FuncA {
             arg0: a, arg1: b, arg2: "lmao".to_string()
@@ -913,7 +917,7 @@ mod tests {
             y: f32,
         }
 
-        let mut vm = Spaik::new();
+        let mut vm = Spaik::new_no_core();
         vm.set("test-obj", TestObj { x: 10.0, y: 20.0 });
         let _rf: Gc<TestObj> = vm.get("test-obj").unwrap();
         let mut _vm = vm.fork::<(), ()>();
