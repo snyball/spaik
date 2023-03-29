@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn deser_basic_types() {
-        let mut vm = R8VM::new();
+        let mut vm = R8VM::no_std();
 
         let s = vm.eval(r#" "test" "#).unwrap();
         let out_s: String = from_pv(s, &vm).unwrap();
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_enum_type() {
-        let mut vm = R8VM::new();
+        let mut vm = R8VM::no_std();
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
         #[serde(rename_all = "kebab-case")]
         enum U {
@@ -601,7 +601,8 @@ mod tests {
         let u = from_pv::<U>(s, &vm).unwrap();
         assert_eq!(u, U::C { key: "brittany was here".to_string(), key_2: 12 });
 
-        let s = vm.eval(r#" (let ((x 123) (y "ayy lmao")) `(c :key ,y :key-2 ,x)) "#).unwrap();
+        let s = vm.eval(r#" ((lambda (x y) `(c :key ,y :key-2 ,x)) 123 "ayy lmao") "#)
+                  .unwrap();
         let u = from_pv::<U>(s, &vm).unwrap();
         assert_eq!(u, U::C { key: "ayy lmao".to_string(), key_2: 123 });
 
