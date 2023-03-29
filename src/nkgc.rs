@@ -281,8 +281,8 @@ impl fmt::Display for PV {
 impl Traceable for PV {
     #[inline]
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
-        if let PV::Ref(ptr) = self {
-            mark_atom(unsafe { &mut **ptr }, gray)
+        if let PV::Ref(ptr) = *self {
+            mark_atom(ptr, gray)
         }
     }
 
@@ -347,7 +347,7 @@ struct PVVecIter {
 
 impl Traceable for PVVecIter {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
-        mark_atom(unsafe { &mut *self.vec }, gray)
+        mark_atom(self.vec, gray)
     }
 
     fn update_ptrs(&mut self, reloc: &PtrMap) {
