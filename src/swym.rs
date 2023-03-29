@@ -1,10 +1,12 @@
 use core::slice;
+use std::{cmp, fmt};
 use std::hash::{Hash, self};
 use std::{ptr::NonNull, mem, ptr};
 use std::alloc::{Layout, alloc, dealloc};
 use std::fmt::Debug;
 
 use fnv::FnvHashSet;
+use serde::{Deserialize, Serialize};
 
 use crate::raw::nuke::GcRc;
 
@@ -22,16 +24,82 @@ struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
 
 pub struct SymRef(*mut Sym);
 
-impl Debug for SymRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl SymRef {
+    pub(crate) fn id(self) -> SymID {
+        let p = self.0;
+        drop(self);
+        SymID(p)
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Clone, Copy)]
+pub(crate) struct SymID(*mut Sym);
+
+impl Debug for SymID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        debug_print_sym(self.0, f)
+    }
+}
+
+impl SymID {
+    fn as_str(&self) -> Option<&str> {
         unsafe {
-            if let Some(p) = (*self.0).ptr {
+            (*self.0).ptr.map(|p| {
                 let slice = slice::from_raw_parts(p.as_ptr(), (*self.0).len);
-                write!(f, "{}", std::str::from_utf8_unchecked(slice))
-            } else {
-                write!(f, "<β>::{}", self.0 as usize)
-            }
+                std::str::from_utf8_unchecked(slice)
+            })
         }
+    }
+}
+
+impl PartialOrd for SymID {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SymID {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        let l = self.as_str();
+        let r = other.as_str();
+        match (l, r) {
+            (None, None) => cmp::Ordering::Equal,
+            (None, Some(_)) => cmp::Ordering::Less,
+            (Some(_), None) => cmp::Ordering::Greater,
+            (Some(l), Some(r)) => l.cmp(r),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SymID {
+    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where D: serde::Deserializer<'de> {
+        todo!()
+    }
+}
+
+impl Serialize for SymID {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer {
+        todo!()
+    }
+}
+
+fn debug_print_sym(sym: *mut Sym, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+    unsafe {
+        if let Some(p) = (*sym).ptr {
+            let slice = slice::from_raw_parts(p.as_ptr(), (*sym).len);
+            write!(f, "{}", std::str::from_utf8_unchecked(slice))
+        } else {
+            write!(f, "<β>::{}", sym as usize)
+        }
+    }
+}
+
+impl Debug for SymRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        debug_print_sym(self.0, f)
     }
 }
 
@@ -123,16 +191,15 @@ impl Drop for SymRef {
     }
 }
 
-struct SymID(*const Sym);
-
-struct SymBuf {
-    buf: *mut Sym,
-    len: usize,
+#[derive(Default)]
+pub struct SwymDb {
+    map: FnvHashSet<SymKeyRef>,
 }
 
-#[derive(Default)]
-struct SwymDb {
-    map: FnvHashSet<SymKeyRef>,
+impl Debug for SwymDb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SwymDb").field("map", &"...").finish()
+    }
 }
 
 impl Drop for SwymDb {
