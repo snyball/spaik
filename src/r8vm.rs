@@ -12,7 +12,7 @@ use crate::{
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
     fmt::LispFmt,
     nuke::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self, QuasiMut},
+    nkgc::{Arena, Cons, SymID, SymIDInt, PV, SPV, self, QuasiMut},
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree, sexpr_modified_sym_to_str},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits,
@@ -87,7 +87,6 @@ chasm_def! {
     ARGSPEC(nargs: u16, nopt: u16, nenv: u16, rest: u8),
     SYM(id: SymIDInt),
     CHAR(c: u32),
-    CLZ(sym: SymIDInt, nenv: u16),
     CLZR(delta: i32, nenv: u16),
     CLZAV(nargs: u16, nenv: u16), // Commit the closure environment
     BOOL(val: u8),
@@ -1981,12 +1980,7 @@ impl R8VM {
                     let lambda = self.mem.stack[self.frame];
                     let new_env = &self.mem.stack[start_idx..end_idx];
                     // Save environment
-                    with_ref_mut!(lambda, VLambda(lambda) => {
-                        for (dst, var) in (*lambda).locals.iter_mut().zip(new_env.iter()) {
-                            *dst = *var;
-                        }
-                        Ok(())
-                    }, Lambda(lambda) => {
+                    with_ref_mut!(lambda, Lambda(lambda) => {
                         for (dst, var) in (*lambda).locals.iter_mut().zip(new_env.iter()) {
                             *dst = *var;
                         }
@@ -2006,20 +2000,6 @@ impl R8VM {
                     self.mem.push_new(nkgc::Lambda { pos: pos as usize,
                                                      args: spec,
                                                      locals });
-                }
-                CLZ(sym, nenv) => {
-                    let to = self.mem.stack.len();
-                    let from = to - nenv as usize;
-                    let locals = self.mem.stack.drain(from..to).collect();
-                    let name = sym.into();
-                    let args = self.funcs
-                                   .get(&sym)
-                                   .ok_or(error_src!(Source::none(),
-                                                     UndefinedFunction,
-                                                     name))?.args;
-                    self.mem.push_new(VLambda { name,
-                                                locals,
-                                                args });
                 }
 
                 // Math
@@ -2396,7 +2376,6 @@ impl R8VM {
             Some((op.name().to_lowercase(), match op {
                 VCALL(name, args) => vec![sym_name(name), args.to_string()],
                 SYM(sym) => vec![sym_name(sym)],
-                CLZ(sym, env) => vec![sym_name(sym), env.to_string()],
                 _ => return None
             }))
         };

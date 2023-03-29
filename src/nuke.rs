@@ -751,7 +751,6 @@ fissile_types! {
     (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
     (Intr, Builtin::Intr.sym(), crate::nuke::Intr),
     (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
-    (VLambda, Builtin::Lambda.sym(), crate::nkgc::VLambda),
     (String, Builtin::String.sym(), std::string::String),
     (PV, Builtin::Ref.sym(), crate::nkgc::PV),
     (Vector, Builtin::Vector.sym(), Vec<PV>),
@@ -932,7 +931,6 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
             })
         }
         NkRef::Lambda(_l) => todo!(),
-        NkRef::VLambda(_l) => todo!(),
         NkRef::String(s) => clone!(s),
         NkRef::PV(_p) => todo!(),
         NkRef::Vector(xs) => unsafe {

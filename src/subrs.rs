@@ -1,7 +1,7 @@
 //! Rust Subroutines for SPAIK LISP
 
 use crate::r8vm::R8VM;
-use crate::nkgc::{PV, SPV, VLambda, Traceable, Arena, ObjRef};
+use crate::nkgc::{PV, SPV, Traceable, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::{nuke::*, SymID};
 use crate::fmt::{LispFmt, VisitSet};
@@ -266,29 +266,5 @@ impl IntoLisp for Box<dyn Subr> {
         let p = mem.alloc::<Self>();
         unsafe { ptr::write(p, self) }
         Ok(NkAtom::make_ref(p))
-    }
-}
-
-unsafe impl Subr for VLambda {
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-        // FIXME: This works fine for lambdas that don't have an environment,
-        // but will cause errors for those that do.
-        // You should first fix the FIXME in r8vm for CLZCALL, extract the
-        // actual calling-routine to a new R8VM method, then you can re-use that
-        // here.
-        if self.args.has_env() {
-            unimplemented!("Calling closures as Subr is not implemented.")
-        }
-        vm.raw_call(self.name, args)
-    }
-
-    fn name(&self) -> &'static str {
-        "lambda"
-    }
-}
-
-impl From<VLambda> for Box<dyn Subr> {
-    fn from(t: VLambda) -> Self {
-        Box::new(t)
     }
 }

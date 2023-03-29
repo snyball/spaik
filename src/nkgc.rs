@@ -1,7 +1,7 @@
 //! The Nuclear Garbage Collector
 
 use crate::compile::{Builtin, BUILTIN_SYMBOLS};
-use crate::r8vm::{RuntimeError, ArgSpec, ArgInt, R8VM};
+use crate::r8vm::{RuntimeError, ArgSpec, R8VM};
 use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source, Meta, LineCol};
 use crate::fmt::{LispFmt, VisitSet};
@@ -1126,46 +1126,6 @@ impl LispFmt for Lambda {
     }
 }
 
-// TODO: Should this be a DST? With locals stored inline?
-#[derive(Eq, PartialEq, Debug, Clone)]
-pub struct VLambda {
-    pub name: SymID,
-    pub locals: Vec<PV>,
-    pub args: ArgSpec
-}
-
-unsafe impl Send for VLambda {}
-
-impl VLambda {
-    #[inline]
-    pub fn nenv(&self) -> ArgInt {
-        self.locals.len() as ArgInt
-    }
-}
-
-impl Traceable for VLambda {
-    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
-        for u in self.locals.iter() {
-            u.trace(gray);
-        }
-    }
-
-    fn update_ptrs(&mut self, reloc: &PtrMap) {
-        for v in self.locals.iter_mut() {
-            v.update_ptrs(reloc);
-        }
-    }
-}
-
-impl LispFmt for VLambda {
-    fn lisp_fmt(&self, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(λ '(")?;
-        self.locals.iter().lisp_fmt(db, visited, f)?;
-        write!(f, ") @")?;
-        write!(f, "{})", db.name(self.name))
-    }
-}
-
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct ExtRefID(u32);
 
@@ -1301,12 +1261,7 @@ impl Arena {
     #[inline]
     pub fn clz_expand(&mut self, idx: usize) -> Result<(), Error> {
         let lambda = self.stack[idx];
-        with_ref!(lambda, VLambda(p) => {
-            for v in (*p).locals.iter() {
-                self.push(*v);
-            }
-            Ok(())
-        }, Lambda(p) => {
+        with_ref!(lambda, Lambda(p) => {
             for v in (*p).locals.iter() {
                 self.push(*v);
             }
