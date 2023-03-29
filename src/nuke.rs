@@ -38,7 +38,7 @@ macro_rules! with_atom {
 macro_rules! with_atom_mut {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
         unsafe {
-            match (*$item).type_of() {
+            match atom_kind($item) {
                 $(NkT::$t => {
                     let $item = fastcast_mut::<$path>($item);
                     $fn
@@ -51,7 +51,7 @@ macro_rules! with_atom_mut {
 macro_rules! with_atom_inst {
     ($item:ident, $what:ident, $fn:block, $(($t:ident, $path:path)),+) => {
         unsafe {
-            match (*$item).type_of() {
+            match atom_kind($item) {
                 $(NkT::$t => $what::$t({
                     let $item = fastcast_mut::<$path>($item);
                     $fn
