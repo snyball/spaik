@@ -6,19 +6,19 @@ use comfy_table::Table;
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
 use crate::{
-    ast::{Value, Excavator},
+    ast::Excavator,
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
-    compile::{Builtin, Linked, R8Compiler, SourceList},
+    compile::{Builtin, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
     fmt::LispFmt,
     nuke::*,
     nkgc::{Arena, Cons, SymID, SymIDInt, VLambda, PV, SPV, self, QuasiMut},
-    sexpr_parse::{Parser, sexpr_modified_sym_to_str, sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
+    sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree, sexpr_modified_sym_to_str},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits,
 };
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::{HashMap, hash_map::Entry}, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::{self, addr_of_mut}, slice, sync::Mutex, path::Path};
+use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::{self, addr_of_mut}, slice, sync::Mutex, path::Path};
 
 chasm_def! {
     r8c:
@@ -283,10 +283,10 @@ mod sysfns {
             Ok(*x)
         }
 
-        fn sys_freeze(&mut self, vm: &mut R8VM, args: (dst)) -> Result<PV, Error> {
+        fn sys_freeze(&mut self, vm: &mut R8VM, args: (_dst)) -> Result<PV, Error> {
             featurefn!("modules", {
                 let module = vm.freeze();
-                let file = std::fs::File::create(dst.str().as_ref())?;
+                let file = std::fs::File::create(_dst.str().as_ref())?;
                 let mut wr = std::io::BufWriter::new(file);
                 bincode::serialize_into(&mut wr, &module).unwrap();
             })?;
@@ -304,11 +304,8 @@ mod sysfns {
              .into_pv(&mut vm.mem)
         }
 
-        fn eval(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
-            vm.mem.push(*x);
-            vm.mem.list(1);
-            let x = vm.mem.pop().unwrap();
-            vm.eval_ast(x)
+        fn eval(&mut self, vm: &mut R8VM, args: (_x)) -> Result<PV, Error> {
+            todo!()
         }
 
         fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
@@ -692,19 +689,6 @@ impl Func {
     pub fn adjust(&mut self, pos: usize) {
         self.pos -= pos;
     }
-}
-
-// TODO:
-#[allow(dead_code)]
-struct Module {
-    pmem: Vec<r8c::Op>,
-    consts: Vec<NkSum>,
-    globals: FnvHashMap<SymID, usize>,
-    macros: FnvHashMap<SymIDInt, SymID>,
-    funcs: FnvHashMap<SymIDInt, Func>,
-    func_labels: FnvHashMap<SymID, HashMap<usize, Lbl>>,
-    symbols: Vec<(SymID, String)>,
-    env: Vec<Value>,
 }
 
 pub trait OutStream: io::Write + Debug + Send {}
@@ -1174,40 +1158,6 @@ impl R8VM {
         self.funcs.get(&name.into())
     }
 
-    pub fn add_func(&mut self, name: SymID, code: Linked, args: ArgSpec, arg_names: Vec<SymID>) {
-        let (asm, labels, consts, srcs) = code;
-        self.funcs.insert(name.into(), Func {
-            pos: self.pmem.len(),
-            sz: asm.len(),
-            args
-        });
-        self.func_labels.insert(name, labels);
-        self.func_arg_syms.insert(name, arg_names);
-        self.add_code(asm, Some(consts), Some(srcs));
-    }
-
-    pub fn load_with<S: AsRef<str>>(&mut self, src_path: S, lib: SymID, code: S) -> Result<SymID, Error> {
-        let sym_name = self.sym_name(lib).to_string();
-        let ast = Parser::parse(self,
-                                code.as_ref(),
-                                Some(Cow::from(src_path.as_ref().to_string())))?;
-        let mut cc = R8Compiler::new(self);
-        cc.compile_top(true, &ast)?;
-        let globs = cc.globals()
-                      .map(|v| v.map(|(u, v)| (*u, *v))
-                                .collect::<Vec<_>>());
-        let (mut asm, lbls, consts, srcs) = cc.link()?;
-        if let Some(globs) = globs {
-            for (name, idx) in globs {
-                self.globals.insert(name, idx);
-            }
-        }
-        asm.push(r8c::Op::RET());
-        let fn_sym = self.mem.symdb.put(format!("<Σ>::{}", sym_name));
-        self.add_func(fn_sym, (asm, lbls, consts, srcs), ArgSpec::none(), vec![]);
-        Ok(fn_sym)
-    }
-
     pub fn load(&mut self, lib: SymID) -> Result<SymID, Error> {
         let sym_name = self.sym_name(lib).to_string();
         let mut path = String::new();
@@ -1251,42 +1201,6 @@ impl R8VM {
     /// Reads LISP code into an AST.
     pub fn read(&mut self, lisp: &str) -> Result<(), Error> {
         self.mem.read(lisp)
-    }
-
-    pub fn eval_macroexpand<'z>(&mut self,
-                                v: &'z mut Value) -> Result<&'z mut Value, Error> {
-        if let Some(ast) = self.expand(v) {
-            *v = ast?;
-            return self.eval_macroexpand(v);
-        }
-        if let Some(Builtin::EvalWhen) = v.bt_op() {
-            *v = R8Compiler::new(self).bt_eval_when(v)?;
-            return Ok(v);
-        }
-        for arg in v.args_mut() {
-            self.eval_macroexpand(arg)?;
-        }
-        Ok(v)
-    }
-
-    pub fn macroexpand<'z>(&mut self,
-                           v: &'z mut Value) -> Result<&'z mut Value, Error> {
-        if let Some(ast) = self.expand(v) {
-            *v = ast?;
-            return self.macroexpand(v);
-        }
-        for arg in v.args_mut() {
-            self.macroexpand(arg)?;
-        }
-        Ok(v)
-    }
-
-    pub fn macroexpand_seq<'z>(&mut self,
-                               v: &'z mut Value) -> Result<&'z mut Value, Error> {
-        for v in v.iter_mut() {
-            self.macroexpand(v)?;
-        }
-        Ok(v)
     }
 
     pub fn read_compile_from(&mut self, path: impl AsRef<Path>) -> Result<PV, Error> {
@@ -1667,24 +1581,8 @@ impl R8VM {
         }
     }
 
-    pub fn eval_ast(&mut self, root: PV) -> Result<PV, Error> {
-        todo!()
-    }
-
     pub fn eval(&mut self, expr: &str) -> Result<PV, Error> {
         self.read_compile(expr, None)
-    }
-
-    pub fn push_ast(&mut self, v: &Value) {
-        self.mem.push_ast(v);
-    }
-
-    pub unsafe fn pull_ast(&self, v: PV, src: &Source) -> Value {
-        unimplemented!()
-    }
-
-    pub fn expand(&mut self, ast: &Value) -> Option<Result<Value, Error>> {
-        unimplemented!()
     }
 
     pub fn set_macro(&mut self, macro_sym: SymID, fn_sym: SymID) {
@@ -1822,67 +1720,6 @@ impl R8VM {
     }
 
     // FIXME: This function is super slow, unoptimized, and only for debugging
-    pub fn traceback(&self, mut ip: usize) -> Traceback {
-        let err = error!(None,);
-        let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
-        for (name, func) in self.funcs.iter() {
-            pos_to_fn.push((func.pos, *name));
-        }
-        pos_to_fn.sort_unstable();
-
-        let get_name = |pos| {
-            pos_to_fn[match pos_to_fn.binary_search_by(|s| s.0.cmp(&pos)) {
-                Ok(idx) => idx,
-                Err(idx) => ((idx as isize) - 1).max(0) as usize
-            }].1
-        };
-
-        let mut frames = Vec::new();
-
-        let mut stack = self.mem.stack.clone();
-        let mut sframe = self.frame;
-
-        while ip != 0 {
-            let mut name = get_name(ip);
-            let func = self.funcs
-                           .get(&name)
-                           .expect("Unable to find function by binary search");
-
-            let (nenv, nargs) = if func.pos + func.sz < ip {
-                name = Builtin::Unknown.sym().into();
-                (0, 0)
-            } else {
-                let spec = func.args;
-                (spec.env as usize,
-                 spec.sum_nargs() as usize)
-            };
-
-            let frame = sframe;
-            let args = stack.drain(frame..frame+nargs).collect();
-            let src = self.get_source(ip);
-            frames.push(TraceFrame { args,
-                                     func: name.into(),
-                                     src });
-
-            stack.drain(frame..frame+nenv).for_each(drop);
-            if frame >= self.mem.stack.len() {
-                break;
-            }
-            ip = match self.mem.stack[frame] {
-                PV::UInt(x) => x,
-                _ => break,
-            };
-            sframe = match self.mem.stack[frame+1] {
-                PV::UInt(x) => x,
-                _ => break,
-            };
-            stack.drain(frame..).for_each(drop);
-        }
-
-        Traceback { frames, err }
-    }
-
-    // FIXME: This function is super slow, unoptimized, and only for debugging
     pub fn traceframe(&self, ip: usize) -> SymID {
         let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
         for (name, func) in self.funcs.iter() {
@@ -1935,9 +1772,7 @@ impl R8VM {
                   nargs: u16) -> Result<*mut r8c::Op, Error> {
         let idx = self.mem.stack.len() - nargs as usize - 1;
         let lambda_pv = self.mem.stack[idx];
-        with_ref_mut!(lambda_pv, VLambda(lambda) => {
-            unimplemented!()
-        }, Lambda(lambda) => {
+        with_ref_mut!(lambda_pv, Lambda(lambda) => {
             let sym = Builtin::GreekLambda.sym();
             (*lambda).args.check(sym, nargs)?;
             let has_env = (*lambda).args.has_env();

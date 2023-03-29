@@ -2,18 +2,12 @@
 
 use crate::nuke::NkSum;
 use crate::nkgc::{PV, SymID, SymIDInt};
-use crate::r8vm::R8VM;
 use crate::r8vm::r8c::Op as R8C;
-use crate::chasm::{ChASM, Lbl};
-use crate::error::{Error, Source};
-use crate::ast::Value;
-use std::collections::HashMap;
+use crate::chasm::Lbl;
+use crate::error::Source;
 use fnv::FnvHashMap;
 use std::hash::Hash;
 use std::mem;
-use std::sync::atomic::AtomicUsize;
-
-static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 type VarIdx = u32;
 
@@ -28,8 +22,6 @@ pub struct Env {
     vars: Vec<SymID>,
     statics: FnvHashMap<SymID, usize>,
 }
-
-type EnvMap = FnvHashMap<SymID, BoundVar>;
 
 // FIXME: Statics and locals need to be merged somehow, right
 //        now a local (let) always takes precedence over a static
@@ -297,47 +289,3 @@ pub type Linked = (Vec<R8C>,
                    LblLookup,
                    Vec<NkSum>,
                    SourceList);
-
-/**
- * Compile Value into R8C code.
- */
-pub struct R8Compiler<'a> {
-    asm: ChASM,
-    pub(crate) estack: Vec<Env>,
-    consts: Vec<NkSum>,
-    // FIXME: This can probably be removed
-    symtbl: HashMap<SymID, isize>,
-    vm: &'a mut R8VM,
-    source_tbl: SourceList,
-}
-
-impl<'a> R8Compiler<'a> {
-    pub fn new(vm: &'a mut R8VM) -> R8Compiler<'a> {
-        R8Compiler {
-            asm: Default::default(),
-            estack: Default::default(),
-            consts: Default::default(),
-            symtbl: Default::default(),
-            source_tbl: Default::default(),
-            vm
-        }
-    }
-
-    pub fn compile_top(&mut self,
-                       ret: bool,
-                       code: &Value) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    pub fn globals(&self) -> Option<impl Iterator<Item = (&SymID, &usize)>> {
-        self.estack.first().map(|s| s.iter_statics())
-    }
-
-    pub fn link(self) -> Result<Linked, Error> {
-        unimplemented!()
-    }
-
-    pub fn bt_eval_when(&mut self, code: &Value) -> Result<Value, Error> {
-        unimplemented!()
-    }
-}

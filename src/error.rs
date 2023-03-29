@@ -6,7 +6,6 @@ use crate::perr::ParseErr;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use crate::r8vm::r8c::Op as R8C;
 use crate::nkgc::SymID;
-use crate::ast::Value;
 use crate::fmt::LispFmt;
 use crate::sym_db::{SymDB, SYM_DB};
 use std::borrow::Cow;
@@ -206,7 +205,6 @@ pub enum ErrorKind {
     ModuleLoadError { lib: SymID },
     ModuleNotFound { lib: SymID },
     Unsupported { op: &'static str },
-    IllegalVariableDeclaration { decl: Value },
     Traceback { tb: Box<Traceback> },
     IndexError { idx: usize },
     Exit { status: SymID },
@@ -294,7 +292,6 @@ pub struct Error {
 fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Result {
     use ErrorKind::*;
     let nameof = |sym| db.name(sym);
-    let tostring = |v: &Value| v.to_string(db);
 
     fn plurs(num: impl Integer) -> &'static str {
         if num.is_one() {""} else {"s"}
@@ -397,9 +394,6 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             write!(f, "Module Error: Unable to load module {}", nameof(*lib))?,
         ModuleNotFound { lib } =>
             write!(f, "Module Not Found: Could not find {}, check sys/load-path", nameof(*lib))?,
-        IllegalVariableDeclaration { decl } =>
-            write!(f, "Syntax Error: Illegal variable declaration: {}",
-                   tostring(decl))?,
         ErrorKind::Traceback { tb } => {
             writeln!(f, "Traceback:")?;
             for TraceFrame { src, func, args } in tb.frames.iter() {

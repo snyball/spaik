@@ -1,15 +1,9 @@
 //! S-Expression Parser
 
 use crate::Builtin;
-use crate::error::SourceFileName;
 use crate::perr::*;
 use crate::tok::*;
-use crate::ast::*;
-use crate::error::Source;
-use crate::r8vm::R8VM;
-use crate::sym_db::SymDB;
 use std::io;
-use fnv::FnvHashMap;
 
 pub fn string_parse(tok: &Token) -> PResult<String> {
     let mut out = String::new();
@@ -42,68 +36,6 @@ pub fn string_parse(tok: &Token) -> PResult<String> {
     Ok(out)
 }
 
-/**
- * Find pairs of delimiters inside a token array.
- *
- * # Arguments
- *
- * - `pairs` : List of pairs, e.g [("(", ")"), ("[", "]"), ("{", "}")]
- * - `toks` : Token array.
- *
- * # Returns
- *
- * A hashmap `map`, where `map[idx]` contains the position of the closing
- * delimiter that closes the opening delimiter at `idx`
- *
- * # Time complexity
- *
- * O(n⋅m), where n is the number of tokens and m is the number of pairs.
-*/
-pub fn find_pairs(pairs: &[(&str, &str)], toks: &[Token]) -> PResult<FnvHashMap<u32, u32>>
-{
-    let mut st = vec![];
-    let mut map = FnvHashMap::default();
-
-    for (i, tok) in toks.iter().enumerate() {
-        for (open, close) in pairs.iter() {
-            if tok.text == *open {
-                st.push((*open, i as u32));
-            } else if tok.text == *close {
-                let (delim, j) = st.pop()
-                                   .ok_or_else(|| {
-                                       mperr!(tok, "Trailing delimiter '{}'", *close)
-                                   })?;
-                if delim != *open {
-                    return Err(mperr!(tok,
-                                      "Closing delimiter '{}' does not match opening delimiter '{}'",
-                                      *close, delim));
-                }
-                map.insert(j, i as u32);
-            }
-        }
-    }
-
-    if let Some((delim, i)) = st.pop() {
-        return Err(mperr!(toks[i as usize], "Unclosed delimiter `{}`", delim))
-    }
-
-    Ok(map)
-}
-
-pub fn sexpr_modifier(tok: &str) -> Option<&'static str> {
-    Some(match tok {
-        "'" => "quote",
-        "#" => "sys::hash",
-        "#'" => "sys::closurize",
-        "`" => "sys::quasi",
-        "," => "sys::unquote",
-        "@" => "sys::deref",
-        ",@" => "sys::usplice",
-        "¬" => "not",
-        _ => return None,
-    })
-}
-
 pub fn sexpr_modifier_bt(tok: &str) -> Option<Builtin> {
     Some(match tok {
         "'" => Builtin::Quote,
@@ -122,94 +54,6 @@ pub fn sexpr_modified_sym_to_str(m: Builtin) -> Option<&'static str> {
         Builtin::USplice => ",@",
         _ => return None,
     })
-}
-
-pub struct Parser<'b, 'c> {
-    pairs: FnvHashMap<u32, u32>,
-    toks: Vec<Token<'b>>,
-    vm: &'c mut R8VM,
-    file: SourceFileName,
-}
-
-impl Parser<'_, '_> {
-    pub fn parse(vm: &mut R8VM, text: &str, file: SourceFileName) -> PResult<Value> {
-        lazy_static! {
-            static ref TREE: Fragment = standard_lisp_tok_tree();
-        }
-        let pairs = [("(", ")"), ("{", "}"), ("[", "]")];
-        let toks = tokenize(text, &TREE)?;
-
-        let len = toks.len();
-        let pairs_lookup = find_pairs(&pairs, &toks)?;
-        let mut parser = Parser {
-            pairs: pairs_lookup,
-            toks,
-            vm,
-            file
-        };
-        parser.parse_rec((0, len))
-    }
-
-    fn parse_rec(&mut self, range: (usize, usize)) -> PResult<Value> {
-        let mut li: Vec<Value> = Vec::new();
-        // Modifiers are sexprs that wrap other sexprs, i.e (quote ), (QUASI ),
-        // or (QUASI (quote )).
-        let mut mods = None;
-        // Push a sexpr/atom, applying modifiers
-        let mut push = |sub: Value, mods: &mut Option<Value>| {
-            li.push(match mods.take() {
-                Some(mut x) => {
-                    x.pushdown(Box::new(sub));
-                    x
-                },
-                None => sub,
-            })
-        };
-        // Add a modifier to the next sexpr/atom
-        macro_rules! modifier {($src:expr, $sub:expr) => {
-            if let Some(ref mut x) = mods {
-                x.pushdown(Box::new($sub))
-            } else {
-                mods = Some($sub)
-            }
-        }}
-        let (beg, end) = range;
-        let mut it = beg..end;
-        while let Some(i) = it.next() {
-            let Token { line, col, text } = self.toks[i];
-            let mut inner = || {
-                let j = self.pairs[&(i as u32)] as usize;
-                (&mut it).take(j - i).for_each(drop);
-                (i+1, j)
-            };
-            match text {
-                "(" => {
-                    let range = inner();
-                    push(self.parse_rec(range)?, &mut mods)
-                },
-                _ => if let Some(m) = sexpr_modifier(text) {
-                    let symdb: &mut dyn SymDB = &mut self.vm.mem;
-                    let sym = Value::from_sym(symdb.put_sym(m),
-                                              Source::new(line, col, self.file.clone()));
-                    let tail = Value::new_tail(Box::new(sym));
-                    modifier!(src.clone(), tail);
-                } else {
-                    push(Value::from_token(self.vm, &self.toks[i], self.file.clone())?,
-                         &mut mods);
-                }
-            }
-        }
-        // Expressions like "(...) ``", or "(... |x y z|) (...)" are errors as there are
-        // leftover modifiers that have not been applied to anything.
-        if let Some(x) = mods {
-            perr!(
-                (0, 0),
-                "Ends within object, do you have trailing (quasi)quotes? ({})",
-                x
-            );
-        }
-        Ok(li.into())
-    }
 }
 
 #[derive(Hash, PartialEq, Eq)]
@@ -550,14 +394,6 @@ pub fn tokenize<'a>(text: &'a str, frags: &Fragment) -> PResult<Vec<Token<'a>>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_test() {
-        let text = "(progn `(loop (if (= x y) (break)) ((set x (+ x 1)))) (map #'print '(1e2 2e-2 3)))";
-        let mut vm = R8VM::no_std();
-        let res = Parser::parse(&mut vm, text, None).unwrap();
-        println!("{}", res.to_string(&vm.mem));
-    }
 
     #[test]
     fn tok_tree() {

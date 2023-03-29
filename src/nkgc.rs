@@ -1,7 +1,6 @@
 //! The Nuclear Garbage Collector
 
 use crate::compile::{Builtin, BUILTIN_SYMBOLS};
-use crate::ast::{Value, ValueKind};
 use crate::r8vm::{RuntimeError, ArgSpec, ArgInt, R8VM};
 use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source, Meta, LineCol};
@@ -78,7 +77,7 @@ pub trait Traceable {
 
 pub struct ObjRef<T>(pub T);
 
-impl<'a, T: Userdata> TryFrom<PV> for ObjRef<*const T> {
+impl<T: Userdata> TryFrom<PV> for ObjRef<*const T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<*const T>, Self::Error> {
@@ -124,7 +123,7 @@ impl TryFrom<PV> for String {
     }
 }
 
-impl<'a, T: Userdata> TryFrom<PV> for ObjRef<*mut T> {
+impl<T: Userdata> TryFrom<PV> for ObjRef<*mut T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<*mut T>, Self::Error> {
@@ -329,16 +328,6 @@ macro_rules! cmp_op {
     };
 }
 
-macro_rules! with_no_reorder {
-    ($mem:expr, $it:block) => {{
-        $mem.forbid_reordering();
-        let mut f = || $it;
-        let res = f();
-        $mem.allow_reordering();
-        res
-    }};
-}
-
 #[derive(Clone, Copy)]
 struct PVVecIter {
     vec: *mut NkAtom,
@@ -466,8 +455,8 @@ impl PV {
 
     pub fn set_op(&mut self, op: Builtin) {
         self.rf()
-            .and_then(|p| cast_mut::<Cons>(p))
-            .and_then(|cell| unsafe { (*cell).car = PV::Sym(op.sym()); Some(()) })
+            .and_then(cast_mut::<Cons>)
+            .map(|cell| unsafe { (*cell).car = PV::Sym(op.sym()) })
             .unwrap();
     }
 
@@ -858,10 +847,6 @@ impl Cons {
     pub fn new(car: PV, cdr: PV) -> Cons {
         Cons { car, cdr }
     }
-
-    fn as_mut_ptr(&mut self) -> *mut Cons {
-        self as *mut Cons
-    }
 }
 
 impl Traceable for Cons {
@@ -1229,15 +1214,6 @@ const DEFAULT_STACKSZ: usize = 256;
 const DEFAULT_ENVSZ: usize = 0;
 // const GC_SLEEP_CYCLES: i32 = 10000;
 const GC_SLEEP_MEM_BYTES: i32 = 16384;
-
-fn size_of_ast(v: &Value) -> usize {
-    match &v.kind {
-        ValueKind::Cons(car, cdr) =>
-            size_of_ast(car) + size_of_ast(cdr) + Nuke::size_of::<Cons>(),
-        ValueKind::String(_) => Nuke::size_of::<String>(),
-        _ => 0
-    }
-}
 
 #[derive(Debug)]
 pub struct GCStats {
@@ -1619,41 +1595,6 @@ impl Arena {
         }
     }
 
-    pub fn push_ast(&mut self, v: &Value) -> PV {
-        unsafe {
-            self.mem_fit_bytes(size_of_ast(v));
-            let v = with_no_reorder!(self, {
-                self.alloc_ast(v)
-            });
-            self.push(v);
-            v
-        }
-    }
-
-    unsafe fn alloc_ast(&mut self, v: &Value) -> PV {
-        match &v.kind {
-            ValueKind::Cons(car, cdr) => {
-                let gcell = self.alloc::<Cons>();
-                self.tag(NkAtom::make_raw_ref(gcell), car.src.clone());
-                let car = self.alloc_ast(car);
-                let cdr = self.alloc_ast(cdr);
-                ptr::write(gcell, Cons { car, cdr });
-                NkAtom::make_ref(gcell)
-            }
-            ValueKind::Int(x) => PV::Int(*x),
-            ValueKind::Bool(x) => PV::Bool(*x),
-            ValueKind::Real(x) => PV::Real(*x),
-            ValueKind::Nil => PV::Nil,
-            ValueKind::Symbol(s) => PV::Sym(*s),
-            ValueKind::Char(c) => PV::Char(*c),
-            ValueKind::String(s) => {
-                let gcell = self.alloc::<String>();
-                ptr::write(gcell, s.clone());
-                NkAtom::make_ref(gcell)
-            }
-        }
-    }
-
     pub fn append(&mut self, n: u32) -> Result<(), Error> {
         let top = self.stack.len();
         let idx = top - (n as usize);
@@ -1672,7 +1613,6 @@ impl Arena {
         }
         unsafe { self.cons_unchecked() }
     }
-
 
     /**
      * Pop two elements off the stack and `cons` them together.
@@ -1745,11 +1685,6 @@ impl Arena {
             cont.update_ptrs(self.nuke.reloc());
         }
         self.nuke.confirm_relocation(tok);
-    }
-
-    unsafe fn mem_fit_bytes(&mut self, n: usize) {
-        let tok = self.nuke.make_room(n);
-        self.update_ptrs(tok)
     }
 
     fn mem_fit<T: Fissile>(&mut self, n: usize) {

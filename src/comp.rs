@@ -50,7 +50,6 @@ struct LoopCtx {
     height: usize,
 }
 
-type EnvMap = FnvHashMap<SymID, BoundVar>;
 type VarSet = FnvHashSet<(SymID, BoundVar)>;
 
 struct ClzScoper<'a> {
@@ -756,17 +755,16 @@ impl R8Compiler {
         if xs.iter().all(|e| matches!(e.kind, M::List(..))) {
             let ast = AST2 {
                 src,
-                kind: M::List(xs.into_iter().map(|xs| if let M::List(src) = xs.kind {
+                kind: M::List(xs.into_iter().flat_map(|xs| if let M::List(src) = xs.kind {
                     src.into_iter()
                 } else {
                     unreachable!()
-                }).flatten().collect())
+                }).collect())
             };
             self.compile(ret, ast)
         } else {
             if let Some(mut i) = xs.iter().position(|m| matches!(m.kind, M::List(..))) {
-                let mut it = (i+1)..xs.len();
-                while let Some(j) = it.next() {
+                for j in (i+1)..xs.len() {
                     match xs[j].kind {
                         M::List(..) => {
                             let (pre, post) = xs.split_at_mut(j);

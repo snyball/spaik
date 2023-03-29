@@ -5,7 +5,7 @@ use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 use crate::subrs::{IntoLisp, FromLisp};
-use crate::sym_db::{SymDB, SYM_DB};
+use crate::sym_db::SymDB;
 use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::mem::{self, size_of, align_of};
@@ -125,16 +125,6 @@ macro_rules! fissile_types {
             fn from(item: $path) -> Self { NkSum::$t(item) }
         })+
 
-        // TODO: When `if` inside const is stabilized you can make this a const fn,
-        //       by calling a recursive const fn min()
-        fn minimal_fissile_sz() -> NkSz {
-            const LEN: usize = count_args!($($t),+);
-            const SIZES: [usize; LEN] = [
-                $(mem::size_of::<$path>()),+
-            ];
-            *SIZES.iter().min().unwrap() as NkSz
-        }
-
         const DESTRUCTORS: [unsafe fn (*mut u8); count_args!($($t),+)] = [
             $(|x| { unsafe { drop_in_place(x as *mut $path) } }),+
         ];
@@ -154,12 +144,12 @@ macro_rules! fissile_types {
         }
 
         #[inline]
-        pub fn to_fissile_mut<'a>(atom: *mut NkAtom) -> NkMut {
+        pub fn to_fissile_mut(atom: *mut NkAtom) -> NkMut {
             with_atom_inst!(atom, NkMut, {atom}, $(($t,$path)),+)
         }
 
         #[inline]
-        pub fn to_fissile_ref<'a>(atom: *const NkAtom) -> NkRef {
+        pub fn to_fissile_ref(atom: *const NkAtom) -> NkRef {
             let atom = atom as *mut NkAtom;
             with_atom_inst!(atom, NkRef, {atom}, $(($t,$path)),+)
         }
@@ -741,15 +731,15 @@ impl Traceable for Intr {
 pub struct Void;
 
 impl Traceable for Void {
-    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {}
+    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
 
-    fn update_ptrs(&mut self, reloc: &PtrMap) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 impl LispFmt for Void {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
-                visited: &mut VisitSet,
+                _db: &dyn SymDB,
+                _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "void")
     }

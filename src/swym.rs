@@ -17,6 +17,7 @@ struct Sym {
     sz: usize,
 }
 
+#[allow(dead_code)]
 struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
     ptr: *const u8,
     len: usize,
@@ -72,14 +73,14 @@ impl Ord for SymID {
 }
 
 impl<'de> Deserialize<'de> for SymID {
-    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    fn deserialize<D>(_d: D) -> Result<Self, D::Error>
     where D: serde::Deserializer<'de> {
         todo!()
     }
 }
 
 impl Serialize for SymID {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer {
         todo!()
@@ -107,7 +108,7 @@ impl Debug for SymRef {
 struct SymKeyRef(SymRef);
 
 impl SymKeyRef {
-    pub fn to_inner(self) -> SymRef {
+    pub fn into_inner(self) -> SymRef {
         self.0
     }
 
@@ -205,7 +206,7 @@ impl Debug for SwymDb {
 impl Drop for SwymDb {
     fn drop(&mut self) {
         for elem in self.map.drain() {
-            drop(elem.to_inner())
+            drop(elem.into_inner())
         }
     }
 }

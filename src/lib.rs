@@ -32,10 +32,10 @@
 #![allow(clippy::upper_case_acronyms)]
 // FIXME: Write documentation for the unsafe functions.
 #![allow(clippy::missing_safety_doc)]
-
-// FIXME: DO NOT COMMIT THESE TO VERSION CONTROL
 #![allow(unused_variables)]
 #![allow(dead_code)]
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 
 #[macro_use]
 extern crate lazy_static;
@@ -344,11 +344,10 @@ impl Spaik {
     /// - `lib` : Library symbol name, i.e the argument to `(load ...)`
     /// - `code` : The source-code contents inside `src_path`
     #[inline]
-    pub fn load_with<S>(&mut self, src_path: S, lib: SymID, code: S) -> Result<SymID, Error>
+    pub fn load_with<S>(&mut self, _src_path: S, _lib: SymID, _code: S) -> Result<SymID, Error>
         where S: AsRef<str>
     {
-        let lib = lib.as_sym(&mut self.vm);
-        self.vm.load_with(src_path, lib, code).map_err(|e| Error::from_source(e, self))
+        todo!()
     }
 
     /// Call a function by-enum and return the result
