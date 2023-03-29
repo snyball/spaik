@@ -2,6 +2,7 @@
 
 use num_traits::PrimInt as Integer;
 
+use crate::Builtin;
 use crate::perr::ParseErr;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use crate::r8vm::r8c::Op as R8C;
@@ -56,6 +57,7 @@ pub struct SourceRef<'a> {
 pub enum OpName {
     OpSym(SymID),
     OpStr(&'static str),
+    OpBt(Builtin),
 }
 
 impl OpName {
@@ -63,6 +65,7 @@ impl OpName {
         match self {
             OpName::OpStr(s) => Cow::Borrowed(s),
             OpName::OpSym(s) => db.name(*s),
+            OpName::OpBt(s) => db.name(s.sym()),
         }
     }
 }
@@ -480,6 +483,11 @@ impl Error {
 
     pub fn fop(mut self, new_op: SymID) -> Error {
         self.meta.fallback(Meta::Op(OpName::OpSym(new_op)));
+        self
+    }
+
+    pub fn bop(mut self, new_op: Builtin) -> Error {
+        self.meta.amend(Meta::Op(OpName::OpBt(new_op)));
         self
     }
 

@@ -591,11 +591,11 @@ unsafe impl<T> Subr for send_message<T>
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, IError> {
         let (msg, r, cont) = match args {
             [x, y] => (deserialize::from_pv(*x, &vm.mem)
-                       .map_err(|e| e.argn(1).op(Builtin::ZSendMessage.sym()))?,
+                       .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
                        *x,
                        Some(vm.mem.make_extref(*y))),
             [x] => (deserialize::from_pv(*x, &vm.mem)
-                    .map_err(|e| e.argn(1).op(Builtin::ZSendMessage.sym()))?,
+                    .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
                     *x,
                     None),
             _ => ArgSpec::opt(1, 1).check(Builtin::ZSendMessage.sym(),

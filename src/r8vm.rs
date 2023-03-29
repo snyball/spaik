@@ -323,13 +323,13 @@ mod sysfns {
                 Err(error!(TypeError,
                            expect: Builtin::Symbol.sym(),
                            got: x.type_of())
-                    .op(Builtin::Error.sym())
+                    .bop(Builtin::Error)
                     .argn(1))
             }
         }
 
         fn join(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-            let emap = |e: Error| e.op(Builtin::Join.sym()).argn(1);
+            let emap = |e: Error| e.bop(Builtin::Join).argn(1);
             let (it, sep) = match args {
                 [xs, PV::Char(s)] => (xs.make_iter().map_err(emap)?,
                                       Cow::from(s.to_string())),
@@ -337,12 +337,12 @@ mod sysfns {
                                      Cow::from(vm.sym_name(*s))),
                 [xs, o] => (xs.make_iter().map_err(emap)?, with_ref!(*o, String(s) => {
                     Ok(Cow::from(&(*s)[..]))
-                }).map_err(|e| e.op(Builtin::Join.sym()).argn(2))?),
+                }).map_err(|e| e.bop(Builtin::Join).argn(2))?),
                 [xs] => (xs.make_iter()?, Cow::from("")),
                 _ => return Err(error!(ArgError,
                                        expect: ArgSpec::opt(1, 1),
                                        got_num: args.len() as u32)
-                                .op(Builtin::Join.sym()))
+                                .bop(Builtin::Join))
             };
             join_str(vm, it, sep).into_pv(&mut vm.mem)
         }
@@ -357,7 +357,7 @@ mod sysfns {
                                          || PV::Sym(Builtin::KwOk.sym()));
             Err(Error { ty: ErrorKind::Exit {
                 status: status.try_into().map_err(|e: Error|
-                                                  e.argn(1).op(Builtin::Exit.sym()))?
+                                                  e.argn(1).bop(Builtin::Exit))?
             }, meta: Default::default() })
         }
 
@@ -449,7 +449,7 @@ mod sysfns {
                 _ => Err(error!(ArgError,
                                 expect: ArgSpec::normal(1),
                                 got_num: args.len() as u32)
-                         .op(Builtin::MakeSymbol.sym()))
+                         .bop(Builtin::MakeSymbol))
             }
         }
         fn name(&self) -> &'static str { "make-symbol" }
@@ -480,7 +480,7 @@ mod sysfns {
                 [x] => Err(error!(TypeError,
                                   expect: Builtin::Symbol.sym(),
                                   got: x.type_of(),)
-                           .op(Builtin::SymID.sym(),)
+                           .bop(Builtin::SymID)
                            .argn(1)),
                 _ => ArgSpec::normal(1).check(Builtin::SymID.sym(), args.len() as u16)
                                        .map(|_| unreachable!())
@@ -511,7 +511,7 @@ mod sysfns {
             let mut s = it.next().ok_or(error!(ArgError,
                                                expect: ArgSpec::rest(1, 0),
                                                got_num: 0)
-                                        .op(Builtin::Sub.sym()))
+                                        .bop(Builtin::Sub))
                                  .copied()?;
             for i in it {
                 s = s.sub(i)?;
@@ -548,7 +548,7 @@ mod sysfns {
             let mut s = it.next().ok_or(error!(ArgError,
                                                expect: ArgSpec::rest(1, 0),
                                                got_num: 0)
-                                        .op(Builtin::Div.sym()))
+                                        .bop(Builtin::Div))
                                  .copied()?;
             for i in it {
                 s = s.div(i)?;
@@ -1162,11 +1162,11 @@ impl R8VM {
         let mut path = String::new();
         let it = self.var(Builtin::SysLoadPath.sym())?
                      .make_iter()
-                     .map_err(|e| e.op(Builtin::SysLoad.sym()))?;
+                     .map_err(|e| e.bop(Builtin::SysLoad))?;
         for (i, p) in it.enumerate() {
             path.push_str(with_ref!(p, String(s) => {Ok(&(*s)[..])})
                           .map_err(|e| e.argn(i as u32)
-                                        .op(Builtin::SysLoadPath.sym()))?);
+                                        .bop(Builtin::SysLoadPath))?);
             path.push('/');
             path.push_str(&sym_name);
             let extd = path.len();
@@ -1375,7 +1375,7 @@ impl R8VM {
         let op = self.mem.from_top(n as usize);
         let v = if let Some(m) = op.op().and_then(|op| self.macros.get(&op.into())).copied() {
             if dot {
-                return Err(error!(UnexpectedDottedList,).op(sym!(Apply)))
+                return Err(error!(UnexpectedDottedList,).bop(Builtin::Apply))
             }
             let func = self.funcs.get(&m.into()).ok_or("No such function")?;
             if let Err(e) = func.args.check(m, (n - 1) as u16) {
@@ -1854,7 +1854,7 @@ impl R8VM {
         let mut run = || loop {
             // let op = *ip;
             let ipd = self.ip_delta(ip);
-            let op = self.pmem[ipd];
+            let op = *self.pmem.get_unchecked(ipd);
 
             ip = ip.offset(1);
             match op {
@@ -1864,14 +1864,14 @@ impl R8VM {
                     with_ref_mut!(it, Cons(p) => {
                         self.mem.push((*p).car);
                         Ok(())
-                    }).map_err(|e| e.op(Builtin::Car.sym()))?
+                    }).map_err(|e| e.bop(Builtin::Car))?
                 },
                 CDR() => {
                     let it = self.mem.pop()?;
                     with_ref_mut!(it, Cons(p) => {
                         self.mem.push((*p).cdr);
                         Ok(())
-                    }).map_err(|e| e.op(Builtin::Cdr.sym()))?
+                    }).map_err(|e| e.bop(Builtin::Cdr))?
                 },
                 LIST(n) => {
                     self.mem.list(n)
@@ -1893,7 +1893,7 @@ impl R8VM {
                                             || PV::Sym(Builtin::IterStop.sym()));
                         self.mem.push(elem);
                         Ok(())
-                    }).map_err(|e| e.op(Builtin::Next.sym()))?;
+                    }).map_err(|e| e.bop(Builtin::Next))?;
                 }
 
                 // Vectors
@@ -1912,7 +1912,7 @@ impl R8VM {
                     with_ref_mut!(vec, Vector(v) => {
                         (*v).push(elem);
                         Ok(())
-                    }).map_err(|e| e.op(Builtin::Push.sym()))?
+                    }).map_err(|e| e.bop(Builtin::Push))?
                 }
                 VPOP() => {
                     let vec = self.mem.pop()?;
@@ -1920,30 +1920,30 @@ impl R8VM {
                         let elem = (*v).pop().unwrap_or(PV::Nil);
                         self.mem.push(elem);
                         Ok(())
-                    }).map_err(|e| e.op(Builtin::Pop.sym()))?;
+                    }).map_err(|e| e.bop(Builtin::Pop))?;
                 }
                 VGET() => {
-                    let op = Builtin::Get.sym();
+                    let op = Builtin::Get;
                     let idx = match self.mem.pop()? {
                         PV::Int(x) => x as usize,
                         x => return Err(error!(TypeError,
                                                expect: Builtin::Integer.sym(),
-                                               got: x.type_of()).op(op).argn(2))
+                                               got: x.type_of()).bop(op).argn(2))
                     };
                     let vec = self.mem.pop()?;
                     let elem = with_ref!(vec, Vector(v) => {
                         (*v).get(idx).ok_or(error!(IndexError, idx))
-                    }).map_err(|e| e.op(op))?;
+                    }).map_err(|e| e.bop(op))?;
                     self.mem.push(*elem);
                 }
                 VSET() => {
                     // (set (get <vec> <idx>) <val>)
-                    let op = Builtin::Set.sym();
+                    let op = Builtin::Set;
                     let idx = match self.mem.pop()? {
                         PV::Int(x) => x as usize,
                         x => return Err(error!(TypeError,
                                                expect: Builtin::Integer.sym(),
-                                               got: x.type_of()).op(op).argn(2))
+                                               got: x.type_of()).bop(op).argn(2))
                     };
                     let vec = self.mem.pop()?;
                     let val = self.mem.pop()?;
@@ -1954,7 +1954,7 @@ impl R8VM {
                             *(*v).get_unchecked_mut(idx) = val;
                             Ok(())
                         }
-                    }).map_err(|e| e.op(Builtin::Set.sym()))?;
+                    }).map_err(|e| e.bop(Builtin::Set))?;
                 }
                 LEN() => {
                     let li = self.mem.pop()?;
@@ -1962,7 +1962,7 @@ impl R8VM {
                                         Vector(v) => { Ok((*v).len()) },
                                         String(s) => { Ok((*s).len()) },
                                         Cons(_) => { Ok(li.iter().count()) })
-                        .map_err(|e| e.op(Builtin::Len.sym()))?;
+                        .map_err(|e| e.bop(Builtin::Len))?;
                     self.mem.push(PV::Int(len as i64));
                 }
 
@@ -1990,7 +1990,7 @@ impl R8VM {
                 ARGSPEC(_nargs, _nopt, _env, _rest) => {}
                 CLZR(pos, nenv) => {
                     let ipd = self.ip_delta(ip);
-                    let ARGSPEC(nargs, nopt, env, rest) = self.pmem[ipd-2] else {
+                    let ARGSPEC(nargs, nopt, env, rest) = *self.pmem.get_unchecked(ipd-2) else {
                         panic!("CLZR without ARGSPEC");
                     };
                     let spec = ArgSpec { nargs, nopt, env, rest: rest == 1 };

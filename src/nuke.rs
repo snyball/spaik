@@ -408,7 +408,7 @@ impl ObjPtrMut {
             return Err(error!(STypeError,
                         expect: format!("(object {expect_t})"),
                         got: format!("(object {actual_t})"),)
-                        .argn(0).op(Builtin::Nil.sym()))
+                        .argn(0).bop(Builtin::Nil))
         }
         Ok((*self.0).mem as *mut T)
     }
@@ -447,7 +447,7 @@ impl ObjPtr {
             return Err(error!(STypeError,
                         expect: format!("(object {expect_t})"),
                         got: format!("(object {actual_t})"),)
-                        .argn(0).op(Builtin::Nil.sym()))
+                        .argn(0).bop(Builtin::Nil))
         }
         Ok((*self.0).mem as *mut T)
     }
@@ -520,7 +520,7 @@ impl Object {
             return Err(error!(STypeError,
                         expect: format!("(object {expect_t})"),
                         got: format!("(object {actual_t})"),)
-                        .argn(0).op(Builtin::Nil.sym()))
+                        .argn(0).bop(Builtin::Nil))
         }
         Ok(self.mem as *mut T)
     }

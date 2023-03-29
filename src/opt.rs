@@ -62,7 +62,7 @@ impl AST2 {
                     have_sum = true;
                 }).is_none());
                 if let Some(e) = err {
-                    return Err(e.op(Builtin::Add.sym()));
+                    return Err(e.bop(Builtin::Add));
                 }
                 if have_sum {
                     xs.push(M::Atom(sum).ast(self.src.clone()));

@@ -505,7 +505,7 @@ impl PV {
                           let it: IT = Box::new(PVVecIter::new(*self));
                           Ok(it)
                       }
-            ).map_err(|e| e.op(Builtin::Iter.sym()))?
+            ).map_err(|e| e.bop(Builtin::Iter))?
         };
 
         Ok(nuke::Iter::new(*self, it))
@@ -728,7 +728,7 @@ impl PV {
                                         expect: vec![Builtin::Number.sym(),
                                                      Builtin::Number.sym()],
                                         got: vec![x.type_of(), y.type_of()])
-                                 .op(Builtin::Pow.sym()))
+                                 .bop(Builtin::Pow))
         })
     }
 
@@ -740,7 +740,7 @@ impl PV {
                                         expect: vec![Builtin::Number.sym(),
                                                      Builtin::Number.sym()],
                                         got: vec![x.type_of(), y.type_of()])
-                                 .op(Builtin::Modulo.sym()))
+                                 .bop(Builtin::Modulo))
         })
     }
 

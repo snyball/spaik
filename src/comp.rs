@@ -416,7 +416,7 @@ impl R8Compiler {
             return Err(error!(TypeError,
                               expect: Builtin::Lambda.sym(),
                               got: op.type_of().sym())
-                       .src(op.src).argn(0).op(Builtin::Apply.sym()))
+                       .src(op.src).argn(0).bop(Builtin::Apply))
         }
         self.compile(true, op)?;
         self.with_env(|env| env.anon())?; // closure
@@ -619,7 +619,7 @@ impl R8Compiler {
             return Err(error!(ArgError,
                               expect: ArgSpec::rest(1, 0),
                               got_num: 0)
-                       .src(src).op(op.sym()))
+                       .src(src).bop(op))
         }
         Ok(())
     }

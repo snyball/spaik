@@ -589,12 +589,12 @@ impl<'a> Excavator<'a> {
             let name = it.next().ok_or_else(|| error!(ArgError,
                                                       expect: ArgSpec::rest(1, 0),
                                                       got_num: 0)
-                                            .op(Builtin::ArgList.sym()))?;
+                                            .bop(Builtin::ArgList))?;
             let name = name.sym()
                            .ok_or_else(|| error!(TypeError,
                                                  expect: Builtin::Symbol.sym(),
                                                  got: name.type_of())
-                                       .argn(1).op(Builtin::ArgList.sym()))?;
+                                       .argn(1).bop(Builtin::ArgList))?;
             let arglist = self.arg_parse(it.into(), src.clone())?;
             Ok(AST2 { kind: M::Defun(name, arglist, body?),
                       src })
@@ -607,7 +607,7 @@ impl<'a> Excavator<'a> {
     }
 
     fn bt_next(&self, args: PV, src: Source) -> Result<AST2> {
-        let e = |e: Error| e.op(sym![Next]).src(src.clone());
+        let e = |e: Error| e.bop(Builtin::Next).src(src.clone());
         let mut it = args.iter_src(self.mem, src.clone());
         if let Some((arg, src)) = it.next() {
             let extra = it.count() as u32;
@@ -719,7 +719,7 @@ impl<'a> Excavator<'a> {
                     return Err(error!(ArgError,
                                       expect: spec,
                                       got_num: (argn + it.count()) as u32)
-                               .op(Builtin::Apply.sym())
+                               .bop(Builtin::Apply)
                                .src(src)
                                .see_also("lambda", orig_src))
                 }
@@ -740,7 +740,7 @@ impl<'a> Excavator<'a> {
                               got_num: argn as u32)
                        .src(orig_src)
                        .see_also_sym(sym, src)
-                       .op(Builtin::Apply.sym()));
+                       .bop(Builtin::Apply));
         }
         // for (sym, src) in syms.iter().cloned() {
         //     binds.push(VarDecl(sym, src.clone(), nil(src)))
