@@ -25,7 +25,7 @@ use std::sync::atomic;
 macro_rules! with_atom {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
         unsafe {
-            match (*$item).type_of() {
+            match atom_kind($item) {
                 $(NkT::$t => {
                     let $item = fastcast::<$path>($item);
                     $fn
