@@ -282,7 +282,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn swym_some() {
+    fn go_for_a_swym() {
         let mut swym = SwymDb::default();
         let lmao1 = swym.put("lmao".to_string());
         let ayy = swym.put("ayy".to_string());
@@ -295,6 +295,24 @@ mod tests {
         }
         for i in 0..100 {
             let lmao_n = swym.put("lmao".to_string());
+            assert_eq!(lmao1, lmao_n);
+        }
+    }
+
+    #[test]
+    fn hopefully_dont_take_a_hike() {
+        let mut swym = SwymDb::default();
+        let lmao1 = swym.put_ref("lmao");
+        let ayy = swym.put_ref("ayy");
+        let lmao2 = swym.put_ref("lmao");
+        assert_eq!(lmao1, lmao2);
+        assert_eq!(lmao1.0, lmao2.0);
+        for i in 0..1000 {
+            let ayy_n = swym.put_ref("ayy");
+            assert_eq!(ayy_n, ayy);
+        }
+        for i in 0..100 {
+            let lmao_n = swym.put_ref("lmao");
             assert_eq!(lmao1, lmao_n);
         }
     }
