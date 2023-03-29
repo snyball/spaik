@@ -438,7 +438,7 @@ mod tests {
 
     #[test]
     fn read_write_asm() {
-        let vm = R8VM::new();
+        let vm = R8VM::no_std();
         let pmem = vm.pmem();
         let mut pmem_out = Vec::<u8>::new();
         for op in pmem.iter() {
