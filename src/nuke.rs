@@ -857,11 +857,6 @@ impl NkAtom {
                                 mem::transmute(typ)) }
     }
 
-    #[inline]
-    pub fn type_of(&self) -> NkT {
-        unsafe { mem::transmute(self.meta.typ()) }
-    }
-
     pub fn full_size(&self) -> usize {
         mem::size_of::<NkAtom>() + self.sz as usize
     }
@@ -1337,16 +1332,7 @@ impl fmt::Debug for DebugHexBytes<'_> {
 
 impl fmt::Debug for NkAtom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        // let fmted = self.lisp_to_string(&SYM_DB);
-        f.debug_struct("NkAtom")
-         .field("type", &self.type_of())
-         .field("color", &self.color())
-         .field("sz", &self.sz)
-         .field("this", &(self as *const NkAtom))
-         .field("next", &self.next)
-         // .field("obj", &RawDebugStr(&fmted))
-         .field("raw", &DebugHexBytes(self.raw()))
-         .finish()
+        unimplemented!()
     }
 }
 

@@ -220,8 +220,8 @@ impl PartialEq for PV {
             (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
             (Self::Char(l0), Self::Char(r0)) => l0 == r0,
             (Self::Ref(l), Self::Ref(r)) => unsafe {
-                let tl = (**l).type_of();
-                if tl == NkT::String && tl == (**r).type_of() {
+                let tl = atom_kind(*l);
+                if tl == NkT::String && tl == atom_kind(*r) {
                     let sl = fastcast::<String>(*l);
                     let sr = fastcast::<String>(*r);
                     (*sl).eq(&*sr)
@@ -347,7 +347,7 @@ impl Traceable for PVVecIter {
 impl PVVecIter {
     fn new(vec: PV) -> PVVecIter {
         if let PV::Ref(ptr) = vec {
-            if unsafe { (*ptr).type_of() } != NkT::Vector {
+            if unsafe { atom_kind(ptr) } != NkT::Vector {
                 panic!("Attempted to create PVVecIter from non-vector");
             }
             PVVecIter { vec: ptr, idx: 0 }
@@ -436,7 +436,7 @@ impl PV {
             Sym(_) => Builtin::Symbol,
             Char(_) => Builtin::Char,
             Ref(p) => unsafe {
-                Builtin::from_sym((*p).type_of().into()).expect("
+                Builtin::from_sym(atom_kind(p).into()).expect("
                     Builtin datatype does not have builtin symbol"
                 )
             },
@@ -564,7 +564,7 @@ impl PV {
     #[inline]
     pub fn intr_mut(&self) -> Option<(Builtin, *mut PV)> {
         let PV::Ref(p) = *self else { return None };
-        (unsafe{(*p).type_of()} == NkT::Intr).then(|| unsafe {
+        (unsafe{atom_kind(p)} == NkT::Intr).then(|| unsafe {
             let intr = fastcast_mut::<Intr>(p);
             ((*intr).op, (ptr::addr_of_mut!((*intr).arg)))
         })
@@ -606,7 +606,7 @@ impl PV {
 
     pub fn is_atom(&self) -> bool {
         match *self {
-            PV::Ref(p) => !matches!(unsafe{(*p).type_of()}, NkT::Cons),
+            PV::Ref(p) => !matches!(unsafe{atom_kind(p)}, NkT::Cons),
             _ => true
         }
     }
@@ -615,7 +615,7 @@ impl PV {
         use PV::*;
         match *self {
             Nil => true,
-            Ref(p) => unsafe { (*p).type_of() == NkT::Cons },
+            Ref(p) => unsafe { atom_kind(p) == NkT::Cons },
             _ => false,
         }
     }
@@ -766,8 +766,8 @@ impl PartialOrd for PV {
             (PV::Real(x), PV::Real(y)) => x.partial_cmp(&y),
             (PV::Real(x), PV::Int(y)) => x.partial_cmp(&(y as f32)),
             (PV::Ref(l), PV::Ref(r)) => unsafe {
-                let tl = (*l).type_of();
-                if tl == NkT::String && tl == (*r).type_of() {
+                let tl = atom_kind(l);
+                if tl == NkT::String && tl == atom_kind(r) {
                     let sl = fastcast::<String>(l);
                     let sr = fastcast::<String>(r);
                     Some((*sl).cmp(&*sr))
@@ -790,7 +790,7 @@ impl Hash for PV {
             PV::Nil => 0.hash(state),
             PV::Real(x) => x.to_ne_bytes().hash(state),
             PV::Char(x) => x.hash(state),
-            PV::Ref(r) => if unsafe { (*r).type_of() } == NkT::String {
+            PV::Ref(r) => if unsafe { atom_kind(r) } == NkT::String {
                 unsafe { fastcast::<String>(r).hash(state) }
             } else {
                 unimplemented!("Hash only implemented for string references");
@@ -1054,7 +1054,7 @@ impl Iterator for PVIter {
     fn next(&mut self) -> Option<Self::Item> {
         Some(match self.item {
             PV::Nil => return None,
-            PV::Ref(r) if unsafe{(*r).type_of()} == NkT::Cons => unsafe {
+            PV::Ref(r) if unsafe{atom_kind(r)} == NkT::Cons => unsafe {
                 let Cons { car, cdr } = *fastcast::<Cons>(r);
                 self.item = cdr;
                 car
