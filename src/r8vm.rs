@@ -1500,7 +1500,7 @@ impl R8VM {
                     };
 
                     idx += 1;
-                    v = match cdr.bt_type_of() {
+                    v = match (*cns).cdr.bt_type_of() {
                         Builtin::Nil => break,
                         Builtin::Cons => (*cns).cdr,
                         _ if dot => break,
