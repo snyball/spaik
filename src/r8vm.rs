@@ -1785,17 +1785,23 @@ impl R8VM {
                        - has_env as usize;
             Ok(self.ret_to((*lambda).pos))
         }, Subroutine(subr) => {
+            // FIXME: This has been disabled pending a review, it is unsound
+            //        for quite a few sysfn subrs.
             // SAFETY: The Subr trait is marked unsafe, read the associated
             //         safety documentation in Subr as to why this is safe. The
             //         alternative is to clone the stack slice, which is too
             //         expensive for us to do it for *every* Lisp->Rust call.
-            let args = unsafe {
-                let delta = (self.mem.stack.len() - nargs as usize) as isize;
-                let ptr = self.mem.stack.as_ptr().offset(delta);
-                slice::from_raw_parts(ptr, nargs as usize)
-            };
+            //let args = unsafe {
+            //    let delta = (self.mem.stack.len() - nargs as usize) as isize;
+            //    let ptr = self.mem.stack.as_ptr().offset(delta);
+            //    slice::from_raw_parts(ptr, nargs as usize)
+            //};
+            // FIXME: Avoid having to always clone
+            let top = self.mem.stack.len();
+            let args: Vec<_> = (&self.mem.stack[top - nargs as usize..]).into_iter().copied().collect();
+
             let dip = self.ip_delta(ip);
-            let res = (*subr).call(self, args);
+            let res = (*subr).call(self, &args[..]);
             self.mem.stack.drain(idx..).for_each(drop); // drain gang
             self.mem.push(res?);
             Ok(self.ret_to(dip))
