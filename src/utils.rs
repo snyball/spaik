@@ -1,5 +1,7 @@
 //! Miscellaneous Utilities
 
+use std::convert::Infallible;
+
 #[macro_export]
 macro_rules! sym {
     ($arg:ident) => { $crate::compile::Builtin::$arg.sym() };
@@ -36,6 +38,8 @@ pub struct Stack<T> {
     elems: [T; STACK_SZ],
     top: u8,
 }
+
+pub type Success = Result<(), Infallible>;
 
 #[allow(unused)]
 impl<T: Copy + Default> Stack<T> {

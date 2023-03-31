@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use core::slice;
 use std::{cmp, fmt};
 use std::hash::{Hash, self};
@@ -17,7 +19,6 @@ struct Sym {
     sz: usize,
 }
 
-#[allow(dead_code)]
 struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
     ptr: *const u8,
     len: usize,

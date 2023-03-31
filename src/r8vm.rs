@@ -9,16 +9,16 @@ use crate::{
     ast::Excavator,
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{Builtin, SourceList},
-    error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName},
+    error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result},
     fmt::LispFmt,
     nuke::*,
     nkgc::{Arena, Cons, SymID, SymIDInt, PV, SPV, self, QuasiMut},
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree, sexpr_modified_sym_to_str},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
-    sym_db::SymDB, FmtErr, tok::Token, limits,
+    sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
 };
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::{self, addr_of_mut}, slice, sync::Mutex, path::Path};
+use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::{self, addr_of_mut}, sync::Mutex, path::Path};
 
 chasm_def! {
     r8c:
@@ -164,7 +164,7 @@ impl RuntimeError {
         RuntimeError { msg, line: 0 }
     }
 
-    pub fn err<T>(msg: String) -> Result<T, RuntimeError> {
+    pub fn err<T>(msg: String) -> std::result::Result<T, RuntimeError> {
         Err(RuntimeError::new(msg))
     }
 }
@@ -183,12 +183,12 @@ fn tostring(vm: &R8VM, x: PV) -> String {
 macro_rules! featurefn {
     ($ft:expr, $e:expr) => {{
         #[cfg(feature = $ft)]
-        let funk = || -> Result<(), Error> {
+        let funk = || -> Result<()> {
             $e;
             Ok(())
         };
         #[cfg(not(feature = $ft))]
-        let funk = || -> Result<(), Error> {
+        let funk = || -> Result<()> {
             err!(MissingFeature, flag: $ft)
         };
         funk()
@@ -197,24 +197,24 @@ macro_rules! featurefn {
 
 macro_rules! subr {
     (fn $name:ident[$name_s:expr](&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
-                    -> Result<PV, Error> $body:block) => {
+                    -> Result<PV> $body:block) => {
         #[derive(Clone, Copy, Debug)]
         pub struct $name;
 
         unsafe impl Subr for $name {
-            fn call(&mut $self, $vm: &mut R8VM, $args: &[PV]) -> Result<PV, Error> $body
+            fn call(&mut $self, $vm: &mut R8VM, $args: &[PV]) -> Result<PV> $body
             fn name(&self) -> &'static str { $name_s }
         }
     };
 
     (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
-                    -> Result<PV, Error> $body:block) => {
+                    -> Result<PV> $body:block) => {
         subr!(fn $name[stringify!($name)](&mut $self, $vm : &mut R8VM, $args : &[PV])
-                                          -> Result<PV, Error> $body);
+                                          -> Result<PV> $body);
     };
 
-    (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, args: ($($arg:ident),*)) -> Result<PV, Error> $body:block) => {
-        subr!(fn $name(&mut $self, $vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+    (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, args: ($($arg:ident),*)) -> Result<PV> $body:block) => {
+        subr!(fn $name(&mut $self, $vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             subr_args!(($($arg),*) $self $vm args {
                 $body
             })
@@ -237,16 +237,16 @@ macro_rules! subr_args {
 }
 
 macro_rules! std_subrs {
-    ($(fn $name:ident($($inner:tt)*) -> Result<PV, Error> $body:block)*) => {
-        $(subr!(fn $name($($inner)*) -> Result<PV, Error> $body);)*
+    ($(fn $name:ident($($inner:tt)*) -> Result<PV> $body:block)*) => {
+        $(subr!(fn $name($($inner)*) -> Result<PV> $body);)*
     };
 }
 
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, convert::Infallible, borrow::Cow};
+    use std::{fmt::Write, borrow::Cow};
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind}, fmt::{LispFmt, FmtWrap}, compile::Builtin};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, compile::Builtin, utils::Success};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String
@@ -263,7 +263,7 @@ mod sysfns {
             with_ref!(val, String(s) => {
                 write!(&mut out, "{}", &*s).unwrap();
                 Ok(())
-            }).or_else(|_| -> Result<(), Infallible> {
+            }).or_else(|_| -> Success {
                 match val {
                     PV::Char(c) => write!(&mut out, "{c}").unwrap(),
                     _ => write!(&mut out, "{}", FmtWrap { val: &val,
@@ -276,13 +276,13 @@ mod sysfns {
     }
 
     std_subrs! {
-        fn println(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+        fn println(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             let s = tostring(vm, *x);
             vm.println(&s)?;
             Ok(*x)
         }
 
-        fn sys_freeze(&mut self, vm: &mut R8VM, args: (_dst)) -> Result<PV, Error> {
+        fn sys_freeze(&mut self, vm: &mut R8VM, args: (_dst)) -> Result<PV> {
             featurefn!("modules", {
                 let module = vm.freeze();
                 let file = std::fs::File::create(_dst.str().as_ref())?;
@@ -292,13 +292,13 @@ mod sysfns {
             Ok(PV::Nil)
         }
 
-        fn print(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+        fn print(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             let s = tostring(vm, *x);
             vm.print(&s)?;
             Ok(*x)
         }
 
-        fn string(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+        fn string(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             x.lisp_to_string(&vm.mem)
              .into_pv(&mut vm.mem)
         }
@@ -307,16 +307,16 @@ mod sysfns {
             todo!()
         }
 
-        fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+        fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             vm.read(&tostring(vm, *x))?;
             vm.mem.pop()
         }
 
-        fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             join_str(vm, args.iter().copied(), "").into_pv(&mut vm.mem)
         }
 
-        fn error(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+        fn error(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             if let PV::Sym(name) = *x {
                 err!(LibError, name)
             } else {
@@ -328,7 +328,7 @@ mod sysfns {
             }
         }
 
-        fn join(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn join(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             let emap = |e: Error| e.bop(Builtin::Join).argn(1);
             let (it, sep) = match args {
                 [xs, PV::Char(s)] => (xs.make_iter().map_err(emap)?,
@@ -347,11 +347,11 @@ mod sysfns {
             join_str(vm, it, sep).into_pv(&mut vm.mem)
         }
 
-        fn iter(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV, Error> {
+        fn iter(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             x.make_iter().map_err(|e| e.argn(1))?.into_pv(&mut vm.mem)
         }
 
-        fn exit(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn exit(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             let status = args.first().copied()
                                      .unwrap_or_else(
                                          || PV::Sym(Builtin::KwOk.sym()));
@@ -361,75 +361,75 @@ mod sysfns {
             }, meta: Default::default() })
         }
 
-        fn instant(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+        fn instant(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             #[cfg(not(target_arch = "wasm32"))]
             return Ok(PV::Real(vm.mem.stats().time.as_secs_f32()));
             #[cfg(target_arch = "wasm32")]
             return Ok(PV::Nil);
         }
 
-        fn dump_macro_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+        fn dump_macro_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             featurefn!("extra", vm.dump_macro_tbl()?)?;
             Ok(PV::Nil)
         }
 
-        fn dump_sym_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+        fn dump_sym_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             featurefn!("extra", vm.dump_symbol_tbl()?)?;
             Ok(PV::Nil)
         }
 
-        fn dump_env_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+        fn dump_env_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             featurefn!("extra", vm.dump_env_tbl()?)?;
             Ok(PV::Nil)
         }
 
-        fn dump_fn_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+        fn dump_fn_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             featurefn!("extra", vm.dump_fn_tbl()?)?;
             Ok(PV::Nil)
         }
 
-        fn disassemble(&mut self, vm: &mut R8VM, args: (func)) -> Result<PV, Error> {
+        fn disassemble(&mut self, vm: &mut R8VM, args: (func)) -> Result<PV> {
             featurefn!("repl", vm.dump_fn_code((*func).try_into()?)?)?;
             Ok(PV::Nil)
         }
 
-        fn dump_all_fns(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+        fn dump_all_fns(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             featurefn!("repl", vm.dump_all_fns()?)?;
             Ok(PV::Nil)
         }
 
-        fn dump_code(&mut self, vm: &mut R8VM, args: ()) -> Result<PV, Error> {
+        fn dump_code(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             featurefn!("repl", vm.dump_code()?)?;
             Ok(PV::Nil)
         }
 
-        fn macroexpand(&mut self, vm: &mut R8VM, args: (ast)) -> Result<PV, Error> {
+        fn macroexpand(&mut self, vm: &mut R8VM, args: (ast)) -> Result<PV> {
             vm.macroexpand_pv(*ast, false)
         }
 
-        fn read_compile(&mut self, vm: &mut R8VM, args: (code)) -> Result<PV, Error> {
+        fn read_compile(&mut self, vm: &mut R8VM, args: (code)) -> Result<PV> {
             with_ref_mut!(*code, String(s) => { vm.read_compile((*s).as_ref(), None) })
         }
 
-        fn read_compile_from(&mut self, vm: &mut R8VM, args: (arg)) -> Result<PV, Error> {
+        fn read_compile_from(&mut self, vm: &mut R8VM, args: (arg)) -> Result<PV> {
             with_ref_mut!(*arg, String(s) => {
                 vm.read_compile_from(&*s)
             })
         }
 
-        fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV, Error> {
+        fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV> {
             Ok(PV::Sym(vm.load((*lib).try_into()?)?))
         }
 
-        fn pow(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV, Error> {
+        fn pow(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
             x.pow(y)
         }
 
-        fn modulo(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV, Error> {
+        fn modulo(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
             x.modulo(y)
         }
 
-        fn set_macro(&mut self, vm: &mut R8VM, args: (macro_name, fn_name)) -> Result<PV, Error> {
+        fn set_macro(&mut self, vm: &mut R8VM, args: (macro_name, fn_name)) -> Result<PV> {
             vm.set_macro((*macro_name).try_into()?,
                          (*fn_name).try_into()?);
             Ok(PV::Nil)
@@ -440,7 +440,7 @@ mod sysfns {
     pub struct make_symbol;
 
     unsafe impl Subr for make_symbol {
-        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             match args {
                 [s @ PV::Sym(_)] => Ok(*s),
                 [r] => with_ref!(*r, String(s) => {
@@ -459,7 +459,7 @@ mod sysfns {
     pub struct sum;
 
     unsafe impl Subr for sum {
-        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             let mut it = args.iter();
             let mut s = it.next().copied().unwrap_or(PV::Int(0));
             for i in it {
@@ -474,7 +474,7 @@ mod sysfns {
     pub struct sym_id;
 
     unsafe impl Subr for sym_id {
-        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             match args {
                 [PV::Sym(id)] => Ok(PV::Int((*id).try_into()?)),
                 [x] => Err(error!(TypeError,
@@ -493,7 +493,7 @@ mod sysfns {
     pub struct type_of;
 
     unsafe impl Subr for type_of {
-        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             subr_args!((x) self _vm args { Ok(PV::Sym(x.type_of())) })
         }
         fn name(&self) -> &'static str { "type-of" }
@@ -503,7 +503,7 @@ mod sysfns {
     pub struct asum;
 
     unsafe impl Subr for asum {
-        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             if args.len() == 1 {
                 return PV::Int(0).sub(&args[0])
             }
@@ -525,7 +525,7 @@ mod sysfns {
     pub struct product;
 
     unsafe impl Subr for product {
-        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             let mut it = args.iter();
             let mut s = it.next().copied().unwrap_or(PV::Int(1));
             for i in it {
@@ -540,7 +540,7 @@ mod sysfns {
     pub struct aproduct;
 
     unsafe impl Subr for aproduct {
-        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             if args.len() == 1 {
                 return PV::Int(1).div(&args[0])
             }
@@ -562,7 +562,7 @@ mod sysfns {
     pub struct dump_gc_stats;
 
     unsafe impl Subr for dump_gc_stats {
-        fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV> {
             vm.print_fmt(format_args!("{:?}", vm.mem.stats()))?;
             vm.println(&"")?;
             Ok(PV::Nil)
@@ -574,7 +574,7 @@ mod sysfns {
     pub struct dump_stack;
 
     unsafe impl Subr for dump_stack {
-        fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV, Error> {
+        fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV> {
             vm.dump_stack()?;
             Ok(PV::Nil)
         }
@@ -594,7 +594,7 @@ pub struct ArgSpec {
 }
 
 impl fmt::Display for ArgSpec {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.rest {
             write!(f, "{}..", self.nargs)
         } else if self.nopt > 0 {
@@ -665,7 +665,7 @@ impl ArgSpec {
         ArgSpec::normal(0)
     }
 
-    pub fn check(&self, fn_sym: SymID, nargs: u16) -> Result<(), Error> {
+    pub fn check(&self, fn_sym: SymID, nargs: u16) -> Result<()> {
         if self.is_valid_num(nargs) {
             Ok(())
         } else {
@@ -759,7 +759,7 @@ impl<const N: usize> Regs<N> {
     }
 
     #[inline]
-    fn save(&mut self, mem: &mut Arena, num: u8) -> Result<(), RuntimeError> {
+    fn save(&mut self, mem: &mut Arena, num: u8) -> Result<()> {
         for i in 0..num {
             let v = mem.pop()?;
             self.vals[i as usize] = v;
@@ -777,13 +777,6 @@ impl<const N: usize> Regs<N> {
         }
     }
 }
-
-struct PMem {
-    code: *mut r8c::Op,
-}
-
-// TODO
-impl PMem {}
 
 macro_rules! call_with {
     ($vm:expr, $pos:expr, $nargs:expr, $body:block) => {{
@@ -839,23 +832,23 @@ impl SymDB for R8VM {
 
 pub trait EnumCall {
     fn name(&self, mem: &mut Arena) -> SymID;
-    fn pushargs(self, args: &[SymID], mem: &mut Arena) -> Result<(), Error>;
+    fn pushargs(self, args: &[SymID], mem: &mut Arena) -> Result<()>;
 }
 
 pub trait Args {
-    fn pusharg(self, mem: &mut Arena) -> Result<(), Error>;
-    fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error>;
+    fn pusharg(self, mem: &mut Arena) -> Result<()>;
+    fn pusharg_ref(&self, mem: &mut Arena) -> Result<()>;
     fn nargs(&self) -> usize;
 }
 
 pub trait AsArgs {
-    fn inner_pusharg(self, mem: &mut Arena) -> Result<(), Error>;
+    fn inner_pusharg(self, mem: &mut Arena) -> Result<()>;
     fn inner_nargs(&self) -> usize;
 }
 
 impl<T> AsArgs for T where T: Args {
     #[inline(always)]
-    fn inner_pusharg(self, mem: &mut Arena) -> Result<(), Error> {
+    fn inner_pusharg(self, mem: &mut Arena) -> Result<()> {
         self.pusharg(mem)
     }
 
@@ -866,7 +859,7 @@ impl<T> AsArgs for T where T: Args {
 }
 
 impl AsArgs for Box<dyn Args + Send> {
-    fn inner_pusharg(self, mem: &mut Arena) -> Result<(), Error> {
+    fn inner_pusharg(self, mem: &mut Arena) -> Result<()> {
         self.pusharg_ref(mem)
     }
 
@@ -876,14 +869,14 @@ impl AsArgs for Box<dyn Args + Send> {
 }
 
 impl Args for &[PV] {
-    fn pusharg(self, mem: &mut Arena) -> Result<(), Error> {
+    fn pusharg(self, mem: &mut Arena) -> Result<()> {
         for arg in self.iter().copied() {
             mem.push(arg);
         }
         Ok(())
     }
 
-    fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error> {
+    fn pusharg_ref(&self, mem: &mut Arena) -> Result<()> {
         for arg in self.iter() {
             mem.push(*arg);
         }
@@ -896,14 +889,14 @@ impl Args for &[PV] {
 }
 
 impl<const N: usize> Args for &[PV; N] {
-    fn pusharg(self, mem: &mut Arena) -> Result<(), Error> {
+    fn pusharg(self, mem: &mut Arena) -> Result<()> {
         for arg in self.iter().copied() {
             mem.push(arg);
         }
         Ok(())
     }
 
-    fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error> {
+    fn pusharg_ref(&self, mem: &mut Arena) -> Result<()> {
         for arg in self.iter() {
             mem.push(*arg);
         }
@@ -920,7 +913,7 @@ macro_rules! impl_args_tuple {
         impl<$($arg),*> Args for ($($arg),*,)
             where $($arg: crate::subrs::IntoLisp + crate::subrs::RefIntoLisp ),*
         {
-            fn pusharg(self, mem: &mut Arena) -> Result<(), Error> {
+            fn pusharg(self, mem: &mut Arena) -> Result<()> {
                 #[allow(non_snake_case)]
                 let ($($arg),*,) = self;
                 $(#[allow(non_snake_case)]
@@ -929,7 +922,7 @@ macro_rules! impl_args_tuple {
                 Ok(())
             }
 
-            fn pusharg_ref(&self, mem: &mut Arena) -> Result<(), Error> {
+            fn pusharg_ref(&self, mem: &mut Arena) -> Result<()> {
                 #[allow(non_snake_case)]
                 let ($($arg),*,) = self;
                 $(#[allow(non_snake_case)]
@@ -946,8 +939,8 @@ macro_rules! impl_args_tuple {
 }
 
 impl Args for () {
-    fn pusharg(self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
-    fn pusharg_ref(&self, _mem: &mut Arena) -> Result<(), Error> { Ok(()) }
+    fn pusharg(self, _mem: &mut Arena) -> Result<()> { Ok(()) }
+    fn pusharg_ref(&self, _mem: &mut Arena) -> Result<()> { Ok(()) }
     fn nargs(&self) -> usize { 0 }
 }
 
@@ -1087,7 +1080,7 @@ impl R8VM {
         self.mem.has_mut_extrefs()
     }
 
-    pub fn call_by_enum(&mut self, enm: impl EnumCall) -> Result<PV, Error> {
+    pub fn call_by_enum(&mut self, enm: impl EnumCall) -> Result<PV> {
         let name = enm.name(&mut self.mem);
         let args = self.func_arg_syms.get(&name).map(|v| &**v).ok_or(
             error!(UndefinedFunction, name)
@@ -1106,7 +1099,7 @@ impl R8VM {
         self.func_labels.shrink_to_fit();
     }
 
-    pub fn set<T: IntoLisp>(&mut self, var: SymID, obj: T) -> Result<(), Error> {
+    pub fn set<T: IntoLisp>(&mut self, var: SymID, obj: T) -> Result<()> {
         let pv = obj.into_pv(&mut self.mem)?;
         let idx = self.mem.push_env(pv);
         self.globals.insert(var, idx);
@@ -1157,7 +1150,7 @@ impl R8VM {
         self.funcs.get(&name.into())
     }
 
-    pub fn load(&mut self, lib: SymID) -> Result<SymID, Error> {
+    pub fn load(&mut self, lib: SymID) -> Result<SymID> {
         let sym_name = self.sym_name(lib).to_string();
         let mut path = String::new();
         let it = self.var(Builtin::SysLoadPath.sym())?
@@ -1187,7 +1180,7 @@ impl R8VM {
         self.consts.len()
     }
 
-    pub fn var(&self, sym: SymID) -> Result<PV, Error> {
+    pub fn var(&self, sym: SymID) -> Result<PV> {
         let idx = self.get_env_global(sym)
                       .ok_or(error!(UndefinedVariable, var: sym))?;
         Ok(self.mem.get_env(idx))
@@ -1198,11 +1191,11 @@ impl R8VM {
     }
 
     /// Reads LISP code into an AST.
-    pub fn read(&mut self, lisp: &str) -> Result<(), Error> {
+    pub fn read(&mut self, lisp: &str) -> Result<()> {
         self.mem.read(lisp)
     }
 
-    pub fn read_compile_from(&mut self, path: impl AsRef<Path>) -> Result<PV, Error> {
+    pub fn read_compile_from(&mut self, path: impl AsRef<Path>) -> Result<PV> {
         let sexpr = fs::read_to_string(path.as_ref())?;
         let name = path.as_ref().file_stem().map(|p| {
             p.to_string_lossy().into_owned()
@@ -1210,7 +1203,7 @@ impl R8VM {
         self.read_compile(&sexpr, name)
     }
 
-    pub fn read_compile(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV, Error> {
+    pub fn read_compile(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV> {
         lazy_static! {
             static ref TREE: Fragment = standard_lisp_tok_tree();
         }
@@ -1371,7 +1364,7 @@ impl R8VM {
         }
     }
 
-    pub fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV, Error> {
+    pub fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV> {
         let op = self.mem.from_top(n as usize);
         let v = if let Some(m) = op.op().and_then(|op| self.macros.get(&op.into())).copied() {
             if dot {
@@ -1409,7 +1402,7 @@ impl R8VM {
         self.macroexpand_pv(v, false)
     }
 
-    fn varor<T>(&mut self, name: SymID, or_default: T) -> Result<T, Error>
+    fn varor<T>(&mut self, name: SymID, or_default: T) -> Result<T>
         where PV: FromLisp<T>
     {
         if let Ok(var) = self.var(name) {
@@ -1420,7 +1413,7 @@ impl R8VM {
         }
     }
 
-    fn macroexpand_pv(&mut self, mut v: PV, quasi: bool) -> Result<PV, Error> {
+    fn macroexpand_pv(&mut self, mut v: PV, quasi: bool) -> Result<PV> {
         let ind_lim = self.varor(Builtin::LimitsMacroexpandRecursion.sym(),
                                  limits::MACROEXPAND_RECURSION)?;
 
@@ -1520,7 +1513,7 @@ impl R8VM {
         self.srctbl[src_idx].1.clone()
     }
 
-    pub fn eval(&mut self, expr: &str) -> Result<PV, Error> {
+    pub fn eval(&mut self, expr: &str) -> Result<PV> {
         self.read_compile(expr, None)
     }
 
@@ -1528,7 +1521,7 @@ impl R8VM {
         self.macros.insert(macro_sym.into(), fn_sym);
     }
 
-    pub fn defvar(&mut self, name: SymID, idx: usize, pos: usize) -> Result<(), Error> {
+    pub fn defvar(&mut self, name: SymID, idx: usize, pos: usize) -> Result<()> {
         let res = call_with!(self, pos, 0, {});
         self.mem.set_env(idx, res);
         self.globals.insert(name, idx);
@@ -1576,7 +1569,7 @@ impl R8VM {
      *
      * - `idx` : The position of the breakpoint in program memory.
      */
-    pub fn unset_breakpoint(&mut self, idx: usize) -> Result<(), RuntimeError> {
+    pub fn unset_breakpoint(&mut self, idx: usize) -> Result<()> {
         self.pmem[idx] = self.breaks
                              .remove(&idx)
                              .ok_or_else(
@@ -1696,7 +1689,7 @@ impl R8VM {
         }
     }
 
-    unsafe fn run_from_unwind(&mut self, offs: usize) -> Result<usize, Traceback> {
+    unsafe fn run_from_unwind(&mut self, offs: usize) -> std::result::Result<usize, Traceback> {
         self.catch();
         let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
@@ -1709,7 +1702,7 @@ impl R8VM {
     #[inline]
     fn op_clzcall(&mut self,
                   ip: *mut r8c::Op,
-                  nargs: u16) -> Result<*mut r8c::Op, Error> {
+                  nargs: u16) -> Result<*mut r8c::Op> {
         let idx = self.mem.stack.len() - nargs as usize - 1;
         let lambda_pv = self.mem.stack[idx];
         with_ref_mut!(lambda_pv, Lambda(lambda) => {
@@ -1794,7 +1787,7 @@ impl R8VM {
      * NOTE: If the code isn't well-formed, i.e produces out-of-bounds jumps,
      * then you've yee'd your last haw.
      */
-    unsafe fn run_from(&mut self, offs: usize) -> Result<usize, (usize, Error)> {
+    unsafe fn run_from(&mut self, offs: usize) -> std::result::Result<usize, (usize, Error)> {
         let mut regs: Regs<2> = Regs::new();
         let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
         use r8c::Op::*;
@@ -2154,7 +2147,7 @@ impl R8VM {
         }
     }
 
-    pub fn dump_stack(&mut self) -> Result<(), Error> {
+    pub fn dump_stack(&mut self) -> Result<()> {
         let mut stdout = self.stdout.lock().unwrap();
         writeln!(stdout, "stack:")?;
         if self.mem.stack.is_empty() {
@@ -2194,18 +2187,18 @@ impl R8VM {
      * - `sym` : Symbol mapped to the function, see Arena::sym.
      * - `args` : Arguments that should be passed.
      */
-    pub fn call(&mut self, sym: SymID, args: impl AsArgs) -> Result<PV, Error> {
+    pub fn call(&mut self, sym: SymID, args: impl AsArgs) -> Result<PV> {
         Ok(symcall_with!(self, sym, args.inner_nargs(), {
             args.inner_pusharg(&mut self.mem)?
         }))
     }
 
-    pub fn call_spv(&mut self, sym: SymID, args: impl AsArgs) -> Result<SPV, Error> {
+    pub fn call_spv(&mut self, sym: SymID, args: impl AsArgs) -> Result<SPV> {
         let res = self.call(sym, args)?;
         Ok(self.mem.make_extref(res))
     }
 
-    pub fn apply_spv(&mut self, f: SPV, args: impl AsArgs) -> Result<PV, Error> {
+    pub fn apply_spv(&mut self, f: SPV, args: impl AsArgs) -> Result<PV> {
         let frame = self.frame;
         self.frame = self.mem.stack.len();
         self.mem.push(PV::UInt(0));
@@ -2224,11 +2217,11 @@ impl R8VM {
         Ok(())
     }
 
-    pub fn print(&mut self, obj: &dyn Display) -> Result<(), Error> {
+    pub fn print(&mut self, obj: &dyn Display) -> Result<()> {
         self.print_fmt(format_args!("{}", obj))
     }
 
-    pub fn println(&mut self, obj: &dyn Display) -> Result<(), Error> {
+    pub fn println(&mut self, obj: &dyn Display) -> Result<()> {
         self.print(obj)?;
         writeln!(self.stdout.lock().unwrap())?;
         Ok(())
@@ -2243,7 +2236,7 @@ impl R8VM {
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_all_fns(&self) -> Result<(), Error> {
+    pub fn dump_all_fns(&self) -> Result<()> {
         let mut funks = self.funcs.iter().map(|(k, v)| ((*k).into(), v.pos)).collect::<Vec<_>>();
         funks.sort_by_key(|(_, v)| *v);
         for funk in funks.into_iter().map(|(u, _)| u) {
@@ -2253,7 +2246,7 @@ impl R8VM {
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_code(&self) -> Result<(), Error> {
+    pub fn dump_code(&self) -> Result<()> {
         for (i, op) in self.pmem.iter().enumerate() {
             println!("{i:0>8}    {op}")
         }
@@ -2261,7 +2254,7 @@ impl R8VM {
     }
 
     #[cfg(feature = "repl")]
-    pub fn dump_fn_code(&self, mut name: SymID) -> Result<(), Error> {
+    pub fn dump_fn_code(&self, mut name: SymID) -> Result<()> {
         use colored::*;
 
         if let Some(mac_fn) = self.macros.get(&name.into()) {
@@ -2325,7 +2318,7 @@ impl R8VM {
     }
 
     #[cfg(feature = "extra")]
-    pub fn dump_macro_tbl(&self) -> Result<(), Error> {
+    pub fn dump_macro_tbl(&self) -> Result<()> {
         let mut table = Table::new();
 
         table.load_preset(TABLE_STYLE);
@@ -2342,7 +2335,7 @@ impl R8VM {
     }
 
     #[cfg(feature = "extra")]
-    pub fn dump_symbol_tbl(&self) -> Result<(), Error> {
+    pub fn dump_symbol_tbl(&self) -> Result<()> {
         let mut table = Table::new();
 
         table.load_preset(TABLE_STYLE);
@@ -2358,7 +2351,7 @@ impl R8VM {
     }
 
     #[cfg(feature = "extra")]
-    pub fn dump_env_tbl(&self) -> Result<(), Error> {
+    pub fn dump_env_tbl(&self) -> Result<()> {
         let mut table = Table::new();
 
         table.load_preset(TABLE_STYLE);
@@ -2392,7 +2385,7 @@ impl R8VM {
     }
 
     #[cfg(feature = "extra")]
-    pub fn dump_fn_tbl(&self) -> Result<(), Error> {
+    pub fn dump_fn_tbl(&self) -> Result<()> {
         let mut table = Table::new();
 
         table.load_preset(TABLE_STYLE);

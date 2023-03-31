@@ -280,7 +280,7 @@ impl AST2 {
             }};
         }
         match self.kind {
-            M::Bt1(op, ref mut x) => visit!(x),
+            M::Bt1(_, ref mut x) => visit!(x),
             M::If(ref mut a, None, None) => visit!(a),
             M::If(ref mut a, None, Some(ref mut c)) => visit!(a, c),
             M::If(ref mut a, Some(ref mut b), None) => visit!(a, b),

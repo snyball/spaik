@@ -1,9 +1,9 @@
 //! ChASM /ˈkæz(ə)m/, an assembler
 
 use crate::nkgc::SymID;
-use std::{collections::HashMap, io::{Read, Write}};
+use std::{collections::HashMap, io::{Read, Write, self}};
 use std::fmt;
-use crate::error::{Error, ErrorKind};
+use crate::error::{ErrorKind, Result};
 use ErrorKind::*;
 use std::convert::{TryInto, TryFrom};
 use fnv::FnvHashMap;
@@ -19,7 +19,7 @@ macro_rules! chasm_primitives {
         }
 
         impl fmt::Display for ASMPV {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self { $(ASMPV::$t(v) => write!(f, "{}", v)),+ }
             }
         }
@@ -28,7 +28,7 @@ macro_rules! chasm_primitives {
             fn from(v: $t) -> ASMPV { ASMPV::$t(v) }
         })+
 
-        fn try_into_asmpv<T: $(TryFrom<$t> + )+>(pv: ASMPV) -> Result<T, Error> {
+        fn try_into_asmpv<T: $(TryFrom<$t> + )+>(pv: ASMPV) -> Result<T> {
             match pv {
                 $(ASMPV::$t(v) => v
                   .try_into()
@@ -44,7 +44,7 @@ macro_rules! chasm_primitives {
 
         $(impl std::convert::TryFrom<ASMPV> for $t {
             type Error = crate::error::Error;
-            fn try_from(v: ASMPV) -> Result<Self, Self::Error> {
+            fn try_from(v: ASMPV) -> std::result::Result<Self, Self::Error> {
                 try_into_asmpv::<$t>(v)
             }
         })+
@@ -61,7 +61,7 @@ chasm_primitives![u8, i8,
 pub struct Lbl(u32, &'static str);
 
 impl fmt::Display for Lbl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}#{}", self.1, self.0)
     }
 }
@@ -94,7 +94,7 @@ impl ChOp {
 }
 
 impl fmt::Display for ChOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let args = self.args
                        .iter()
                        .map(|v| format!("{:?}", v))
@@ -105,21 +105,19 @@ impl fmt::Display for ChOp {
 }
 
 pub trait ASMOp {
-    // fn from_id(op: OpCode, args: &[i64]) -> Result<Self, String>
-    //     where Self: std::marker::Sized;
-    fn new(op: OpCode, args: &[ASMPV]) -> Result<Self, Error>
+    fn new(op: OpCode, args: &[ASMPV]) -> Result<Self>
         where Self: std::marker::Sized;
     fn name(&self) -> &'static str;
     fn args(&self) -> Vec<ASMPV>;
-    fn write(&self, out: &mut dyn Write) -> Result<usize, std::io::Error>;
-    fn read(inp: &mut dyn Read) -> Result<(Self, usize), Error>
+    fn write(&self, out: &mut dyn Write) -> io::Result<usize>;
+    fn read(inp: &mut dyn Read) -> Result<(Self, usize)>
         where Self: std::marker::Sized;
 }
 
 pub trait ChASMOpName {
     fn dialect(&self) -> &'static str;
     fn id(&self) -> OpCode;
-    fn from_num(num: OpCode) -> Result<Self, Error>
+    fn from_num(num: OpCode) -> Result<Self>
         where Self: std::marker::Sized;
     fn from_str(s: &str) -> Option<Self>
         where Self: std::marker::Sized;
@@ -149,7 +147,7 @@ macro_rules! chasm_def {
                 fn id(&self) -> $crate::chasm::OpCode {
                     unsafe { std::mem::transmute(*self) }
                 }
-                fn from_num(id: $crate::chasm::OpCode) -> Result<OpName, $crate::error::Error> {
+                fn from_num(id: $crate::chasm::OpCode) -> Result<OpName> {
                     use $crate::error::ErrorKind::*;
                     if id < count_args!($($en),+) {
                         Ok(unsafe { std::mem::transmute(id) })
@@ -168,7 +166,7 @@ macro_rules! chasm_def {
 
         impl $crate::chasm::ASMOp for $name::Op {
             fn new(op: $crate::chasm::OpCode, args: &[ASMPV]) ->
-                Result<$name::Op, $crate::error::Error>
+                Result<$name::Op>
             {
                 use std::convert::TryInto;
                 use $crate::error::ErrorKind::*;
@@ -198,7 +196,7 @@ macro_rules! chasm_def {
                 }
             }
 
-            fn write(&self, out: &mut dyn std::io::Write) -> Result<usize, std::io::Error> {
+            fn write(&self, out: &mut dyn std::io::Write) -> std::io::Result<usize> {
                 let mut sz = std::mem::size_of::<$crate::chasm::OpCode>();
                 let dscr: usize = unsafe {
                     std::mem::transmute(std::mem::discriminant(self))
@@ -216,7 +214,7 @@ macro_rules! chasm_def {
                 Ok(sz)
             }
 
-            fn read(inp: &mut dyn std::io::Read) -> Result<(Self, usize), $crate::error::Error> {
+            fn read(inp: &mut dyn std::io::Read) -> Result<(Self, usize)> {
                 let mut rd_sz = std::mem::size_of::<$crate::chasm::OpCode>();
                 let mut op_buf: [u8; 1] = [0];
                 inp.read_exact(&mut op_buf)?;
@@ -234,7 +232,7 @@ macro_rules! chasm_def {
 
         impl std::fmt::Display for $name::Op {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
-                Result<(), std::fmt::Error>
+                fmt::Result
             {
                 use std::convert::TryInto;
                 match self {
@@ -275,7 +273,7 @@ impl ChASM {
     /// - sz: The total size of program memory
     pub fn link<T: ASMOp>(self,
                           xtrn: &HashMap<SymID, isize>,
-                          sz: isize) -> Result<Linked<T>, Error>
+                          sz: isize) -> Result<Linked<T>>
     {
         let mut hm = FnvHashMap::with_capacity_and_hasher(self.marks.len(),
                                                           Default::default());
@@ -286,7 +284,7 @@ impl ChASM {
         Ok((self.ops
             .into_iter()
             .enumerate()
-            .map(|(i, op)| -> Result<T, Error> {
+            .map(|(i, op)| -> Result<T> {
                 let link_err = |sym, count| {
                     ErrorKind::LinkError { dst: format!("{}#{}", sym, count),
                                            src: i }
@@ -302,16 +300,16 @@ impl ChASM {
                                  Arg::Func(s) => xtrn.get(&s)
                                                      .map(|pos| ASMPV::isize(*pos - (i as isize + sz)))
                                                      .ok_or_else(|| link_err("sym", s.as_int() as u32))
-                             }).collect::<Result<Vec<ASMPV>, _>>()?;
+                             }).collect::<std::result::Result<Vec<ASMPV>, _>>()?;
                 T::new(op.id, &args[..])
-            }).collect::<Result<_, _>>()?,
+            }).collect::<std::result::Result<_, _>>()?,
             hm))
     }
 
     pub fn link_into<T: ASMOp>(self,
                                out: &mut Vec<T>,
                                sz: usize,
-                               hm_out: &mut LblMap) -> Result<usize, Error>
+                               hm_out: &mut LblMap) -> Result<usize>
     {
         for (lbl, tgt) in self.marks.iter() {
             hm_out.insert((*tgt + sz as isize) as u32,
@@ -322,7 +320,7 @@ impl ChASM {
             self.ops
                 .into_iter()
                 .enumerate()
-                .map(|(i, op)| -> Result<T, Error> {
+                .map(|(i, op)| -> Result<T> {
                     let link_err = |sym, count| {
                         ErrorKind::LinkError { dst: format!("{}#{}", sym, count),
                                                src: i }
@@ -336,7 +334,7 @@ impl ChASM {
                                                .ok_or_else(|| link_err(s, c)),
                                      Arg::ASMPV(pv) => Ok(pv),
                                      Arg::Func(s) => Err(link_err("sym", s.as_int() as u32))
-                                 }).collect::<Result<Vec<ASMPV>, _>>()?;
+                                 }).collect::<std::result::Result<Vec<ASMPV>, _>>()?;
                     T::new(op.id, &args[..])
                 });
         let mut len = 0;
@@ -390,6 +388,7 @@ macro_rules! chasm {
 mod tests {
     use super::*;
     use crate::r8vm::{R8VM, r8c};
+    use crate::error::Error;
     use std::io::Cursor;
 
     #[test]
@@ -402,7 +401,7 @@ mod tests {
     #[test]
     fn primitive_type_conversions() {
         let pv_big = ASMPV::u32(260);
-        let v_big: Result<u8, _> = pv_big.try_into();
+        let v_big: Result<u8> = pv_big.try_into();
         assert_eq!(v_big, Err(Error {
             meta: Default::default(),
             ty: ConversionError {

@@ -875,8 +875,8 @@ pub unsafe fn fastcast_mut<T>(atom: *mut NkAtom) -> *mut T {
 }
 
 #[inline]
-pub fn atom_kind(atom: *const NkAtom) -> NkT {
-    unsafe { mem::transmute((*atom).meta.typ()) }
+pub unsafe fn atom_kind(atom: *const NkAtom) -> NkT {
+    mem::transmute((*atom).meta.typ())
 }
 
 #[inline]
@@ -1331,7 +1331,7 @@ impl fmt::Debug for DebugHexBytes<'_> {
 }
 
 impl fmt::Debug for NkAtom {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         unimplemented!()
     }
 }
