@@ -1,7 +1,7 @@
 #!/usr/bin/env fish
 
 set -l bin $argv[1]
-set -l tries 400
+set -l tries 80
 
 #set -gx RUSTFLAGS "-C target-cpu=native"
 
