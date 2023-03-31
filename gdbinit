@@ -1,0 +1,6 @@
+skip -rfu core::*
+skip -rfu alloc::*
+skip -rfu std::*
+set print pretty on
+set print array on
+set unwindonsignal on
