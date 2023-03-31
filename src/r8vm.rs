@@ -1409,7 +1409,7 @@ impl R8VM {
         self.macroexpand_pv(v, false)
     }
 
-    pub fn varor<T>(&mut self, name: SymID, or_default: T) -> Result<T, Error>
+    fn varor<T>(&mut self, name: SymID, or_default: T) -> Result<T, Error>
         where PV: FromLisp<T>
     {
         if let Ok(var) = self.var(name) {
@@ -1420,7 +1420,7 @@ impl R8VM {
         }
     }
 
-    pub fn macroexpand_pv(&mut self, mut v: PV, quasi: bool) -> Result<PV, Error> {
+    fn macroexpand_pv(&mut self, mut v: PV, quasi: bool) -> Result<PV, Error> {
         let ind_lim = self.varor(Builtin::LimitsMacroexpandRecursion.sym(),
                                  limits::MACROEXPAND_RECURSION)?;
 
@@ -1512,72 +1512,12 @@ impl R8VM {
         }
     }
 
-    /**
-     * Add code into the VM, taking care to update the const references
-     * relative to the ones that already exist in the VM.
-     *
-     * # Arguments
-     *
-     * - `code` : Bytecode to be added.
-     * - `labels` : Optional debug labels.
-     * - `consts` : Constants referenced by the bytecode.
-     */
-    pub fn add_code(&mut self,
-                    mut code: Vec<r8c::Op>,
-                    consts: Option<Vec<NkSum>>,
-                    srcs: Option<SourceList>)
-    {
-        let const_rel = self.consts.len() as u32;
-        for op in code.iter_mut() {
-            if let r8c::Op::CONSTREF(ref mut i) = *op {
-                *i += const_rel;
-            }
-        }
-        let offset = self.pmem.len();
-        if let Some(srcs) = srcs {
-            for (idx, v) in srcs.into_iter() {
-                self.srctbl.push((idx + offset, v));
-            }
-        }
-        self.pmem.extend(code);
-        if let Some(consts) = consts {
-            self.consts.extend(consts);
-        }
-    }
-
-    pub fn get_source(&self, idx: usize) -> Source {
+    fn get_source(&self, idx: usize) -> Source {
         let src_idx = match self.srctbl.binary_search_by(|(u, _)| u.cmp(&idx)) {
             Ok(i) => i,
             Err(i) => (i as isize - 1).max(0) as usize
         };
         self.srctbl[src_idx].1.clone()
-    }
-
-    /**
-     * Add some code and run it, returning the result.
-     *
-     * SAFETY: Safe as long as `code` is well-formed.
-     */
-    pub unsafe fn add_and_run(&mut self,
-                              code: Vec<r8c::Op>,
-                              consts: Option<Vec<NkSum>>,
-                              srcs: Option<SourceList>)
-                              -> Result<PV, Error>
-    {
-        let c_start = self.pmem.len();
-        let prev_top = self.mem.stack.len();
-        self.add_code(code, consts, srcs);
-        self.pmem.push(r8c::Op::RET());
-        self.set_frame(0);
-        self.run_from_unwind(c_start)?;
-        if self.mem.stack.len() > prev_top {
-            let ret = self.mem.pop()
-                              .expect("Logic Error");
-            self.mem.stack.truncate(prev_top);
-            Ok(ret)
-        } else {
-            Ok(PV::Nil)
-        }
     }
 
     pub fn eval(&mut self, expr: &str) -> Result<PV, Error> {
@@ -1719,7 +1659,7 @@ impl R8VM {
     }
 
     // FIXME: This function is super slow, unoptimized, and only for debugging
-    pub fn traceframe(&self, ip: usize) -> SymID {
+    fn traceframe(&self, ip: usize) -> SymID {
         let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
         for (name, func) in self.funcs.iter() {
             pos_to_fn.push((func.pos, *name));
@@ -1736,7 +1676,8 @@ impl R8VM {
         get_name(ip).into()
     }
 
-    pub fn count_trace(&mut self, ip: usize) {
+    #[allow(dead_code)] // Used for internal debugging/profiling
+    fn count_trace(&mut self, ip: usize) {
         let frame = self.traceframe(ip);
         let _v = match self.trace_counts.entry(frame) {
             Entry::Occupied(mut e) => {
@@ -2244,14 +2185,6 @@ impl R8VM {
         self.mem.push(PV::UInt(self.frame));
     }
 
-    #[inline]
-    pub fn set_frame(&mut self, nargs: u16) {
-        let frame = self.frame;
-        self.frame = self.mem.stack.len() - (nargs as usize);
-        self.mem.push(PV::UInt(0));
-        self.mem.push(PV::UInt(frame));
-    }
-
     /**
      * Call a function, returning either the return value of
      * the function or an error.
@@ -2284,22 +2217,6 @@ impl R8VM {
             self.run_from_unwind(pos)?;
         }
         self.mem.pop()
-    }
-
-    pub fn raw_call(&mut self, sym: SymID, args: &[PV]) -> Result<PV, Error> {
-        Ok(symcall_with!(self, sym, args.len(), {
-            for arg in args.iter() {
-                self.mem.push(*arg);
-            }
-        }))
-    }
-
-    pub fn print_stack(&self) {
-        self.mem.dump_stack();
-    }
-
-    pub fn get_code(&self) -> Vec<r8c::Op> {
-        self.pmem.clone()
     }
 
     pub fn print_fmt(&mut self, args: fmt::Arguments) -> Result<(), Error> {
