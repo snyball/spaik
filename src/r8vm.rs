@@ -303,8 +303,8 @@ mod sysfns {
              .into_pv(&mut vm.mem)
         }
 
-        fn eval(&mut self, vm: &mut R8VM, args: (_x)) -> Result<PV, Error> {
-            todo!()
+        fn eval(&mut self, vm: &mut R8VM, args: (ast)) -> Result<PV> {
+            vm.eval_pv(*ast)
         }
 
         fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
@@ -2212,7 +2212,18 @@ impl R8VM {
         self.mem.pop()
     }
 
-    pub fn print_fmt(&mut self, args: fmt::Arguments) -> Result<(), Error> {
+    pub fn eval_pv(&mut self, ast: PV) -> Result<PV> {
+        self.macroexpand_pv(ast, false).and_then(|ast| {
+            let excv = Excavator::new(&self.mem);
+            let ast = excv.to_ast(ast)?;
+            let mut cc = R8Compiler::new(self);
+            let modfn_pos = cc.compile_top_tail(ast)?;
+            cc.take(self)?;
+            Ok(call_with!(self, modfn_pos, 0, {}))
+        })
+    }
+
+    pub fn print_fmt(&mut self, args: fmt::Arguments) -> Result<()> {
         self.stdout.lock().unwrap().write_fmt(args)?;
         Ok(())
     }
