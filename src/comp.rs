@@ -18,6 +18,47 @@ static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
 static MODULE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static DEFVAR_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+macro_rules! def_macros {
+    ($d:tt, $ret:expr, $self:expr) => {
+        #[allow(unused_macros)]
+        macro_rules! asm {
+            ($d ($d args:tt)*) => {{ $self.unit().op(chasm!($d ($d args)*)); }};
+        }
+
+        #[allow(unused_macros)]
+        macro_rules! opcall {
+            ($d op:ident $d ($d arg:expr),*) => {{
+                if $ret {
+                    $d ($self.compile(true, $d arg)?;)*
+                        asm!($d op);
+                } else {
+                    $d ($self.compile(false, $d arg)?;)*
+                }
+            }};
+        }
+
+        #[allow(unused_macros)]
+        macro_rules! opcall_mut {
+            ($d op:ident $d ($d arg:expr),*) => {{
+                $d ($self.compile(true, $d arg)?;)*
+                asm!($d op);
+                if !$ret { asm!(POP 1) }
+            }};
+        }
+
+        #[allow(unused_macros)]
+        macro_rules! vopcall {
+            ($d op:ident $d argv:expr) => {{
+                let nargs = $d argv.len();
+                for arg in $d argv.into_iter() {
+                    $self.compile($ret, arg)?;
+                }
+                if $ret { asm!($d op nargs) }
+            }};
+        }
+    };
+}
+
 pub enum Sym {
     Id(SymID),
     Str(String),
@@ -791,31 +832,19 @@ impl R8Compiler {
         }
     }
 
+    pub fn bt1(&mut self, ret: bool, op: Builtin, arg: AST2) -> Result<()> {
+        def_macros!($, ret, self);
+
+        match op {
+            Builtin::Len => opcall!(LEN arg),
+            x => unimplemented!("{x:?}"),
+        }
+
+        Ok(())
+    }
+
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
-        macro_rules! asm {
-            ($($args:tt)*) => {{ self.unit().op(chasm!($($args)*)); }};
-        }
-
-        macro_rules! opcall {
-            ($op:ident $($arg:expr),*) => {{
-                if ret {
-                    $(self.compile(true, $arg)?;)*
-                        asm!($op);
-                } else {
-                    $(self.compile(false, $arg)?;)*
-                }
-            }};
-        }
-
-        macro_rules! vopcall {
-            ($op:ident $argv:expr) => {{
-                let nargs = $argv.len();
-                for arg in $argv.into_iter() {
-                    self.compile(ret, arg)?;
-                }
-                if ret { asm!($op nargs) }
-            }};
-        }
+        def_macros!($, ret, self);
 
         self.set_source(src.clone());
 
@@ -907,12 +936,13 @@ impl R8Compiler {
             M::Vector(xs) => vopcall!(VEC xs),
             M::Push(vec, elem) => self.bt_vpush(ret, *vec, *elem)?,
             M::Get(vec, idx) => opcall!(VGET *vec, *idx),
-            M::Pop(vec) => opcall!(VPOP *vec),
+            M::Pop(vec) => opcall_mut!(VPOP *vec),
             M::CallCC(funk) => {
                 self.compile(true, *funk)?;
                 asm!(CALLCC 0);
                 if !ret { asm!(POP 1) }
             }
+            M::Bt1(op, arg) => self.bt1(ret, op, *arg)?,
         }
 
         Ok(())

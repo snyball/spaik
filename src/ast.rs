@@ -80,6 +80,9 @@ pub enum M {
     Vector(Progn),
     Push(Prog, Prog),
     Get(Prog, Prog),
+    // Bt(Builtin, Progn),
+    Bt1(Builtin, Prog),
+    // Bt2(Builtin, Prog, Prog),
     Pop(Prog),
     CallCC(Prog),
 }
@@ -127,6 +130,7 @@ impl Display for M {
             }};
         }
         match self {
+            M::Bt1(op, arg) => write!(f, "({op:?} {arg})")?,
             M::If(a, b, c) => {
                 write!(f, "(if {a}")?;
                 if let Some(b) = b { write!(f, " {b}")?; }
@@ -276,6 +280,7 @@ impl AST2 {
             }};
         }
         match self.kind {
+            M::Bt1(op, ref mut x) => visit!(x),
             M::If(ref mut a, None, None) => visit!(a),
             M::If(ref mut a, None, Some(ref mut c)) => visit!(a, c),
             M::If(ref mut a, Some(ref mut b), None) => visit!(a, b),
@@ -694,6 +699,7 @@ impl<'a> Excavator<'a> {
             Builtin::Push => self.wrap_two_args(M::Push, args, src),
             Builtin::Get => self.wrap_two_args(M::Get, args, src),
             Builtin::Throw => self.wrap_one_arg(M::Throw, args, src),
+            op @ Builtin::Len => self.wrap_one_arg(|a| M::Bt1(op, a), args, src),
             Builtin::Next => self.bt_next(args, src),
             _ => self.sapp(bt.sym(), args, src),
         }.map_err(|e| e.fallback(Meta::Op(OpName::OpSym(bt.sym()))))

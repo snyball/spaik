@@ -32,8 +32,6 @@
 #![allow(clippy::upper_case_acronyms)]
 // FIXME: Write documentation for the unsafe functions.
 #![allow(clippy::missing_safety_doc)]
-#![allow(unused_variables)]
-#![allow(dead_code)]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 
