@@ -46,22 +46,32 @@ impl Into<String> for SymRef {
     }
 }
 
+impl AsRef<str> for SymRef {
+    fn as_ref(&self) -> &str {
+        unsafe {
+            let p = (*self.0).ptr;
+            let slice = slice::from_raw_parts(p.as_ptr(), (*self.0).len);
+            std::str::from_utf8_unchecked(slice)
+        }
+    }
+}
+
+impl AsRef<str> for SymID {
+    fn as_ref(&self) -> &str {
+        unsafe {
+            let p = (*self.0).ptr;
+            let slice = slice::from_raw_parts(p.as_ptr(), (*self.0).len);
+            std::str::from_utf8_unchecked(slice)
+        }
+    }
+}
+
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 pub(crate) struct SymID(*mut Sym);
 
 impl Debug for SymID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         debug_print_sym(self.0, f)
-    }
-}
-
-impl SymID {
-    fn as_str(&self) -> &str {
-        unsafe {
-            let p = (*self.0).ptr;
-            let slice = slice::from_raw_parts(p.as_ptr(), (*self.0).len);
-            std::str::from_utf8_unchecked(slice)
-        }
     }
 }
 
@@ -73,7 +83,7 @@ impl PartialOrd for SymID {
 
 impl Ord for SymID {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.as_str().cmp(other.as_str())
+        self.as_ref().cmp(other.as_ref())
     }
 }
 
