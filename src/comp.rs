@@ -83,6 +83,7 @@ pub struct R8Compiler {
     new_envs: Vec<(SymID, usize, usize)>,
     env: FnvHashMap<SymID, usize>,
     fns: FnvHashMap<SymID, Func>,
+    #[allow(dead_code)]
     debug_mode: bool,
 }
 
