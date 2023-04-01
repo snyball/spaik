@@ -1420,8 +1420,8 @@ impl R8VM {
             if let Some(QuasiMut::Unquote(s) | QuasiMut::USplice(s)) = v.quasi_mut() {
                 self.mem.stack.push(v);
                 unsafe { *s = self.macroexpand_pv(*s, false)? }
-                invalid!(v);
-                return Ok(self.mem.pop().unwrap())
+                invalid!(v); // macroexpand_pv
+                return Ok(self.mem.stack.pop().unwrap())
             }
         } else {
             let mut inds = 0;
@@ -1458,8 +1458,11 @@ impl R8VM {
         if bop == Some(Builtin::Quote) {
             Ok(v)
         } else if bop == Some(Builtin::Quasi) {
-            let i = v.inner()?;
-            v.set_inner(self.macroexpand_pv(i, true)?)?;
+            self.mem.stack.push(v);
+            let ni = self.macroexpand_pv(v.inner()?, true)?;
+            invalid!(v); // macroexpand_pv
+            v = self.mem.stack.pop().unwrap();
+            v.set_inner(ni)?;
             Ok(v)
         } else if v.is_atom() {
             Ok(v)
