@@ -103,3 +103,19 @@ fissile_types! {
 }
 ```
 
+If you would like to dereference a `PV` without `with_ref!`, this is what `with_ref` does internally:
+
+```rust
+match pv {
+    PV::Ref(p) => match to_fissile_ref(p) {
+        NkRef::Cons(p) => {
+            println!("pointer to Cons: {p:?}")
+        }
+        NkRef::Vector(p) => {
+            println!("pointer to Vec<PV>: {p:?}")
+        }
+        _ => Err(...)
+    }
+    _ => Err(...)
+}
+```
