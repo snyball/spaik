@@ -63,7 +63,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "repl"
 path = "src/bin/readline-repl.rs"
-required-features = ["repl", "readline"]
+required-features = ["readline"]
 
 [[bin]]
 name = "main"
@@ -81,4 +81,4 @@ path = "src/bin/scratch.rs"
 [[bin]]
 name = "wasm-repl"
 path = "src/bin/wasm-repl.rs"
-required-features = ["repl", "wasm"]
+required-features = ["wasm"]
