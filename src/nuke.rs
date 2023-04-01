@@ -334,6 +334,10 @@ impl GcRc {
     pub fn is_dropped(&mut self) -> bool {
         self.0.fetch_sub(1, atomic::Ordering::SeqCst) == 1
     }
+
+    pub fn is_owned(&mut self) -> bool {
+        self.0.load(atomic::Ordering::SeqCst) == 1
+    }
 }
 
 /// A `T` with a reference-counter stored right after it, uses repr(C) for
