@@ -115,8 +115,9 @@ impl REPL {
                        hist_path.to_string_lossy().style_info());
         }
         self.print_intro();
+        let prompt = "λ> ".style_prompt().to_string();
         while self.exit_status.is_none() {
-            let readline = rl.readline(&"λ> ".style_prompt().to_string());
+            let readline = rl.readline(&prompt);
             match readline {
                 Ok(line) => {
                     rl.add_history_entry(line.as_str());
