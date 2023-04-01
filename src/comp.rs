@@ -997,7 +997,7 @@ impl R8Compiler {
         Ok(())
     }
 
-    fn set_offsets(&mut self, vm: &R8VM) {
+    pub fn set_offsets(&mut self, vm: &R8VM) {
         self.code_offset = vm.pmem.len();
         self.const_offset = vm.mem.env.len();
     }

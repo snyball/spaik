@@ -1299,6 +1299,7 @@ impl R8VM {
                             let pv = self.mem.pop().unwrap();
                             self.macroexpand_pv(pv, false)?
                         };
+                        cc.set_offsets(self);
 
                         let excv = Excavator::new(&self.mem);
                         let ast = excv.to_ast(v)?;
