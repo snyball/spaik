@@ -1823,14 +1823,14 @@ impl R8VM {
                 // List processing
                 CAR() => {
                     let it = self.mem.pop()?;
-                    with_ref_mut!(it, Cons(p) => {
+                    with_ref!(it, Cons(p) => {
                         self.mem.push((*p).car);
                         Ok(())
                     }).map_err(|e| e.bop(Builtin::Car))?
                 },
                 CDR() => {
                     let it = self.mem.pop()?;
-                    with_ref_mut!(it, Cons(p) => {
+                    with_ref!(it, Cons(p) => {
                         self.mem.push((*p).cdr);
                         Ok(())
                     }).map_err(|e| e.bop(Builtin::Cdr))?
