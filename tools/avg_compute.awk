@@ -2,8 +2,8 @@
 ## from lines of numbers.
 
 BEGIN {
-    min = 2^64
-    max = -1
+    min = 2^1024
+    max = -min
 }
 
 {
