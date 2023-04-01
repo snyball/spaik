@@ -22,5 +22,12 @@ END {
     for (i in a)
         s2 += (a[i] - avg)^2
     std = sqrt(s2 / (n - 1))
-    print avg, min, max, a[int(n / 2)], std
+
+    print "{"
+    print "  \"mean\": "a[int(n / 2)]","
+    print "  \"stddev\": "std","
+    print "  \"avg\": "avg","
+    print "  \"min\": "min","
+    print "  \"max\": "max
+    print "}"
 }
