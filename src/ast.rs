@@ -127,6 +127,7 @@ impl Display for M {
             ($op:literal, $args:expr) => {{
                 write!(f, "({}", $op)?;
                 for arg in $args { write!(f, " {arg}")?; }
+                write!(f, ")")?;
             }};
         }
         match self {

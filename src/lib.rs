@@ -66,6 +66,7 @@ pub(crate) mod nuke;
 pub(crate) mod swym;
 pub(crate) mod stak;
 pub(crate) mod lisp_test;
+mod stack_gymnastics;
 pub use lisp_test::run_tests;
 #[cfg(feature = "modules")]
 pub(crate) mod module;

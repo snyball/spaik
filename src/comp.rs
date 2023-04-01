@@ -59,6 +59,7 @@ macro_rules! def_macros {
     };
 }
 
+#[derive(Debug)]
 pub enum Sym {
     Id(SymID),
     Str(String),
@@ -67,6 +68,7 @@ pub enum Sym {
 /**
  * Compile Value into R8C code.
  */
+#[derive(Debug)]
 pub struct R8Compiler {
     labels: LblMap,
     code: Vec<R8C>,
@@ -81,9 +83,10 @@ pub struct R8Compiler {
     new_envs: Vec<(SymID, usize, usize)>,
     env: FnvHashMap<SymID, usize>,
     fns: FnvHashMap<SymID, Func>,
+    debug_mode: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct LoopCtx {
     start: Lbl,
     end: Lbl,
@@ -154,6 +157,7 @@ impl R8Compiler {
     pub fn new(vm: &R8VM) -> R8Compiler {
         let mut cc = R8Compiler {
             const_offset: 0,
+            debug_mode: vm.get_debug_mode(),
             new_fns: Default::default(),
             estack: Default::default(),
             labels: Default::default(),
@@ -953,15 +957,13 @@ impl R8Compiler {
     }
 
     pub fn compile_top_tail(&mut self, code: AST2) -> Result<usize> {
+        let num = MODULE_COUNT.fetch_add(1, Ordering::SeqCst);
+        let name = format!("<σ>::{num}");
         self.compile(true, code)?;
         self.leave_fn();
         let pos = self.code.len() + self.code_offset;
         let sz = self.end_unit()?;
-        let num = MODULE_COUNT.fetch_add(1, Ordering::SeqCst);
-        self.new_fns.push((Sym::Str(format!("<σ>::{num}")),
-                           ArgSpec::none(),
-                           vec![],
-                           pos, sz));
+        self.new_fns.push((Sym::Str(name), ArgSpec::none(), vec![], pos, sz));
         Ok(pos)
     }
 
