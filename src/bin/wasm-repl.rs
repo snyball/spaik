@@ -121,7 +121,8 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 #[no_mangle]
 pub extern fn init() {
     panic::set_hook(Box::new(panic_hook));
-    colored::control::set_override(true);
+    #[cfg(feature = "extra")]
+    owo_colors::set_override(true);
     GLOBAL_REPL.lock().unwrap().print_intro();
 }
 
