@@ -549,8 +549,8 @@ impl<'a> Excavator<'a> {
         let name = match it.next().ok_or_else(err(0))? {
             PV::Sym(name) => name,
             e => return Err(error!(TypeError,
-                                   expect: Builtin::Symbol.sym(),
-                                   got: e.type_of()).argn(1))
+                                   expect: Builtin::Symbol,
+                                   got: e.bt_type_of()).argn(1))
         };
         let init = Box::new(self.dig(it.next().ok_or_else(err(1))?, src.clone())?);
         let extra = it.count() as u32;
@@ -598,8 +598,8 @@ impl<'a> Excavator<'a> {
                                             .bop(Builtin::ArgList))?;
             let name = name.sym()
                            .ok_or_else(|| error!(TypeError,
-                                                 expect: Builtin::Symbol.sym(),
-                                                 got: name.type_of())
+                                                 expect: Builtin::Symbol,
+                                                 got: name.bt_type_of())
                                        .argn(1).bop(Builtin::ArgList))?;
             let arglist = self.arg_parse(it.into(), src.clone())?;
             Ok(AST2 { kind: M::Defun(name, arglist, body?),

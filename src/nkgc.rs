@@ -245,8 +245,8 @@ impl TryFrom<PV> for f64 {
             Ok(v as f64)
         } else {
             err!(TypeError,
-                 expect: Builtin::Float.sym(),
-                 got: value.type_of())
+                 expect: Builtin::Float,
+                 got: value.bt_type_of())
         }
     }
 }
@@ -259,8 +259,8 @@ impl TryFrom<PV> for SymID {
             Ok(v)
         } else {
             err!(TypeError,
-                 expect: Builtin::Symbol.sym(),
-                 got: value.type_of())
+                 expect: Builtin::Symbol,
+                 got: value.bt_type_of())
         }
     }
 }
@@ -672,8 +672,8 @@ impl PV {
                 return Ok(())
             }
         };
-        Err(ErrorKind::TypeError { expect: Builtin::Cons.sym(),
-                                   got: e.type_of() }.into())
+        Err(ErrorKind::TypeError { expect: Builtin::Cons,
+                                   got: e.bt_type_of() }.into())
     }
 
     // TODO: Create force_real, force_bool, etc, as well as int()->Option<i64>

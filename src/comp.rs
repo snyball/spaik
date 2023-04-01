@@ -460,8 +460,8 @@ impl R8Compiler {
     fn gapp(&mut self, ret: bool, op: AST2, args: Vec<AST2>) -> Result<()> {
         if !matches!(op.type_of(), Builtin::Unknown | Builtin::Lambda) {
             return Err(error!(TypeError,
-                              expect: Builtin::Lambda.sym(),
-                              got: op.type_of().sym())
+                              expect: Builtin::Lambda,
+                              got: op.type_of())
                        .src(op.src).argn(0).bop(Builtin::Apply))
         }
         self.compile(true, op)?;

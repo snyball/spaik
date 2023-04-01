@@ -321,8 +321,8 @@ mod sysfns {
                 err!(LibError, name)
             } else {
                 Err(error!(TypeError,
-                           expect: Builtin::Symbol.sym(),
-                           got: x.type_of())
+                           expect: Builtin::Symbol,
+                           got: x.bt_type_of())
                     .bop(Builtin::Error)
                     .argn(1))
             }
@@ -478,8 +478,8 @@ mod sysfns {
             match args {
                 [PV::Sym(id)] => Ok(PV::Int((*id).try_into()?)),
                 [x] => Err(error!(TypeError,
-                                  expect: Builtin::Symbol.sym(),
-                                  got: x.type_of(),)
+                                  expect: Builtin::Symbol,
+                                  got: x.bt_type_of(),)
                            .bop(Builtin::SymID)
                            .argn(1)),
                 _ => ArgSpec::normal(1).check(Builtin::SymID.sym(), args.len() as u16)
@@ -1897,8 +1897,8 @@ impl R8VM {
                     let idx = match self.mem.pop()? {
                         PV::Int(x) => x as usize,
                         x => return Err(error!(TypeError,
-                                               expect: Builtin::Integer.sym(),
-                                               got: x.type_of()).bop(op).argn(2))
+                                               expect: Builtin::Integer,
+                                               got: x.bt_type_of()).bop(op).argn(2))
                     };
                     let vec = self.mem.pop()?;
                     let elem = with_ref!(vec, Vector(v) => {
@@ -1912,8 +1912,8 @@ impl R8VM {
                     let idx = match self.mem.pop()? {
                         PV::Int(x) => x as usize,
                         x => return Err(error!(TypeError,
-                                               expect: Builtin::Integer.sym(),
-                                               got: x.type_of()).bop(op).argn(2))
+                                               expect: Builtin::Integer,
+                                               got: x.bt_type_of()).bop(op).argn(2))
                     };
                     let vec = self.mem.pop()?;
                     let val = self.mem.pop()?;

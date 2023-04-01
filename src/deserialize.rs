@@ -355,13 +355,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 visitor.visit_str(ident)
             } else {
                 Err(error!(TypeError,
-                     expect: Builtin::Keyword.sym(),
-                     got: Builtin::Symbol.sym()))
+                     expect: Builtin::Keyword,
+                     got: Builtin::Symbol))
             }
         } else {
             Err(error!(TypeError,
-                 expect: Builtin::Symbol.sym(),
-                 got: self.input.type_of()))
+                 expect: Builtin::Symbol,
+                 got: self.input.bt_type_of()))
         }
     }
 

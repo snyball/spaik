@@ -185,7 +185,7 @@ pub enum ErrorKind {
     IllegalInstruction { inst: R8C },
     STypeError { expect: String, got: String },
     UnexpectedDottedList,
-    TypeError { expect: SymID, got: SymID },
+    TypeError { expect: Builtin, got: Builtin },
     TypeNError { expect: Vec<SymID>, got: SymID },
     ArgTypeError { expect: Vec<SymID>, got: Vec<SymID> },
     IfaceNotImplemented { got: Vec<SymID> },
@@ -305,9 +305,9 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             write!(f, "Illegal instruction: <{}>", inst)?,
         TypeError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
-                   nameof(*expect),
+                   nameof(expect.sym()),
                    FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta },
-                   nameof(*got))?,
+                   nameof(got.sym()))?,
         STypeError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
                    expect,

@@ -556,8 +556,8 @@ impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
             let msg = deserialize::from_pv(msg, mem)?;
             if cont.type_of() != Builtin::Continuation.sym() {
                 return err!(TypeError,
-                            expect: Builtin::Continuation.sym(),
-                            got: cont.type_of());
+                            expect: Builtin::Continuation,
+                            got: cont.bt_type_of());
             }
             let cont = Some(mem.make_extref(cont));
             Ok(Promise { msg, cont })
