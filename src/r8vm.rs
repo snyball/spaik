@@ -1223,7 +1223,6 @@ impl R8VM {
         macro_rules! wrap {
             ($push:expr) => {{
                 $push;
-                // let mut last = None;
                 while let Some(op) = mods.pop() {
                     let p = self.mem.pop().expect("No expr to wrap");
                     match op {
@@ -1238,11 +1237,6 @@ impl R8VM {
                         }
                     }
                 }
-                // Special case for `(x y . ,(f x)) and `(x y . ,z)
-                // if last == Some(Builtin::Unquote) &&
-                //    (dot || dots.get(dots.len()-1).copied() == Some(true)) {
-                //     self.mem.list(1);
-                // }
             }};
         }
         macro_rules! assert_no_trailing {
