@@ -53,10 +53,8 @@ There are 3 main options:
    `pv = vm.mem.pop().unwrap()` after evaluation finishes.
    - Some of the hairiest bits of the VM, like `R8VM::macroexpand_pv` are
      examples of this approach.
-   - The convetion `// XXX: undef: (x, y, z) <- do not use past this point`
-     is used to document variables becoming invalidated.
-     - **Do not rely on all invalidated variables being documented, many are
-       not**
+   - SPAIK uses the convention `invalid!(x, y, z) // <function that made them invalid>` for marking variables that become invalidated.
+     - **Do not rely on all invalidated variables being documented**
 
 ### NkAtom layout
 

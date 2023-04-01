@@ -1474,12 +1474,11 @@ impl R8VM {
                     _ => {
                         self.mem.push(v);
                         let ncar = self.macroexpand_pv(r, quasi);
-                        // XXX: undef: (car, cdr, r) <- do not use past this point
-                        // v still valid as it was pushed to the stack first
                         v = self.mem.pop().unwrap();
                         ncar
                     }
                 };
+                invalid!(car, cdr, r); // ^ macroexpand_pv
                 let PV::Ref(p) = v else { unreachable!() };
                 let cns = unsafe { fastcast_mut::<Cons>(p) };
                 unsafe {

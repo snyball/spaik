@@ -111,3 +111,7 @@ macro_rules! minto {
         &[$($v.into()),+]
     };
 }
+
+macro_rules! invalid {
+    ($($pv:ident),+) => {{ $(drop($pv);)+ }};
+}
