@@ -22,15 +22,12 @@ lto = "fat"
 opt-level = "s"
 
 [features]
-default = ["repl", "lisp-test", "math", "readline", "serde", "derive"]
-repl = ["colored"]
-extra = ["comfy-table"]
+default = ["math", "extra", "readline", "derive"]
+extra = ["comfy-table", "owo-colors"]
 readline = ["rustyline", "dirs"]
-lisp-test = ["colored"]
 wasm = ["wasm-bindgen"]
 math = ["glam"]
-modules = ["bincode", "serde"]
-serde = []
+modules = ["bincode"]
 derive = ["spaik-proc-macros"]
 
 [dependencies]
@@ -46,14 +43,14 @@ bincode = { version = "1.3.3", optional = true }
 comfy-table = { version = "5.0.0", optional = true, default-features = false, features = [] }
 dirs = { version = "4.0.0", optional = true }
 rustyline = { version = "6.2", optional = true }
-colored = { version = "2.0", optional = true }
 glam = { version = "0.21.3", optional = true, features = ["mint", "serde"] }
+owo-colors = { version = "3.5.0", optional = true }
 
 [target.'cfg(all(target_env = "musl", target_pointer_width = "64"))'.dependencies.jemallocator]
 version = "0.3.2"
 
 [dev-dependencies]
-pretty_env_logger = "0.4.0"
+pretty_env_logger = "0.4"
 
 [build-dependencies]
 wasm-bindgen = { version = "0.2.79", optional = true }

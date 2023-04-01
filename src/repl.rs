@@ -10,16 +10,16 @@ use crate::compile::Builtin;
 use crate::error::{Error, ErrorKind};
 use crate::fmt::LispFmt;
 use std::path::Path;
-use colored::*;
+use crate::stylize::Stylize;
 
 #[allow(unused)]
 fn make_intro() -> String {
     format!("{read} {arrow} {eval} {arrow} {print} {arrow} {loop}
  ┗━━━━━━━━━━━━━━━━━━━━━━┛\n",
-            read="read".blue().bold().underline(),
-            eval="eval".blue().bold().underline(),
-            print="print".blue().bold().underline(),
-            loop="loop".blue().bold().underline(),
+            read="read".style_ret(),
+            eval="eval".style_ret(),
+            print="print".style_ret(),
+            loop="loop".style_ret(),
             arrow="➟"
     )
 }
@@ -67,7 +67,7 @@ impl REPL {
         match self.vm.eval(code) {
             Ok(PV::Nil) => {}
             Ok(res) => {
-                vmprint!(self.vm, "{}", "=> ".blue().bold());
+                vmprint!(self.vm, "{}", "=> ".style_ret());
                 vmprintln!(self.vm, "{}", res.lisp_to_string(&self.vm));
             },
             Err(e) => {
@@ -111,12 +111,12 @@ impl REPL {
         let mut rl = Editor::<()>::new();
         if rl.load_history(&hist_path).is_err() {
             vmprintln!(self.vm, "{} {}",
-                       "Warning: No history log, will be created in".yellow().bold(),
-                       hist_path.to_string_lossy().white().bold());
+                       "Warning: No history log, will be created in".style_warning(),
+                       hist_path.to_string_lossy().style_info());
         }
         self.print_intro();
         while self.exit_status.is_none() {
-            let readline = rl.readline(&"λ> ".white().bold());
+            let readline = rl.readline(&"λ> ".style_prompt().to_string());
             match readline {
                 Ok(line) => {
                     rl.add_history_entry(line.as_str());

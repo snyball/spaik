@@ -65,9 +65,7 @@ pub(crate) mod tok;
 pub(crate) mod nuke;
 pub(crate) mod swym;
 pub(crate) mod stak;
-#[cfg(feature = "lisp-test")]
 pub(crate) mod lisp_test;
-#[cfg(feature = "lisp-test")]
 pub use lisp_test::run_tests;
 #[cfg(feature = "modules")]
 pub(crate) mod module;
@@ -77,10 +75,9 @@ pub(crate) mod limits;
 #[cfg(feature = "math")]
 pub(crate) mod math;
 pub(crate) mod comp;
-
-#[cfg(feature = "repl")]
 pub mod repl;
 pub mod scratch;
+pub mod stylize;
 
 #[cfg(feature = "derive")]
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};

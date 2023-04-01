@@ -16,6 +16,7 @@ use crate::{
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree, sexpr_modified_sym_to_str},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
+    stylize::Stylize,
 };
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::{self, addr_of_mut}, sync::Mutex, path::Path};
@@ -388,17 +389,17 @@ mod sysfns {
         }
 
         fn disassemble(&mut self, vm: &mut R8VM, args: (func)) -> Result<PV> {
-            featurefn!("repl", vm.dump_fn_code((*func).try_into()?)?)?;
+            vm.dump_fn_code((*func).try_into()?)?;
             Ok(PV::Nil)
         }
 
         fn dump_all_fns(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
-            featurefn!("repl", vm.dump_all_fns()?)?;
+            vm.dump_all_fns()?;
             Ok(PV::Nil)
         }
 
         fn dump_code(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
-            featurefn!("repl", vm.dump_code()?)?;
+            vm.dump_code()?;
             Ok(PV::Nil)
         }
 
@@ -2251,7 +2252,6 @@ impl R8VM {
         *self.stdin.lock().unwrap() = inp;
     }
 
-    #[cfg(feature = "repl")]
     pub fn dump_all_fns(&self) -> Result<()> {
         let mut funks = self.funcs.iter().map(|(k, v)| ((*k).into(), v.pos)).collect::<Vec<_>>();
         funks.sort_by_key(|(_, v)| *v);
@@ -2261,7 +2261,6 @@ impl R8VM {
         Ok(())
     }
 
-    #[cfg(feature = "repl")]
     pub fn dump_code(&self) -> Result<()> {
         for (i, op) in self.pmem.iter().enumerate() {
             println!("{i:0>8}    {op}")
@@ -2269,10 +2268,7 @@ impl R8VM {
         Ok(())
     }
 
-    #[cfg(feature = "repl")]
     pub fn dump_fn_code(&self, mut name: SymID) -> Result<()> {
-        use colored::*;
-
         if let Some(mac_fn) = self.macros.get(&name.into()) {
             name = *mac_fn;
         }
@@ -2302,7 +2298,8 @@ impl R8VM {
                              vec![labels.get(&((pos + delta - start) as u32))
                                         .map(|lbl| format!("{}", lbl))
                                         .unwrap_or(format!("{}", delta))
-                                        .yellow().to_string()]))
+                                        .style_asm_label_ref()
+                                        .to_string()]))
             }
             let sym_name = |sym: SymIDInt| self.sym_name(sym.into()).to_string();
             Some((op.name().to_lowercase(), match op {
@@ -2314,19 +2311,19 @@ impl R8VM {
 
         let mut stdout = self.stdout.lock().unwrap();
         writeln!(stdout, "{}({}):",
-                 self.sym_name(name).cyan().bold(),
+                 self.sym_name(name).style_asm_fn(),
                  func.args)?;
         for i in start..start+(func.sz as isize) {
             let op = self.pmem[i as usize];
             if let Some(s) = labels.get(&((i - start) as u32)) {
-                writeln!(stdout, "{}:", s.to_string().yellow().bold())?;
+                writeln!(stdout, "{}:", s.style_asm_label())?;
             }
             let (name, args) = fmt_special(i, op).unwrap_or(
                 (op.name().to_lowercase(),
                  op.args().iter().map(|v| v.to_string()).collect())
             );
             writeln!(stdout, "    {} {}",
-                     name.blue().bold(),
+                     name.style_asm_op(),
                      args.join(", "))?;
         }
 

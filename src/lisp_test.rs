@@ -2,7 +2,7 @@ use crate::FmtErr;
 use crate::r8vm::R8VM;
 use crate::SPV;
 use crate::Builtin;
-use colored::*;
+use crate::stylize::Stylize;
 use std::fmt;
 use std::error::Error;
 use std::fs;
@@ -107,12 +107,16 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
         match vm.call_spv(*func, ()) {
             Ok(res) => match TestResult::new(res, &mut vm) {
                 Some(TestResult::Pass) =>
-                    vmprintln!(vm, "test {} ... [{}]", name.bold(), "✓".green().bold()),
+                    vmprintln!(vm, "test {} ... [{}]",
+                               name.style_info(),
+                               "✓".style_success()),
                 Some(TestResult::Fail { expect, got }) => {
                     let expect = expect.to_string(&vm);
                     let got = got.to_string(&vm);
 
-                    vmprintln!(vm, "test {} ... [{}]", name.red().bold(), "✘".red().bold());
+                    vmprintln!(vm, "test {} ... [{}]",
+                               name.style_error(),
+                               "✘".style_error());
                     vmprintln!(vm, "     Expected:");
                     for line in expect.lines() {
                         vmprintln!(vm, "       {}", line);
@@ -127,7 +131,9 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                 _ => ()
             }
             Err(e) => {
-                vmprintln!(vm, "test {} [{}]", name.red().bold(), "✘".red().bold());
+                vmprintln!(vm, "test {} [{}]",
+                           name.style_error(),
+                           "✘".style_error());
                 for line in e.to_string(&vm).lines() {
                     vmprintln!(vm, "     {}", line);
                 }
