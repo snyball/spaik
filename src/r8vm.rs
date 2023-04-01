@@ -1443,6 +1443,7 @@ impl R8VM {
 
                 let pos = func.pos;
                 unsafe { self.run_from_unwind(pos)?; }
+                invalid!(v); // run_from_unwind
                 v = self.mem.pop().expect("Function did not return a value");
                 inds += 1;
                 if inds > ind_lim {

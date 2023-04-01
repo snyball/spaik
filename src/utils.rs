@@ -112,6 +112,15 @@ macro_rules! minto {
     };
 }
 
+/// SPAIK uses the convention:
+/// ```
+/// invalid!(x, y, z) // <function that made them invalid>
+/// ```
+/// for marking variables that become invalidated, and may have pointers that no
+/// longer point to valid data. Do not access any variable after invalid!(...)
+/// has marked them, even if rustc will let you!
+///
+/// **Do not rely on all invalidated variables being documented**
 macro_rules! invalid {
     ($($pv:ident),+) => {{ $(drop($pv);)+ }};
 }
