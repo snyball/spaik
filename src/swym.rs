@@ -41,7 +41,7 @@ impl Into<String> for SymRef {
         unsafe {
             let p = self.0;
             mem::forget(self);
-            take_inner_string(p).unwrap()
+            take_inner_string(p)
         }
     }
 }
@@ -172,7 +172,7 @@ impl PartialEq for SymKeyRef {
 
 impl Eq for SymKeyRef {}
 
-unsafe fn take_inner_string(p: *mut Sym) -> Option<String> {
+unsafe fn take_inner_string(p: *mut Sym) -> String {
     let layout = Layout::from_size_align_unchecked(
         mem::size_of::<Sym>(),
         mem::align_of::<Sym>(),
@@ -180,12 +180,13 @@ unsafe fn take_inner_string(p: *mut Sym) -> Option<String> {
     if (*p).rc.is_owned() {
         let s = String::from_raw_parts((*p).ptr.as_ptr(), (*p).len, (*p).sz);
         dealloc(p as *mut u8, layout);
-        Some(s)
+        s
     } else {
         let mut s = String::with_capacity((*p).len);
         memcpy(s.as_mut_ptr(), (*p).ptr.as_ptr(), (*p).len);
         s.as_mut_vec().set_len((*p).len);
-        Some(s)
+        (*p).rc.is_dropped();
+        s
     }
 }
 
@@ -330,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn go_for_a_swym_and_into_a_hashset() {
+    fn go_for_a_swym_and_jump_into_a_hashset() {
         let mut swym = SwymDb::default();
         let lmao1 = swym.put("lmao".to_string());
         let ayy = swym.put("ayy".to_string());
@@ -351,6 +352,32 @@ mod tests {
         hm_cmp.insert(String::from("lmao"));
         assert_eq!(hm, hm_cmp);
     }
+
+    #[test]
+    fn go_for_a_swym_and_jump_into_a_hashset_the_next_day() {
+        let mut swym = SwymDb::default();
+        {
+            let lmao1 = swym.put("lmao".to_string());
+            let ayy = swym.put("ayy".to_string());
+            let lmao2 = swym.put("lmao".to_string());
+            assert_eq!(lmao1, lmao2);
+            assert_eq!(lmao1.0, lmao2.0);
+            for _ in 0..1000 {
+                let ayy_n = swym.put("ayy".to_string());
+                assert_eq!(ayy_n, ayy);
+            }
+            for _ in 0..100 {
+                let lmao_n = swym.put("lmao".to_string());
+                assert_eq!(lmao1, lmao_n);
+            }
+        }
+        let hm: FnvHashSet<String> = swym.into();
+        let mut hm_cmp = FnvHashSet::default();
+        hm_cmp.insert(String::from("ayy"));
+        hm_cmp.insert(String::from("lmao"));
+        assert_eq!(hm, hm_cmp);
+    }
+
 
     #[test]
     fn hopefully_dont_take_a_hike() {
