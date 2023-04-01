@@ -44,7 +44,7 @@ comfy-table = { version = "5.0.0", optional = true, default-features = false, fe
 dirs = { version = "4.0.0", optional = true }
 rustyline = { version = "6.2", optional = true }
 glam = { version = "0.21.3", optional = true, features = ["mint", "serde"] }
-owo-colors = { version = "3.5.0", optional = true }
+owo-colors = { version = "3.5.0", optional = true, features = ["supports-colors"] }
 
 [target.'cfg(all(target_env = "musl", target_pointer_width = "64"))'.dependencies.jemallocator]
 version = "0.3.2"
