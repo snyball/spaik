@@ -65,7 +65,9 @@ pub(crate) mod tok;
 pub(crate) mod nuke;
 pub(crate) mod swym;
 pub(crate) mod stak;
+#[cfg(feature = "lisp-test")]
 pub(crate) mod lisp_test;
+#[cfg(feature = "lisp-test")]
 pub use lisp_test::run_tests;
 #[cfg(feature = "modules")]
 pub(crate) mod module;

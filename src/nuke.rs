@@ -771,7 +771,6 @@ fissile_types! {
     (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
     (Intr, Builtin::Intr.sym(), crate::nuke::Intr),
     (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
-    (VLambda, Builtin::Lambda.sym(), crate::nkgc::VLambda),
     (String, Builtin::String.sym(), std::string::String),
     (PV, Builtin::Ref.sym(), crate::nkgc::PV),
     (Vector, Builtin::Vector.sym(), Vec<PV>),
