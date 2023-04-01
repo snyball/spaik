@@ -57,9 +57,9 @@ the allocated object, and `meta` holds the type and [color][2] of the object.
 
 [2]: https://en.wikipedia.org/wiki/Tracing_garbage_collection#Tri-color_marking
 
-Strangely missing however is the object itself, where is that? It's actually
-just stored directly after the `NkAtom`, but the definition neglects to mention
-that. This is how we can turn an `NkAtom` into the `T` it contains
+Strangely missing however is the object itself. It's actually just stored
+directly after the `NkAtom`, but the definition neglects to mention that. This
+is how we can turn an `NkAtom` into the `T` it contains
 
 ```rust
 pub unsafe fn fastcast_mut<T>(atom: *mut NkAtom) -> *mut T {
