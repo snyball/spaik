@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 #[cfg(feature = "extra")]
 use owo_colors::{OwoColorize, Styled, style};
 
@@ -20,7 +18,8 @@ macro_rules! def_styles {
         }
         #[cfg(not(feature = "extra"))]
         impl<T> Stylize for T {
-            $(#[inline(always)] fn $name(&self) -> &T { self })*
+            $(#[inline(always)]
+              fn $name(&self) -> &T { self })*
         }
     };
 }
