@@ -119,10 +119,9 @@ macro_rules! vmprint {
 
 #[allow(unused_macros)]
 macro_rules! vmprintln {
-    ($vm:expr, $($fmt:expr),+) => {
-        $vm.print_fmt(format_args!($($fmt),+)).unwrap();
-        $vm.println(&"").unwrap();
-    };
+    ($vm:expr, $($fmt:expr),+) => {{
+        $vm.println_fmt(format_args!($($fmt),+)).unwrap();
+    }};
 }
 
 #[derive(Debug, Clone)]
@@ -563,8 +562,7 @@ mod sysfns {
 
     unsafe impl Subr for dump_gc_stats {
         fn call(&mut self, vm: &mut R8VM, _args: &[PV]) -> Result<PV> {
-            vm.print_fmt(format_args!("{:?}", vm.mem.stats()))?;
-            vm.println(&"")?;
+            vm.println_fmt(format_args!("{:?}", vm.mem.stats()))?;
             Ok(PV::Nil)
         }
         fn name(&self) -> &'static str { "dump-gc-stats" }
@@ -2225,6 +2223,13 @@ impl R8VM {
 
     pub fn print_fmt(&mut self, args: fmt::Arguments) -> Result<()> {
         self.stdout.lock().unwrap().write_fmt(args)?;
+        Ok(())
+    }
+
+    pub fn println_fmt(&mut self, args: fmt::Arguments) -> Result<()> {
+        let mut out = self.stdout.lock().unwrap();
+        out.write_fmt(args)?;
+        out.write(b"\n")?;
         Ok(())
     }
 

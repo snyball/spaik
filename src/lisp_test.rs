@@ -1,17 +1,10 @@
-#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
-use jemallocator::Jemalloc;
-#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
-
-use spaik::FmtErr;
-use spaik::raw::r8vm::R8VM;
-use spaik::SPV;
-use spaik::Builtin;
+use crate::FmtErr;
+use crate::raw::r8vm::R8VM;
+use crate::SPV;
+use crate::Builtin;
 use colored::*;
 use std::fmt;
 use std::error::Error;
-use std::process::exit;
 use std::fs;
 
 enum TestResult {
@@ -40,13 +33,13 @@ impl TestResult {
 }
 
 #[derive(Debug)]
-enum TestError {
+pub enum TestError {
     WrongResult {
         expect: String,
         got: String,
     },
     RuntimeError {
-        origin: spaik::IError,
+        origin: crate::error::Error,
     }
 }
 
@@ -74,14 +67,14 @@ impl Error for TestError {
     }
 }
 
-fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
+pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let mut vm = R8VM::new();
     let tests_path = "./tests";
     let test = vm.sym_id("test");
     vm.eval(r#"(push sys/load-path "./lisp")"#).fmt_unwrap(&vm);
 
     if let Err(e) = vm.load(test) {
-        println!("{}", e.to_string(&vm));
+        vmprintln!(vm, "{}", e.to_string(&vm));
         return Err(e.into());
     }
 
@@ -89,11 +82,11 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                                          .collect::<Result<Vec<_>, _>>()?;
     for path in paths {
         match vm.read_compile_from(&path) {
-            Ok(_) => println!("Loaded {}", path.display()),
+            Ok(_) => vmprintln!(vm, "Loaded {}", path.display()),
             Err(e) => {
-                println!("Error when loading {}", path.display());
+                vmprintln!(vm, "Error when loading {}", path.display());
                 let s = e.to_string(&vm);
-                println!("{}", s);
+                vmprintln!(vm, "{}", s);
                 return Err(s.into());
             },
         }
@@ -105,7 +98,7 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let test_fns = vm.get_funcs_with_prefix(test_fn_prefix);
     let mut err_results = vec![];
 
-    println!("Running tests ...");
+    vmprintln!(vm, "Running tests ...");
     for func in test_fns.iter() {
         let name = vm.sym_name(*func)
                      .chars()
@@ -114,19 +107,19 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
         match vm.call_spv(*func, ()) {
             Ok(res) => match TestResult::new(res, &mut vm) {
                 Some(TestResult::Pass) =>
-                    println!("  - {} [{}]", name.bold(), "✓".green().bold()),
+                    vmprintln!(vm, "test {} ... [{}]", name.bold(), "✓".green().bold()),
                 Some(TestResult::Fail { expect, got }) => {
                     let expect = expect.to_string(&vm);
                     let got = got.to_string(&vm);
 
-                    println!("  - {} [{}]", name.red().bold(), "✘".red().bold());
-                    println!("    Expected:");
+                    vmprintln!(vm, "test {} ... [{}]", name.red().bold(), "✘".red().bold());
+                    vmprintln!(vm, "     Expected:");
                     for line in expect.lines() {
-                        println!("      {}", line);
+                        vmprintln!(vm, "       {}", line);
                     }
-                    println!("    Got:");
+                    vmprintln!(vm, "     Got:");
                     for line in got.to_string().lines() {
-                        println!("      {}", line);
+                        vmprintln!(vm, "       {}", line)
                     }
 
                     err_results.push(TestError::WrongResult { expect, got });
@@ -134,9 +127,9 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                 _ => ()
             }
             Err(e) => {
-                println!("  - {} [{}]", name.red().bold(), "✘".red().bold());
+                vmprintln!(vm, "test {} [{}]", name.red().bold(), "✘".red().bold());
                 for line in e.to_string(&vm).lines() {
-                    println!("    {}", line)
+                    vmprintln!(vm, "     {}", line);
                 }
                 err_results.push(TestError::RuntimeError { origin: e })
             },
@@ -144,13 +137,6 @@ fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     }
 
     Ok(err_results)
-}
-
-fn main() {
-    exit(match run_tests() {
-        Ok(_) => 0,
-        Err(_) => 1
-    })
 }
 
 #[cfg(test)]
