@@ -864,13 +864,15 @@ impl NkAtom {
 #[inline]
 pub unsafe fn fastcast<T>(atom: *const NkAtom) -> *const T {
     const DELTA: isize = mem::size_of::<NkAtom>() as isize;
-    (atom as *const u8).offset(DELTA) as *mut T
+    let p = (atom as *const u8).offset(DELTA);
+    align(p, align_of::<T>() as isize) as *mut T
 }
 
 #[inline]
 pub unsafe fn fastcast_mut<T>(atom: *mut NkAtom) -> *mut T {
     const DELTA: isize = mem::size_of::<NkAtom>() as isize;
-    (atom as *mut u8).offset(DELTA) as *mut T
+    let p = (atom as *mut u8).offset(DELTA);
+    align_mut(p, align_of::<T>() as isize) as *mut T
 }
 
 #[inline]
@@ -975,8 +977,11 @@ pub struct Nuke {
 /// address starting at `p`, where a storage class of alignment `a` can be
 /// placed (Note that T is arbtrary and is not used in the calculation, see
 /// Layout::* for getting the alignment for a type.)
-fn align<T>(p: *mut T, a: isize) -> *mut T {
+fn align_mut<T>(p: *mut T, a: isize) -> *mut T {
     (((p as isize) + a - 1) & !(a - 1)) as *mut T
+}
+fn align<T>(p: *const T, a: isize) -> *const T {
+    (((p as isize) + a - 1) & !(a - 1)) as *const T
 }
 
 /// Equivalent to memcpy from ANSI C, void* and all. In almost all cases this is
@@ -1053,7 +1058,7 @@ impl Nuke {
                 self.reloc.push(node, npos);
                 memmove(npos, node, sz); // memcpy should work, but miri no likey
             }
-            start = align(start.add(sz), ALIGNMENT);
+            start = align_mut(start.add(sz), ALIGNMENT);
             if next_node.is_null() {
                 break;
             } else {
@@ -1120,7 +1125,7 @@ impl Nuke {
             }
 
             (*npos).set_color(Color::White);
-            start = align(start.add(sz), ALIGNMENT);
+            start = align_mut(start.add(sz), ALIGNMENT);
 
             if next_node.is_null() {
                 (*npos).next = ptr::null_mut();
@@ -1148,7 +1153,7 @@ impl Nuke {
         let mut new_vec: Vec<u8> = Vec::with_capacity(new_sz);
         #[allow(clippy::uninit_vec)]
         new_vec.set_len(new_sz);
-        let mut mem = align(new_vec.as_mut_ptr(),
+        let mut mem = align_mut(new_vec.as_mut_ptr(),
                             mem::align_of::<NkAtom>() as isize);
         let mut new_node = ptr::null_mut();
         let mut node = self.fst_mut();
@@ -1157,7 +1162,7 @@ impl Nuke {
             memcpy(mem, node, sz);
             self.reloc.push(node, mem);
             new_node = mem as *mut NkAtom;
-            mem = align(mem.add(sz), ALIGNMENT);
+            mem = align_mut(mem.add(sz), ALIGNMENT);
             (*new_node).next = mem as *mut NkAtom;
             node = (*node).next;
 
@@ -1190,12 +1195,12 @@ impl Nuke {
     }
 
     pub fn fst_mut(&mut self) -> *mut NkAtom {
-        align(self.mem.as_mut_ptr() as *mut NkAtom,
+        align_mut(self.mem.as_mut_ptr() as *mut NkAtom,
               mem::align_of::<NkAtom>() as isize)
     }
 
     pub fn fst(&self) -> *const NkAtom {
-        align(self.mem.as_ptr() as *mut NkAtom,
+        align_mut(self.mem.as_ptr() as *mut NkAtom,
               mem::align_of::<NkAtom>() as isize)
     }
 
@@ -1206,9 +1211,9 @@ impl Nuke {
     }
 
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
-        let cur = align(self.free as *mut NkAtom, ALIGNMENT);
+        let cur = align_mut(self.free as *mut NkAtom, ALIGNMENT);
         let p = (cur as *mut u8).add(mem::size_of::<NkAtom>()) as *mut T;
-        let pa = align(p, align_of::<T>() as isize);
+        let pa = align_mut(p, align_of::<T>() as isize);
         let full_sz = mem::size_of::<T>()
                     + mem::size_of::<NkAtom>()
                     + ((pa as *const u8 as usize) - (p as *const u8 as usize));

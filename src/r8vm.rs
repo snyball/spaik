@@ -1474,6 +1474,8 @@ impl R8VM {
                     _ => {
                         self.mem.push(v);
                         let ncar = self.macroexpand_pv(r, quasi);
+                        // XXX: undef: (car, cdr, r) <- do not use past this point
+                        // v still valid as it was pushed to the stack first
                         v = self.mem.pop().unwrap();
                         ncar
                     }

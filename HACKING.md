@@ -5,7 +5,7 @@
 - `PV` Primitive Value
 - `*mut NkAtom` Atom Pointer
 
-A `PV` is the Lisp primitive value, it can be a float, integer, symbol, etc. or
+`PV` is the Lisp primitive value, it can be a float, integer, symbol, etc. or
 it can refer to GC memory via a `PV::Ref(*mut NkAtom)` pointer. Interacting with
 a `PV` is always `unsafe`, and occasionally highly precarious. SPAIK uses a
 moving garbage collector, which means that even if the referenced memory is a
@@ -18,7 +18,7 @@ In practice, you have to maintain the following invariant:
 [1]: https://en.wikipedia.org/wiki/Tracing_garbage_collection
 
 So if you acquire a `PV`, that value is valid until some manner of `eval`
-happens, which could potentially lead to `Arena::sweep_compact`.
+happens, because any evaluation of code can cause a garbage collection sweep.
 
 ### Interacting with primitive values
 
@@ -38,6 +38,25 @@ The `with_ref!` macro typechecks and constructs appropriate error messages.
 
 Note: Information about what operation was performed (in this case car,) is
 added with the `e.bop(Builtin::Op)` call (bop, for built-in-operation.)
+
+### What if I need to keep a PV around?
+
+There are 3 main options:
+
+1. Just keep it in the VM, and never store it permanently somewhere on the Rust
+   stack/heap.
+2. Use `SPV`, call `Arena::make_extref(pv)` and receive a Safe Primitive Value,
+   a thread-safe way to refer to a SPAIK GC object.
+   - `SpaikPlug` uses this to implement async/await.
+3. If performance is a concern, you can push/pop the value to/from the VM stack.
+   Whenever you do anything that leads to eval do `vm.mem.push(pv)` and then
+   `pv = vm.mem.pop().unwrap()` after evaluation finishes.
+   - Some of the hairiest bits of the VM, like `R8VM::macroexpand_pv` are
+     examples of this approach.
+   - The convetion `// XXX: undef: (x, y, z) <- do not use past this point`
+     is used to document variables becoming invalidated.
+     - **Do not rely on all invalidated variables being documented, many are
+       not**
 
 ### NkAtom layout
 
@@ -103,7 +122,8 @@ fissile_types! {
 }
 ```
 
-If you would like to dereference a `PV` without `with_ref!`, this is what `with_ref` does internally:
+If you would like to dereference a `PV` without `with_ref!`, this is what
+`with_ref!` does internally:
 
 ```rust
 match pv {
