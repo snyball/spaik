@@ -32,8 +32,9 @@ with_ref!(it, Cons(p) => {
 }).map_err(|e| e.bop(Builtin::Car))?
 ```
 
-The `with_ref!` macro typechecks and constructs appropriate error messages like.
-Information about what operation was performed (in this case car,) is added with
-the `e.bop(Builtin::Op)` call.
+The `with_ref!` macro typechecks and constructs appropriate error messages.
 
 > Type Error: Expected one of (cons) in car, but got integer [x.lisp 408:3]
+
+Note: Information about what operation was performed (in this case car,) is
+added with the `e.bop(Builtin::Op)` call (bop, for built-in-operation.)
