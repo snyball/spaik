@@ -22,7 +22,7 @@ lto = "fat"
 opt-level = "s"
 
 [features]
-default = ["math", "extra", "readline", "derive"]
+default = ["math", "extra", "readline", "derive", "modules"]
 extra = ["comfy-table", "owo-colors"]
 readline = ["rustyline", "dirs"]
 wasm = ["wasm-bindgen"]
