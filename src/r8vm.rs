@@ -1418,8 +1418,10 @@ impl R8VM {
 
         if quasi {
             if let Some(QuasiMut::Unquote(s) | QuasiMut::USplice(s)) = v.quasi_mut() {
+                self.mem.stack.push(v);
                 unsafe { *s = self.macroexpand_pv(*s, false)? }
-                return Ok(v)
+                invalid!(v);
+                return Ok(self.mem.pop().unwrap())
             }
         } else {
             let mut inds = 0;
