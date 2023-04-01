@@ -72,7 +72,6 @@ path = "src/main.rs"
 [[bin]]
 name = "lisp-test"
 path = "src/bin/run-lisp-tests.rs"
-required-features = ["lisp-test"]
 
 [[bin]]
 name = "scratch"
