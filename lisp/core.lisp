@@ -372,19 +372,8 @@
     `(let ((,name ,init))
        (if ,name (progn ,@b)))))
 
-(defmacro m-eval-when (conds &body b)
-  (if-let (dup (find-first-duplicate conds))
-    (error 'duplicate-eval-when-condition))
-  (when (symbol? conds)
-    (set conds `(,conds)))
-  (let ((ret nil)
-        (body `(progn ,@b)))
-    (dolist (cnd conds)
-      (when (= cnd :compile) (println "evaling") (eval body))
-      (case cnd
-        (:compile (progn (println "evaling") (eval body)))
-        (:eval (set ret body))))
-    ret))
+(defmacro eval-when-compile (&body b)
+  (eval `(progn ,@b)))
 
 (defun _load (lib)
   (load lib))

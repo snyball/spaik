@@ -131,29 +131,34 @@ use serde::de::DeserializeOwned;
 
 pub use crate::compile::Builtin;
 pub use crate::nuke::Fissile;
-pub use crate::error::Error as IError;
 use crate::r8vm::R8VM;
 pub use crate::r8vm::{Args, ArgSpec, EnumCall};
 use crate::nkgc::PV;
 pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, IntoSubr};
+pub use crate::error::Error as IError;
+pub use crate::error::Result as IResult;
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod prelude {
     pub use super::{SymDB, SymID, Subr, IntoLisp, FromLisp,
                     Ignore, IntoSubr, SpaikPlug, Spaik, EnumCall};
 }
 
+type AnyResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
 pub trait FmtErr<T> where T: Sized {
     /// Format an internal VM runtime error as a string, by replacing symbol IDs
     /// with their strings.
-    fn fmterr(self, db: &dyn SymDB) -> Result<T, Box<dyn std::error::Error>>;
+    fn fmterr(self, db: &dyn SymDB) -> AnyResult<T>;
 
     /// Like `Result::unwrap` but first runs `FmtErr::fmterr` on the error.
     fn fmt_unwrap(self, db: &dyn SymDB) -> T;
 }
 
-impl<T> FmtErr<T> for Result<T, IError> {
+impl<T> FmtErr<T> for std::result::Result<T, IError> {
     #[inline]
-    fn fmterr(self, db: &dyn SymDB) -> Result<T, Box<dyn std::error::Error>> {
+    fn fmterr(self, db: &dyn SymDB) -> AnyResult<T> {
         match self {
             Ok(x) => Ok(x),
             Err(e) => Err(e.to_string(db).into())
@@ -173,7 +178,7 @@ pub struct Error {
 }
 
 impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
     }
 }
@@ -248,7 +253,7 @@ impl Spaik {
 
     /// Return a clone of `var`
     #[inline]
-    pub fn get<R>(&mut self, var: impl AsSym) -> Result<R, Error>
+    pub fn get<R>(&mut self, var: impl AsSym) -> Result<R>
         where PV: FromLisp<R>
     {
         let name = var.as_sym(&mut self.vm);
@@ -262,7 +267,7 @@ impl Spaik {
 
     /// Get a reference to a user-defined object type stored in the vm.
     #[inline]
-    pub fn objref<T>(&mut self, var: impl AsSym) -> Result<*const T, Error>
+    pub fn objref<T>(&mut self, var: impl AsSym) -> Result<*const T>
         where T: Userdata
     {
         self.objref_mut(var).map(|rf| rf as *const T)
@@ -270,7 +275,7 @@ impl Spaik {
 
     /// Get a clone of a user-defined object type stored in the vm.
     #[inline]
-    pub fn obj<T: Userdata>(&mut self, var: impl AsSym) -> Result<T, Error> {
+    pub fn obj<T: Userdata>(&mut self, var: impl AsSym) -> Result<T> {
         self.objref_mut(var).map(|rf: *mut T| unsafe { (*rf).clone() })
     }
 
@@ -280,7 +285,7 @@ impl Spaik {
     ///
     /// - `var` : Variable name
     #[inline]
-    pub fn objref_mut<T>(&mut self, var: impl AsSym) -> Result<*mut T, Error>
+    pub fn objref_mut<T>(&mut self, var: impl AsSym) -> Result<*mut T>
         where T: Userdata
     {
         let name = var.as_sym(&mut self.vm);
@@ -299,7 +304,7 @@ impl Spaik {
     ///
     /// - `expr` : Lisp expression
     #[inline]
-    pub fn eval<R>(&mut self, expr: impl AsRef<str>) -> Result<R, Error>
+    pub fn eval<R>(&mut self, expr: impl AsRef<str>) -> Result<R>
         where PV: FromLisp<R>
     {
         self.vm.eval(expr.as_ref())
@@ -313,7 +318,7 @@ impl Spaik {
     ///
     /// - `expr` : Lisp expression
     #[inline]
-    pub fn exec(&mut self, expr: impl AsRef<str>) -> Result<(), Error> {
+    pub fn exec(&mut self, expr: impl AsRef<str>) -> Result<()> {
         let _: Ignore = self.eval(expr)?;
         Ok(())
     }
@@ -329,7 +334,7 @@ impl Spaik {
     /// - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
     ///           `<name>` as either a string or symbol
     #[inline]
-    pub fn load(&mut self, lib: impl AsSym) -> Result<SymID, Error> {
+    pub fn load(&mut self, lib: impl AsSym) -> Result<SymID> {
         let lib = lib.as_sym(&mut self.vm);
         self.vm.load(lib).map_err(|e| Error::from_source(e, self))
     }
@@ -345,7 +350,7 @@ impl Spaik {
     /// - `lib` : Library symbol name, i.e the argument to `(load ...)`
     /// - `code` : The source-code contents inside `src_path`
     #[inline]
-    pub fn load_with<S>(&mut self, _src_path: S, _lib: SymID, _code: S) -> Result<SymID, Error>
+    pub fn load_with<S>(&mut self, _src_path: S, _lib: SymID, _code: S) -> Result<SymID>
         where S: AsRef<str>
     {
         todo!()
@@ -355,7 +360,7 @@ impl Spaik {
     ///
     /// Use `Spaik::cmd` if don't care about the result.
     #[inline]
-    pub fn query<R>(&mut self, enm: impl EnumCall) -> Result<R, Error>
+    pub fn query<R>(&mut self, enm: impl EnumCall) -> Result<R>
         where PV: FromLisp<R>
     {
         self.vm.call_by_enum(enm)
@@ -367,7 +372,7 @@ impl Spaik {
     ///
     /// Use `Spaik::query` if you need the result.
     #[inline]
-    pub fn cmd(&mut self, enm: impl EnumCall) -> Result<(), Error> {
+    pub fn cmd(&mut self, enm: impl EnumCall) -> Result<()> {
         let _: Ignore = self.query(enm)?;
         Ok(())
     }
@@ -376,7 +381,7 @@ impl Spaik {
     ///
     /// Use `Spaik::run` if don't care about the result.
     #[inline]
-    pub fn call<R>(&mut self, sym: impl AsSym, args: impl Args) -> Result<R, Error>
+    pub fn call<R>(&mut self, sym: impl AsSym, args: impl Args) -> Result<R>
         where PV: FromLisp<R>
     {
         let sym = sym.as_sym(&mut self.vm);
@@ -389,7 +394,7 @@ impl Spaik {
     ///
     /// Use `Spaik::call` if you need the result.
     #[inline]
-    pub fn run(&mut self, sym: impl AsSym, args: impl Args) -> Result<(), Error> {
+    pub fn run(&mut self, sym: impl AsSym, args: impl Args) -> Result<()> {
         let _: Ignore = self.call(sym, args)?;
         Ok(())
     }
@@ -404,7 +409,7 @@ impl Spaik {
     /// Fulfil a `Promise<T>` by running its continuation with value `ans`
     pub fn fulfil<R,A,T>/*🐀*/(&mut self,
                                pr: Promise<T>,
-                               ans: A) -> Result<R, Error>
+                               ans: A) -> Result<R>
         where PV: FromLisp<R>,
               A: IntoLisp + Clone + Send + 'static,
     {
@@ -507,7 +512,7 @@ impl EnumCall for () {
         unimplemented!()
     }
 
-    fn pushargs(self, _args: &[SymID], _mem: &mut nkgc::Arena) -> Result<(), IError> {
+    fn pushargs(self, _args: &[SymID], _mem: &mut nkgc::Arena) -> std::result::Result<(), IError> {
         unimplemented!()
     }
 }
@@ -543,7 +548,7 @@ impl<T> DerefMut for Promise<T> {
 
 // #[cfg(feature = "serde")]
 impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
-    fn from_lisp(self, mem: &mut nkgc::Arena) -> Result<Promise<T>, IError> {
+    fn from_lisp(self, mem: &mut nkgc::Arena) -> std::result::Result<Promise<T>, IError> {
         with_ref!(self, Cons(p) => {
             let msg = (*p).car;
             let cont = (*p).cdr;
@@ -589,7 +594,7 @@ struct send_message<T>
 unsafe impl<T> Subr for send_message<T>
     where T: DeserializeOwned + Clone + Send + 'static + Debug + Sized
 {
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, IError> {
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> std::result::Result<PV, IError> {
         let (msg, r, cont) = match args {
             [x, y] => (deserialize::from_pv(*x, &vm.mem)
                        .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
@@ -887,7 +892,7 @@ mod tests {
     fn test_yield_type_err() {
         let mut vm = Spaik::new();
         vm.exec(r#"(defun test-yield () (+ (yield 1) 2))"#).unwrap();
-        let pr: Result<Promise<String>, _> = vm.call("test-yield", ());
+        let pr: Result<Promise<String>> = vm.call("test-yield", ());
         assert!(pr.is_err());
     }
 
