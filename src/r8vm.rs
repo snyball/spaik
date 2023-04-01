@@ -1743,6 +1743,7 @@ impl R8VM {
             let dip = self.ip_delta(ip);
             if self.debug_mode { println!("<subr>::{}:", (*subr).name()) }
             let res = (*subr).call(self, &args[..]);
+            invalid!(args); // (*subr).call
             self.mem.stack.drain(idx..).for_each(drop); // drain gang
             self.mem.push(res?);
             if self.debug_mode {
