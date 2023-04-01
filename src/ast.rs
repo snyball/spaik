@@ -8,7 +8,7 @@ use crate::nkgc::Quasi;
 use crate::nkgc::SymID;
 use crate::error::*;
 use crate::nuke::NkRef;
-use crate::raw::nuke::to_fissile_ref;
+use crate::nuke::to_fissile_ref;
 use crate::r8vm::ArgSpec;
 use crate::compile::Builtin;
 use std::fmt;

@@ -1,5 +1,5 @@
 use crate::FmtErr;
-use crate::raw::r8vm::R8VM;
+use crate::r8vm::R8VM;
 use crate::SPV;
 use crate::Builtin;
 use colored::*;

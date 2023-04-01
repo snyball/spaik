@@ -71,7 +71,7 @@ pub(crate) mod lisp_test;
 pub use lisp_test::run_tests;
 #[cfg(feature = "modules")]
 pub(crate) mod module;
-#[cfg(feature = "serde")]
+// #[cfg(feature = "serde")]
 pub(crate) mod deserialize;
 pub(crate) mod limits;
 #[cfg(feature = "math")]
@@ -82,6 +82,7 @@ pub(crate) mod comp;
 pub mod repl;
 pub mod scratch;
 
+#[cfg(feature = "derive")]
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::{SPV, SymID, ObjRef};
 pub use nuke::Gc;
@@ -543,7 +544,7 @@ impl<T> DerefMut for Promise<T> {
     }
 }
 
-#[cfg(feature = "serde")]
+// #[cfg(feature = "serde")]
 impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
     fn from_lisp(self, mem: &mut nkgc::Arena) -> Result<Promise<T>, IError> {
         with_ref!(self, Cons(p) => {
@@ -681,6 +682,7 @@ macro_rules! args {
 #[cfg(test)]
 mod tests {
     use serde::Deserialize;
+    #[cfg(feature = "derive")]
     use spaik_proc_macros::{spaikfn, Fissile, EnumCall};
     use std::sync::Once;
 
@@ -758,6 +760,7 @@ mod tests {
         assert_eq!(result, 15);
     }
 
+    #[cfg(feature = "derive")]
     #[test]
     fn register_fn() {
         #[allow(non_camel_case_types)]
@@ -778,6 +781,7 @@ mod tests {
         // assert_eq!(result, 14);
     }
 
+    #[cfg(feature = "derive")]
     #[test]
     fn register_fn_mutate_struct() {
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
@@ -848,6 +852,7 @@ mod tests {
         dbg!(&perst_ref);
     }
 
+    #[cfg(feature = "derive")]
     #[test]
     fn enum_call_test() {
         #[allow(dead_code)]
@@ -911,6 +916,7 @@ mod tests {
         vm.add_load_path("lmao");
     }
 
+    #[cfg(feature = "derive")]
     #[test]
     #[should_panic]
     fn test_illegal_fork() {

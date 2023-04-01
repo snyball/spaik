@@ -1838,6 +1838,7 @@ impl Drop for SPV {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "derive")]
     use spaik_proc_macros::Fissile;
 
     #[test]
@@ -1851,6 +1852,7 @@ mod tests {
         let _li = gc.pop_spv().unwrap();
     }
 
+    #[cfg(feature = "derive")]
     #[test]
     fn virtual_destructors() {
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]

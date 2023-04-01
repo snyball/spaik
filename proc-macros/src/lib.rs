@@ -65,7 +65,7 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
                     -> core::result::Result<#spaik_root::raw::nkgc::PV,
                                             #spaik_root::error::Error>
             {
-                use #spaik_root::raw::r8vm::ArgSpec;
+                use #spaik_root::r8vm::ArgSpec;
                 use #spaik_root::error::Error;
                 const SPEC: ArgSpec = ArgSpec::normal(#nargs);
                 SPEC.check(Default::default(), args.len() as u16)?;

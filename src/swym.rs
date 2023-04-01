@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use fnv::FnvHashSet;
 use serde::{Deserialize, Serialize};
 
-use crate::raw::nuke::GcRc;
+use crate::nuke::GcRc;
 
 struct Sym {
     rc: GcRc,
