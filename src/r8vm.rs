@@ -1293,6 +1293,7 @@ impl R8VM {
                             let pv = self.mem.pop().unwrap();
                             self.macroexpand_pv(pv, false)?
                         };
+                        // ^ macroexpand can eval/defun, so update offsets
                         cc.set_offsets(self);
 
                         let excv = Excavator::new(&self.mem);
