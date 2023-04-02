@@ -13,7 +13,7 @@ use fnv::FnvHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::nuke::GcRc;
-use crate::raw::nuke::memcpy;
+use crate::nuke::memcpy;
 
 struct Sym {
     rc: GcRc,
