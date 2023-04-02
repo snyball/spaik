@@ -3,6 +3,7 @@
 set -euo pipefail
 
 declare bin="$1"
+shift
 declare -i tries=80
 
 cargo build --release --bin "$bin"
