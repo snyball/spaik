@@ -48,6 +48,9 @@ struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
 pub struct SymRef(*mut Sym);
 
 impl SymRef {
+    /// This is only intended for R8VM-internal use, where we need the syms to
+    /// be Copy, and know that they will not be dropped because the SwymDb is
+    /// live for as long as the R8VM is.
     pub(crate) fn id(self) -> SymID {
         let p = self.0;
         drop(self);
