@@ -699,8 +699,23 @@ impl PV {
                 (PV::Ref(u), PV::Ref(v)) => match (to_fissile_ref(u),
                                                    to_fissile_ref(v)) {
                     (NkRef::String(u), NkRef::String(v)) => u == v,
-                    (NkRef::Cons(u), NkRef::Cons(v)) =>
-                        (*u).car.equalp((*v).car) && (*u).cdr.equalp((*v).cdr),
+                    (NkRef::Cons(mut u), NkRef::Cons(mut v)) => loop {
+                        if !(*u).car.equalp((*v).car) { break false }
+                        let PV::Ref(u_next) = (*u).cdr else {
+                            break (*u).cdr.equalp((*v).cdr);
+                        };
+                        let PV::Ref(v_next) = (*v).cdr else {
+                            break (*u).cdr.equalp((*v).cdr);
+                        };
+                        let Some(u_next) = cast::<Cons>(u_next) else {
+                            break (*u).cdr.equalp((*v).cdr);
+                        };
+                        let Some(v_next) = cast::<Cons>(v_next) else {
+                            break (*u).cdr.equalp((*v).cdr);
+                        };
+                        u = u_next;
+                        v = v_next;
+                    }
                     (NkRef::PV(u), NkRef::PV(v)) => (*u).equalp(*v),
                     (NkRef::Vector(u), NkRef::Vector(v)) =>
                         (*u).len() == (*v).len() &&
