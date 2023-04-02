@@ -913,7 +913,7 @@ pub fn cast<T: Fissile>(atom: *const NkAtom) -> Option<*const T> {
 }
 
 #[inline]
-pub fn cast_mut_err<T: Fissile>(atom: *const NkAtom) -> Result<*mut T, Error> {
+pub fn cast_mut_err<T: Fissile>(atom: *mut NkAtom) -> Result<*mut T, Error> {
     cast_mut(atom as *mut NkAtom).ok_or_else(|| {
         error!(TypeError,
                expect: T::type_of().into(),
