@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn go_for_a_swym_and_jump_into_a_hashset() {
+    fn go_for_a_swym_and_clone_myself_into_a_hashset() {
         let mut swym = SwymDb::default();
         let lmao1 = swym.put("lmao".to_string());
         let ayy = swym.put("ayy".to_string());
@@ -396,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn go_for_a_swym_and_jump_into_a_hashset_the_next_day() {
+    fn go_for_a_swym_and_jump_right_into_a_hashset() {
         let mut swym = SwymDb::default();
         let (p_ayy, p_lmao) = {
             let lmao1 = swym.put("lmao".to_string());
