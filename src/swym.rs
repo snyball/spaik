@@ -23,6 +23,12 @@ struct Sym {
 }
 
 impl Sym {
+    // NOTE: This is for eventually creating &'static Sym. If you use this to
+    // create Syms on the heap like in SwymDb, you will be leaking the alloc()
+    // because the ref-count is initialized to 2.
+    //
+    // Either allocate all Syms in bulk on a Vec<Sym>, and then free that later,
+    // or store the Syms in a static array.
     pub const fn from_static(st: &'static str) -> Sym {
         let len = st.len();
         Sym {
