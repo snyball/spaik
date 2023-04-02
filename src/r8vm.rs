@@ -1807,6 +1807,14 @@ impl R8VM {
             let sym = self.traceframe(offs as usize);
             orig = Some(sym);
             println!("{}:", self.name(SymID::from(sym)));
+        macro_rules! op2 {
+            ($r:ident, $op:ident, $rp:expr) => {{
+                let len = self.mem.stack.len();
+                let s = &self.mem.stack[len - 2..];
+                let $r = s.get_unchecked(0).$op(&s.get_unchecked(1));
+                self.mem.stack.truncate(len - 2);
+                self.mem.stack.push($rp);
+            }};
         }
         let mut run = || loop {
             // let op = *ip;
@@ -1972,26 +1980,11 @@ impl R8VM {
                 }
 
                 // Math
-                ADD() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.add(&y)?);
-                },
-                SUB() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.sub(&y)?);
-                },
-                DIV() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.div(&y)?);
-                },
-                MUL() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.mul(&y)?);
-                },
+                ADD() => op2!(r, add, r?),
+                SUB() => op2!(r, sub, r?),
+                DIV() => op2!(r, div, r?),
+                MUL() => op2!(r, mul, r?),
+
                 INC(v, d) => match self.mem.stack[self.frame + (v as usize)] {
                     PV::Int(ref mut x) => *x += i64::from(d),
                     PV::Real(ref mut x) => *x += f32::from(d),
@@ -2004,36 +1997,16 @@ impl R8VM {
                 },
 
                 // Logic
-                EQL() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.eq(&y).into());
-                },
+                EQL() => op2!(r, eq, r.into()),
                 EQLP() => {
                     let y = self.mem.stack.pop().unwrap_unchecked();
                     let x = self.mem.stack.pop().unwrap_unchecked();
                     self.mem.stack.push(x.equalp(y).into());
                 },
-                GT() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.gt(&y)?);
-                },
-                GTE() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.gte(&y)?);
-                },
-                LT() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.lt(&y)?);
-                },
-                LTE() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.lte(&y)?);
-                },
+                GT() => op2!(r, gt, r?),
+                GTE() => op2!(r, gte, r?),
+                LT() => op2!(r, lt, r?),
+                LTE() => op2!(r, lte, r?),
                 NOT() => {
                     let v = !bool::from(self.mem.pop()?);
                     self.mem.push(PV::Bool(v));
