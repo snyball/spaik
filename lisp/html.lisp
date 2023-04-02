@@ -2,9 +2,8 @@
   (next (iter s)))
 
 (defun escape (s)
-  (or (and (or (number? s)
-               (symbol? s))
-           (escape (string s)))
+  (or (and (or (number? s) (bool? s)) (string s))
+      (and (symbol? s) (escape (string s)))
       (let ((out (vec)))
         (dolist (x s)
           (push out
@@ -15,9 +14,8 @@
         (apply concat out))))
 
 (defun escape-attr (s)
-  (or (and (or (number? s)
-               (symbol? s))
-           (string s))
+  (or (and (or (number? s) (bool? s)) (string s))
+      (and (symbol? s) (escape-attr (string s)))
       (let ((out (vec)))
         (dolist (x s)
           (push out
