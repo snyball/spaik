@@ -1233,7 +1233,7 @@ impl Nuke {
 
     pub unsafe fn make_room(&mut self, fit: usize) -> RelocateToken {
         if self.used + fit > self.sz {
-            self.grow(fit)
+            self.grow_realloc(fit)
         } else {
             self.compact()
         }
