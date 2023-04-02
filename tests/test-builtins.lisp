@@ -309,3 +309,22 @@
 ;;; ---[ continuations ]---------------------------------
 (test continuations
       (= (+ (call/cc (lambda (k) (throw (k 1)))) 1) 2))
+
+;;; ---[ apply ]-----------------------------------------
+(test apply
+      (eq? (apply (lambda (&rest xs) xs) (vec 1 2 3))
+           '(1 2 3))
+      (eq? (apply (lambda (&rest xs) xs) '(1 2 3))
+           '(1 2 3))
+      (eq? (all? (lambda (li)
+                   (eq? (apply (lambda (&rest xs)
+                                 xs)
+                               li)
+                        li))
+                 `(,(range-list 0 100)
+                   ,(range-list 10 15000)))
+           true)
+      (= (apply + (let ((v (vec))) (range (i (0 65535)) (push v i)) v))
+         (let ((s 0))
+           (range (i (0 65535)) (set s (+ s i)))
+           s)))
