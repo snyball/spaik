@@ -35,7 +35,7 @@ macro_rules! __with_ref_common {
                      expect: vec![
                          $($crate::nuke::NkT::$t.into()),+
                      ],
-                     got: $pv.type_of(),
+                     got: $pv.bt_type_of(),
                  },
                  meta: Default::default(),
              };
@@ -725,9 +725,9 @@ impl PV {
             (Real(x), Int(y)) => Real(x.powi(*y as i32)),
             (Real(x), Real(y)) => Real(x.powf(*y)),
             (x, y) => return Err(error!(ArgTypeError,
-                                        expect: vec![Builtin::Number.sym(),
-                                                     Builtin::Number.sym()],
-                                        got: vec![x.type_of(), y.type_of()])
+                                        expect: vec![Builtin::Number,
+                                                     Builtin::Number],
+                                        got: vec![x.bt_type_of(), y.bt_type_of()])
                                  .bop(Builtin::Pow))
         })
     }
@@ -737,9 +737,9 @@ impl PV {
         Ok(match (self, o) {
             (Int(x), Int(y)) => Int(x % y),
             (x, y) => return Err(error!(ArgTypeError,
-                                        expect: vec![Builtin::Number.sym(),
-                                                     Builtin::Number.sym()],
-                                        got: vec![x.type_of(), y.type_of()])
+                                        expect: vec![Builtin::Number,
+                                                     Builtin::Number],
+                                        got: vec![x.bt_type_of(), y.bt_type_of()])
                                  .bop(Builtin::Modulo))
         })
     }

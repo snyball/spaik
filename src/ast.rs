@@ -606,9 +606,9 @@ impl<'a> Excavator<'a> {
                       src })
         } else {
             Err(error!(TypeNError,
-                       expect: vec![Builtin::Symbol.sym(),
-                                    Builtin::ArgList.sym()],
-                       got: lhs.type_of()).argn(1))
+                       expect: vec![Builtin::Symbol,
+                                    Builtin::ArgList],
+                       got: lhs.bt_type_of()).argn(1))
         }
     }
 

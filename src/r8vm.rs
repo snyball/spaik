@@ -1267,8 +1267,8 @@ impl R8VM {
                 }
                 ")" if close.is_empty() => bail!(TrailingDelimiter { close: ")" }),
                 "." if close.is_empty() => bail!(OutsideContext {
-                    ctx: Builtin::List.sym(),
-                    op: Builtin::ConsDot.sym()
+                    ctx: Builtin::List,
+                    op: Builtin::ConsDot
                 }),
                 "." if dot => bail!(SyntaxError {
                     msg: "Illegal use of the dot (.) operator".to_string()

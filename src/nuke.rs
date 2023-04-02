@@ -99,6 +99,13 @@ macro_rules! fissile_types {
 
         impl From<NkT> for SymID {
             fn from(src: NkT) -> SymID {
+                let bt: Builtin = src.into();
+                bt.sym()
+            }
+        }
+
+        impl From<NkT> for Builtin {
+            fn from(src: NkT) -> Builtin {
                 match src { $(NkT::$t => $sym_type_of),+ }
             }
         }
@@ -751,38 +758,38 @@ impl LispFmt for Void {
 
 #[cfg(feature = "math")]
 fissile_types! {
-    (Void, Builtin::Void.sym(), Void),
-    (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
-    (Intr, Builtin::Intr.sym(), crate::nuke::Intr),
-    (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
-    (String, Builtin::String.sym(), std::string::String),
-    (PV, Builtin::Ref.sym(), crate::nkgc::PV),
-    (Vector, Builtin::Vector.sym(), Vec<PV>),
-    (Vec4, Builtin::Vec4.sym(), glam::Vec4),
-    (Mat2, Builtin::Mat2.sym(), glam::Mat2),
-    (Mat3, Builtin::Mat3.sym(), glam::Mat3),
-    (Mat4, Builtin::Mat4.sym(), glam::Mat4),
-    (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),
-    (Struct, Builtin::Struct.sym(), crate::nuke::Object),
-    (Iter, Builtin::Struct.sym(), crate::nuke::Iter),
-    (Continuation, Builtin::Continuation.sym(), crate::nuke::Continuation),
-    (Subroutine, Builtin::Subr.sym(), Box<dyn crate::subrs::Subr>)
+    (Void, Builtin::Void, Void),
+    (Cons, Builtin::Cons, crate::nkgc::Cons),
+    (Intr, Builtin::Intr, crate::nuke::Intr),
+    (Lambda, Builtin::Lambda, crate::nkgc::Lambda),
+    (String, Builtin::String, std::string::String),
+    (PV, Builtin::Ref, crate::nkgc::PV),
+    (Vector, Builtin::Vector, Vec<PV>),
+    (Vec4, Builtin::Vec4, glam::Vec4),
+    (Mat2, Builtin::Mat2, glam::Mat2),
+    (Mat3, Builtin::Mat3, glam::Mat3),
+    (Mat4, Builtin::Mat4, glam::Mat4),
+    (Stream, Builtin::Stream, crate::nkgc::Stream),
+    (Struct, Builtin::Struct, crate::nuke::Object),
+    (Iter, Builtin::Struct, crate::nuke::Iter),
+    (Continuation, Builtin::Continuation, crate::nuke::Continuation),
+    (Subroutine, Builtin::Subr, Box<dyn crate::subrs::Subr>)
 }
 
 #[cfg(not(feature = "math"))]
 fissile_types! {
-    (Void, Builtin::Void.sym(), Void),
-    (Cons, Builtin::Cons.sym(), crate::nkgc::Cons),
-    (Intr, Builtin::Intr.sym(), crate::nuke::Intr),
-    (Lambda, Builtin::Lambda.sym(), crate::nkgc::Lambda),
-    (String, Builtin::String.sym(), std::string::String),
-    (PV, Builtin::Ref.sym(), crate::nkgc::PV),
-    (Vector, Builtin::Vector.sym(), Vec<PV>),
-    (Stream, Builtin::Stream.sym(), crate::nkgc::Stream),
-    (Struct, Builtin::Struct.sym(), crate::nuke::Object),
-    (Iter, Builtin::Struct.sym(), crate::nuke::Iter),
-    (Continuation, Builtin::Continuation.sym(), crate::nuke::Continuation),
-    (Subroutine, Builtin::Subr.sym(), Box<dyn crate::subrs::Subr>)
+    (Void, Builtin::Void, Void),
+    (Cons, Builtin::Cons, crate::nkgc::Cons),
+    (Intr, Builtin::Intr, crate::nuke::Intr),
+    (Lambda, Builtin::Lambda, crate::nkgc::Lambda),
+    (String, Builtin::String, std::string::String),
+    (PV, Builtin::Ref, crate::nkgc::PV),
+    (Vector, Builtin::Vector, Vec<PV>),
+    (Stream, Builtin::Stream, crate::nkgc::Stream),
+    (Struct, Builtin::Struct, crate::nuke::Object),
+    (Iter, Builtin::Struct, crate::nuke::Iter),
+    (Continuation, Builtin::Continuation, crate::nuke::Continuation),
+    (Subroutine, Builtin::Subr, Box<dyn crate::subrs::Subr>)
 }
 
 #[repr(u8)]

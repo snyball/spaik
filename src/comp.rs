@@ -600,8 +600,8 @@ impl R8Compiler {
                         .last()
                         .copied()
                         .ok_or(error_src!(src, OutsideContext,
-                                          op: Builtin::Break.sym(),
-                                          ctx: Builtin::Loop.sym()))?;
+                                          op: Builtin::Break,
+                                          ctx: Builtin::Loop))?;
         let LoopCtx { end, ret, height, .. } = outer;
         let dist = self.with_env(|env| env.len())? - height;
         let popa = |cc: &mut R8Compiler| if dist > 0 {
@@ -628,8 +628,8 @@ impl R8Compiler {
                         .last()
                         .copied()
                         .ok_or(error_src!(src, OutsideContext,
-                                          op: Builtin::Next.sym(),
-                                          ctx: Builtin::Loop.sym()))?;
+                                          op: Builtin::Next,
+                                          ctx: Builtin::Loop))?;
         let LoopCtx { start, height, .. } = outer;
         let dist = self.with_env(|env| env.len())? - height;
         self.asm_op(chasm!(POP dist));

@@ -186,12 +186,12 @@ pub enum ErrorKind {
     STypeError { expect: String, got: String },
     UnexpectedDottedList,
     TypeError { expect: Builtin, got: Builtin },
-    TypeNError { expect: Vec<SymID>, got: SymID },
-    ArgTypeError { expect: Vec<SymID>, got: Vec<SymID> },
+    TypeNError { expect: Vec<Builtin>, got: Builtin },
+    ArgTypeError { expect: Vec<Builtin>, got: Vec<Builtin> },
     IfaceNotImplemented { got: Vec<SymID> },
     EnumError { expect: Vec<SymID>, got: SymID },
     ArgError { expect: ArgSpec, got_num: u32 },
-    OutsideContext { op: SymID, ctx: SymID },
+    OutsideContext { op: Builtin, ctx: Builtin },
     SyntaxError { msg: String },
     LinkError { dst: String, src: usize },
     IDError { id: usize },
@@ -315,9 +315,9 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                    got)?,
         TypeNError { expect, got } =>
             write!(f, "Type Error: Expected one of ({}) {}but got {}",
-                   expect.iter().map(|v| nameof(*v)).collect::<Vec<_>>().join(", "),
+                   expect.iter().map(|v| nameof(v.sym())).collect::<Vec<_>>().join(", "),
                    FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta},
-                   nameof(*got))?,
+                   nameof(got.sym()))?,
         EnumError { expect, got } =>
             write!(f, "Type Error: Expected {:?} {}but got {}",
                    expect.iter().copied().map(nameof).collect::<Vec<_>>(),
@@ -364,12 +364,12 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                 write!(f, "{} ", op.name(db))?
             }
             write!(f, "expected ({}) but got ({})",
-                   expect.iter().copied().map(nameof).collect::<Vec<_>>().join(" "),
-                   got.iter().copied().map(nameof).collect::<Vec<_>>().join(" "))?;
+                   expect.iter().copied().map(|s| nameof(s.sym())).collect::<Vec<_>>().join(" "),
+                   got.iter().copied().map(|s| nameof(s.sym())).collect::<Vec<_>>().join(" "))?;
         }
         OutsideContext { op, ctx } =>
             write!(f, "Syntax Error: Operator {} not allowed outside of {} context",
-                   nameof(*op), nameof(*ctx))?,
+                   nameof(op.sym()), nameof(ctx.sym()))?,
         SyntaxError { msg } =>
             write!(f, "Syntax Error: {}", msg)?,
         //LinkError
