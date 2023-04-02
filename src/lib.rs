@@ -833,7 +833,6 @@ mod tests {
         let mut perst_ref: Gc<TestObj> = vm.get("dst-obj").unwrap();
         let _perst_ref_2: Gc<TestObj> = vm.get("dst-obj").unwrap();
         vm.exec("(my-function 1 1 src-obj dst-obj)").unwrap();
-        vm.exec("(println dst-obj)").unwrap();
         let x: f32 = vm.eval("(obj-x dst-obj)").unwrap();
         let y: f32 = vm.eval("(obj-y dst-obj)").unwrap();
         assert_eq!(x, 2.0);
