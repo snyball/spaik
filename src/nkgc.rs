@@ -1794,10 +1794,7 @@ impl Arena {
 
 impl Drop for Arena {
     fn drop(&mut self) {
-        unsafe {
-            self.finish_cycle();
-            self.nuke.destroy_the_world();
-        }
+        self.finish_cycle();
     }
 }
 

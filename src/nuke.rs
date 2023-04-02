@@ -876,14 +876,14 @@ impl NkAtom {
 pub unsafe fn fastcast<T>(atom: *const NkAtom) -> *const T {
     const DELTA: isize = mem::size_of::<NkAtom>() as isize;
     let p = (atom as *const u8).offset(DELTA);
-    align(p, align_of::<T>() as isize) as *mut T
+    align(p, align_of::<T>()) as *mut T
 }
 
 #[inline]
 pub unsafe fn fastcast_mut<T>(atom: *mut NkAtom) -> *mut T {
     const DELTA: isize = mem::size_of::<NkAtom>() as isize;
     let p = (atom as *mut u8).offset(DELTA);
-    align_mut(p, align_of::<T>() as isize) as *mut T
+    align_mut(p, align_of::<T>()) as *mut T
 }
 
 #[inline]
@@ -973,7 +973,7 @@ pub struct Nuke {
     sz: usize,
     reloc: PtrMap,
     last: *mut NkAtom,
-    mem: Vec<u8>,
+    mem: *mut u8,
     #[cfg(not(target_arch = "wasm32"))]
     start_time: SystemTime,
 }
@@ -988,11 +988,11 @@ pub struct Nuke {
 /// address starting at `p`, where a storage class of alignment `a` can be
 /// placed (Note that T is arbtrary and is not used in the calculation, see
 /// Layout::* for getting the alignment for a type.)
-fn align_mut<T>(p: *mut T, a: isize) -> *mut T {
-    (((p as isize) + a - 1) & !(a - 1)) as *mut T
+fn align_mut<T>(p: *mut T, a: usize) -> *mut T {
+    (((p as isize) + (a as isize) - 1) & !((a as isize) - 1)) as *mut T
 }
-fn align<T>(p: *const T, a: isize) -> *const T {
-    (((p as isize) + a - 1) & !(a - 1)) as *const T
+fn align<T>(p: *const T, a: usize) -> *const T {
+    (((p as isize) + (a as isize) - 1) & !((a as isize) - 1)) as *const T
 }
 
 /// Equivalent to memcpy from ANSI C, void* and all. In almost all cases this is
@@ -1013,13 +1013,6 @@ pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
     ptr::copy(src as *const u8, dst as *mut u8, sz);
 }
 
-#[cfg(target_pointer_width = "32")]
-const ALIGNMENT: isize = 4;
-
-// FIXME: It's not fair to make *all* types 16-byte aligned just because `Vec4` is
-#[cfg(target_pointer_width = "64")]
-const ALIGNMENT: isize = 8;
-
 #[must_use = "Relocation must be confirmed"]
 #[derive(Debug)]
 pub struct RelocateToken;
@@ -1032,6 +1025,10 @@ impl Nuke {
     pub fn new(sz: usize) -> Nuke {
         assert!(sz >= 128, "Nuke too small");
 
+        let layout = unsafe {
+            Layout::from_size_align_unchecked(sz, align_of::<NkAtom>())
+        };
+
         let mut nk = Nuke {
             free: ptr::null_mut(),
             grow_num: sz,
@@ -1042,12 +1039,11 @@ impl Nuke {
             sz,
             reloc: PtrMap(Vec::new()),
             last: ptr::null_mut(),
-            mem: Vec::with_capacity(sz),
+            mem: unsafe { alloc(layout) },
             #[cfg(not(target_arch = "wasm32"))]
             start_time: SystemTime::now(),
         };
 
-        unsafe { nk.mem.set_len(sz) }
         nk.last = nk.fst_mut();
         nk.free = nk.offset(mem::size_of::<NkAtom>());
         nk.used = mem::size_of::<NkAtom>();
@@ -1074,7 +1070,7 @@ impl Nuke {
                 self.reloc.push(node, npos);
                 memmove(npos, node, sz); // memcpy should work, but miri no likey
             }
-            start = align_mut(start.add(sz), ALIGNMENT);
+            start = align_mut(start.add(sz), align_of::<NkAtom>());
             if next_node.is_null() {
                 break;
             } else {
@@ -1092,9 +1088,6 @@ impl Nuke {
     pub unsafe fn destroy_the_world(&mut self) {
         for atom in self.iter_mut() {
             unsafe {
-                // println!("{:?} {:?}", (*atom).type_of(), (*atom).color());
-                // println!("{:?}", atom_kind(atom));
-                // println!("i-i-i-i-i want to: {}", atom_to_str(atom, &SYM_DB));
                 if let Some(obj) = cast::<Object>(atom) {
                     println!("{}", ObjPtr(obj))
                 }
@@ -1141,7 +1134,7 @@ impl Nuke {
             }
 
             (*npos).set_color(Color::White);
-            start = align_mut(start.add(sz), ALIGNMENT);
+            start = align_mut(start.add(sz), align_of::<NkAtom>());
 
             if next_node.is_null() {
                 (*npos).next = ptr::null_mut();
@@ -1161,16 +1154,16 @@ impl Nuke {
 
     pub unsafe fn grow(&mut self, fit: usize) -> RelocateToken {
         let new_sz = (self.sz << 1).max(self.sz + fit);
+        let last_layout = Layout::from_size_align_unchecked(self.sz,
+                                                            align_of::<NkAtom>());
         self.sz = new_sz;
 
         let mut used = 0;
         let mut num_atoms = 0;
 
-        let mut new_vec: Vec<u8> = Vec::with_capacity(new_sz);
-        #[allow(clippy::uninit_vec)]
-        new_vec.set_len(new_sz);
-        let mut mem = align_mut(new_vec.as_mut_ptr(),
-                            mem::align_of::<NkAtom>() as isize);
+        let layout = Layout::from_size_align_unchecked(self.sz, align_of::<NkAtom>());
+        let mem_start = alloc(layout);
+        let mut mem = mem_start;
         let mut new_node = ptr::null_mut();
         let mut node = self.fst_mut();
         while !node.is_null() {
@@ -1178,7 +1171,7 @@ impl Nuke {
             memcpy(mem, node, sz);
             self.reloc.push(node, mem);
             new_node = mem as *mut NkAtom;
-            mem = align_mut(mem.add(sz), ALIGNMENT);
+            mem = align_mut(mem.add(sz), align_of::<NkAtom>());
             (*new_node).next = mem as *mut NkAtom;
             node = (*node).next;
 
@@ -1189,7 +1182,8 @@ impl Nuke {
         self.free = mem;
         (*new_node).next = ptr::null_mut();
         self.last = new_node;
-        self.mem = new_vec;
+        dealloc(self.mem, last_layout);
+        self.mem = mem_start;
 
         debug_assert!(num_atoms == self.num_atoms, "Number of atoms did not match");
         debug_assert!(used == self.used, "Usage count did not match");
@@ -1211,29 +1205,28 @@ impl Nuke {
     }
 
     pub fn fst_mut(&mut self) -> *mut NkAtom {
-        align_mut(self.mem.as_mut_ptr() as *mut NkAtom,
-              mem::align_of::<NkAtom>() as isize)
+        self.mem as *mut NkAtom
     }
 
     pub fn fst(&self) -> *const NkAtom {
-        align_mut(self.mem.as_ptr() as *mut NkAtom,
-              mem::align_of::<NkAtom>() as isize)
+        self.mem as *const NkAtom
     }
 
     pub fn offset<T>(&mut self, n: usize) -> *mut T {
         unsafe {
-            self.mem.as_mut_ptr().add(n) as *mut T
+            self.mem.add(n) as *mut T
         }
     }
 
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
-        let padding = align_of::<T>();
+        let padding = align_of::<T>() - 1;
         let max_sz = size_of::<T>() + size_of::<NkAtom>() + padding;
         let ret = self.will_overflow(max_sz).then(|| self.make_room(max_sz));
 
-        let mut cur = align_mut(self.free as *mut NkAtom, ALIGNMENT);
+        let mut cur = align_mut(self.free as *mut NkAtom,
+                                align_of::<NkAtom>());
         let p = (cur as *mut u8).add(mem::size_of::<NkAtom>()) as *mut T;
-        let pa = align_mut(p, align_of::<T>() as isize);
+        let pa = align_mut(p, align_of::<T>());
         let full_sz = mem::size_of::<T>()
                     + mem::size_of::<NkAtom>()
                     + ((pa as *const u8 as usize) - (p as *const u8 as usize));
@@ -1313,6 +1306,17 @@ impl Nuke {
             #[cfg(not(target_arch = "wasm32"))]
             time: SystemTime::now().duration_since(self.start_time)
                                    .unwrap(),
+        }
+    }
+}
+
+impl Drop for Nuke {
+    fn drop(&mut self) {
+        unsafe {
+            self.destroy_the_world();
+            let layout = Layout::from_size_align_unchecked(self.sz,
+                                                           align_of::<NkAtom>());
+            dealloc(self.mem, layout);
         }
     }
 }
