@@ -1165,19 +1165,21 @@ impl Nuke {
         let old_mem = self.mem as usize;
         self.mem = realloc(self.mem, layout, new_sz);
         self.sz = new_sz;
-        let mut node = self.fst_mut();
-        loop {
-            let old_addr = old_mem + (node as usize - self.mem as usize);
-            self.reloc.push(old_addr as *const NkAtom, node);
-            let old_next = (*node).next;
-            if old_next.is_null() {
-                self.last = node;
-                self.free = (node as *mut u8).add((*node).full_size());
-                break;
+        if old_mem != self.mem as usize {
+            let mut node = self.fst_mut();
+            loop {
+                let old_addr = old_mem + (node as usize - self.mem as usize);
+                self.reloc.push(old_addr as *const NkAtom, node);
+                let old_next = (*node).next;
+                if old_next.is_null() {
+                    self.last = node;
+                    self.free = (node as *mut u8).add((*node).full_size());
+                    break;
+                }
+                let next = self.mem.add(old_next as usize - old_mem) as *mut NkAtom;
+                (*node).next = next;
+                node = next;
             }
-            let next = self.mem.add(old_next as usize - old_mem) as *mut NkAtom;
-            (*node).next = next;
-            node = next;
         }
 
         RelocateToken
@@ -1231,7 +1233,7 @@ impl Nuke {
 
     pub unsafe fn make_room(&mut self, fit: usize) -> RelocateToken {
         if self.used + fit > self.sz {
-            self.grow_realloc(fit)
+            self.grow(fit)
         } else {
             self.compact()
         }
