@@ -284,7 +284,7 @@ impl From<ErrorKind> for RuntimeError {
 /// Structural Error Type
 #[derive(Debug, Clone)]
 pub struct Error {
-    inner: Box<ErrorInner>
+    inner: ErrorInner
 }
 
 #[derive(Debug, Clone)]
@@ -297,7 +297,7 @@ struct ErrorInner {
 impl Error {
     pub fn new(kind: ErrorKind) -> Error {
         Error {
-            inner: Box::new(
+            inner: (
                 ErrorInner { meta: Default::default(),
                              ty: kind,
                              rust_trace: Arc::new(Backtrace::capture()) }
