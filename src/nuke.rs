@@ -1185,7 +1185,7 @@ impl Nuke {
         RelocateToken
     }
 
-    pub unsafe fn grow(&mut self, fit: usize) -> RelocateToken {
+    pub unsafe fn grow_alloc(&mut self, fit: usize) -> RelocateToken {
         let new_sz = (self.sz << 1).max(self.sz + fit);
         let last_layout = Layout::from_size_align_unchecked(self.sz,
                                                             align_of::<NkAtom>());
