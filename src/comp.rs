@@ -477,6 +477,20 @@ impl R8Compiler {
         self.env_pop(1)
     }
 
+    pub fn bt_vec_set(&mut self,
+                      ret: bool,
+                      src: Source,
+                      dst: AST2,
+                      idx: AST2,
+                      init: AST2) -> Result<()> {
+        self.compile(true, init)?;
+        if ret { self.unit().op(chasm!(DUP)); }
+        self.compile(true, dst)?;
+        self.compile(true, idx)?;
+        self.unit().op(chasm!(VSET));
+        Ok(())
+    }
+
     pub fn bt_set(&mut self,
                   ret: bool,
                   src: Source,
@@ -906,6 +920,7 @@ impl R8Compiler {
                     asm!(GET idx);
                 }
             },
+            M::VecSet(dst, idx, init) => self.bt_vec_set(ret, src, *dst, *idx, *init)?,
             M::Set(dst, init) => self.bt_set(ret, src, dst, *init)?,
             M::Defun(name, ArgList2(spec, names), progn) => {
                 let syms = names.iter().map(|(s,_)| *s).collect();

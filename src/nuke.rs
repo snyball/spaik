@@ -913,6 +913,20 @@ pub fn cast<T: Fissile>(atom: *const NkAtom) -> Option<*const T> {
 }
 
 #[inline]
+pub fn cast_mut_err<T: Fissile>(atom: *const NkAtom) -> Result<*mut T, Error> {
+    cast_mut(atom as *mut NkAtom).ok_or_else(|| {
+        error!(TypeError,
+               expect: T::type_of().into(),
+               got: unsafe { atom_kind(atom).into() })
+    })
+}
+
+#[inline]
+pub fn cast_err<T: Fissile>(atom: *const NkAtom) -> Result<*const T, Error> {
+    cast_mut_err(atom as *mut NkAtom).map(|p| p as *const T)
+}
+
+#[inline]
 pub unsafe fn destroy_atom(atom: *mut NkAtom) {
     DESTRUCTORS[(*atom).meta.typ() as usize](fastcast_mut::<u8>(atom));
 }

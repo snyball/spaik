@@ -11,6 +11,7 @@ use crate::nuke::NkRef;
 use crate::nuke::to_fissile_ref;
 use crate::r8vm::ArgSpec;
 use crate::compile::Builtin;
+use crate::nuke::cast_err;
 use std::fmt;
 use std::fmt::Display;
 use std::iter;
@@ -49,6 +50,7 @@ pub enum M {
     Lambda(ArgList2, Progn),
     Defvar(SymID, Prog),
     Set(SymID, Prog),
+    VecSet(Prog, Prog, Prog),
     Defun(SymID, ArgList2, Progn),
     Let(Vec<VarDecl>, Progn),
     Loop(Progn),
@@ -162,6 +164,7 @@ impl Display for M {
             },
             M::Defvar(name, init) => write!(f, "(defvar {name:?} {init})")?,
             M::Set(name, init) => write!(f, "(set {name:?} {init})")?,
+            M::VecSet(name, idx, init) => write!(f, "(set (get {name:?} {idx}) {init})")?,
             M::Defun(name, ArgList2(_, args), progn) => {
                 write!(f, "(define ({name}")?;
                 for arg in args { write!(f, " {arg:?}")?; }
@@ -284,6 +287,7 @@ impl AST2 {
         match self.kind {
             M::Bt1(_, ref mut x) => visit!(x),
             M::Bt2(_, ref mut x, ref mut y) => visit!(x, y),
+            M::VecSet(ref mut x, ref mut y, ref mut z) => visit!(x, y, z),
             M::If(ref mut a, None, None) => visit!(a),
             M::If(ref mut a, None, Some(ref mut c)) => visit!(a, c),
             M::If(ref mut a, Some(ref mut b), None) => visit!(a, b),
@@ -550,6 +554,23 @@ impl<'a> Excavator<'a> {
         let mut it = args.iter();
         let name = match it.next().ok_or_else(err(0))? {
             PV::Sym(name) => name,
+            PV::Ref(p) => {
+                let Cons { car, cdr } = unsafe { *cast_err::<Cons>(p)? };
+                match car.sym().and_then(Builtin::from_sym) {
+                    Some(Builtin::Get) => {
+                        let (vec, idx) = self.two_args(cdr, src.clone()).map_err(|e| e.bop(Builtin::Get))?;
+                        // TODO: Unify this code path with the sym-set one
+                        let init = Box::new(
+                            self.dig(it.next().ok_or_else(err(1))?, src.clone())?
+                        );
+                        return Ok(AST2 {
+                            kind: M::VecSet(vec, idx, init),
+                            src
+                        })
+                    }
+                    _ => todo!("error message, like 'unknown set pattern (set (...) ...)")
+                }
+            }
             e => return Err(error!(TypeError,
                                    expect: Builtin::Symbol,
                                    got: e.bt_type_of()).argn(1))
