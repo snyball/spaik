@@ -1,4 +1,6 @@
-export MIRIFLAGS := "-Zmiri-disable-isolation -Zmiri-tag-raw-pointers"
+set positional-arguments
+
+export MIRIFLAGS := "-Zmiri-disable-isolation"
 
 install-tools:
     command -v cargo-hack &>/dev/null || cargo install cargo-hack
@@ -13,6 +15,9 @@ test-all: install-tools
     cargo build --target x86_64-unknown-linux-musl
     cargo build --target x86_64-unknown-linux-gnu
     cargo miri test
+
+@miri *args:
+    cargo miri "$@"
 
 default:
     @just --list
