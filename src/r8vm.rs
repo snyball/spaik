@@ -1918,22 +1918,23 @@ impl R8VM {
                 VSET() => {
                     // (set (get <vec> <idx>) <val>)
                     let op = Builtin::Set;
-                    let idx = match self.mem.pop()? {
+                    let len = self.mem.stack.len();
+                    let args = &mut self.mem.stack[len - 3..];
+                    let idx = match args[2] {
                         PV::Int(x) => x as usize,
                         x => return Err(error!(TypeError,
                                                expect: Builtin::Integer,
                                                got: x.bt_type_of()).bop(op).argn(2))
                     };
-                    let vec = self.mem.pop()?;
-                    let val = self.mem.pop()?;
-                    with_ref_mut!(vec, Vector(v) => {
+                    with_ref_mut!(args[1], Vector(v) => {
                         if idx >= (*v).len() {
                             err!(IndexError, idx)
                         } else {
-                            *(*v).get_unchecked_mut(idx) = val;
+                            *(*v).get_unchecked_mut(idx) = args[0];
                             Ok(())
                         }
                     }).map_err(|e| e.bop(Builtin::Set))?;
+                    self.mem.stack.truncate(len - 3);
                 }
                 LEN() => {
                     let li = self.mem.pop()?;
