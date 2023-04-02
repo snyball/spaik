@@ -1085,10 +1085,10 @@ impl Nuke {
         loop {
             let next_node = (*node).next;
             npos = start as *mut NkAtom;
-            let sz = mem::size_of::<NkAtom>() + (*node).sz as usize;
+            let sz = (*node).full_size();
             if npos != node {
                 self.reloc.push(node, npos);
-                memmove(npos, node, sz); // memcpy should work, but miri no likey
+                memmove(npos, node, sz);
             }
             start = align_mut(start.add(sz), align_of::<NkAtom>());
             if next_node.is_null() {
@@ -1150,7 +1150,7 @@ impl Nuke {
 
             if npos != node {
                 self.reloc.push(node, npos);
-                memmove(npos, node, sz); // memcpy should work, but miri no likey
+                memmove(npos, node, sz);
             }
 
             (*npos).set_color(Color::White);
@@ -1247,6 +1247,7 @@ impl Nuke {
 
     pub unsafe fn make_room(&mut self, fit: usize) -> RelocateToken {
         if self.used + fit > self.sz {
+            println!("GROW REALLOC");
             self.grow_realloc(fit)
         } else {
             self.compact()

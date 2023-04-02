@@ -71,8 +71,8 @@ impl REPL {
                 vmprintln!(self.vm, "{}", res.lisp_to_string(&self.vm));
             },
             Err(e) => {
-                match e.cause() {
-                    Error { ty: ErrorKind::Exit { status }, ..} => {
+                match e.cause().kind() {
+                    ErrorKind::Exit { status } => {
                         use Builtin::*;
                         self.exit_status = Some(i32::from(*status == Fail.sym()));
                     }

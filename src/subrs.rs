@@ -58,13 +58,10 @@ macro_rules! pv_convert {
                 if let PV::$pvt(x) = v {
                     Ok(x.try_into()?)
                 } else {
-                    Err(Error {
-                        ty: ErrorKind::TypeError {
-                            expect: PV::$pvt(Default::default()).bt_type_of(),
-                            got: v.bt_type_of(),
-                        },
-                        meta: Default::default(),
-                    })
+                    Err(Error::new(ErrorKind::TypeError {
+                        expect: PV::$pvt(Default::default()).bt_type_of(),
+                        got: v.bt_type_of(),
+                    }))
                 }
             }
         }
@@ -104,13 +101,10 @@ impl TryFrom<PV> for () {
         if let PV::Nil = v {
             Ok(())
         } else {
-            Err(Error {
-                ty: ErrorKind::TypeError {
-                    expect: PV::Nil.bt_type_of(),
-                    got: v.bt_type_of(),
-                },
-                meta: Default::default(),
-            })
+            Err(Error::new(ErrorKind::TypeError {
+                expect: PV::Nil.bt_type_of(),
+                got: v.bt_type_of(),
+            }))
         }
     }
 }

@@ -9,11 +9,13 @@ use crate::r8vm::r8c::Op as R8C;
 use crate::nkgc::SymID;
 use crate::fmt::LispFmt;
 use crate::sym_db::{SymDB, SYM_DB};
+use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::mem::{discriminant, replace};
 use std::error;
 use std::fmt::{self, Debug};
 use std::num::TryFromIntError;
+use std::sync::Arc;
 use std::sync::mpsc::SendError;
 
 pub type SourceFileName = Option<Cow<'static, str>>;
@@ -224,22 +226,20 @@ pub enum ErrorKind {
 
 impl From<std::io::Error> for Error {
     fn from(v: std::io::Error) -> Self {
-        Error { ty: ErrorKind::IOError { kind: v.kind() },
-                meta: Default::default() }
+        Error::new(ErrorKind::IOError { kind: v.kind() })
     }
 }
 
 impl From<ErrorKind> for Error {
     fn from(v: ErrorKind) -> Self {
-        Error { ty: v, meta: Default::default() }
+        Error::new(v)
     }
 }
 
 impl From<Traceback> for Error {
     fn from(v: Traceback) -> Self {
-        let src = v.err.meta.src();
-        let e = Error { ty: ErrorKind::Traceback { tb: Box::new(v) },
-                        meta: Default::default() };
+        let src = v.err.meta().src();
+        let e = Error::new(ErrorKind::Traceback { tb: Box::new(v) });
         if let Some(src) = src {
             e.src(src)
         } else {
@@ -250,30 +250,26 @@ impl From<Traceback> for Error {
 
 impl From<String> for Error {
     fn from(msg: String) -> Self {
-        Error { ty: ErrorKind::SomeError { msg },
-                meta: Default::default() }
+        Error::new(ErrorKind::SomeError { msg })
     }
 }
 
 impl From<&str> for Error {
     fn from(msg: &str) -> Self {
-        Error { ty: ErrorKind::SomeError { msg: msg.to_string() },
-                meta: Default::default() }
+        Error::new(ErrorKind::SomeError { msg: msg.to_string() })
     }
 }
 
 impl From<RuntimeError> for Error {
     fn from(v: RuntimeError) -> Self {
-        Error { ty: ErrorKind::SomeError { msg: v.msg },
-                meta: Default::default()
-        }
+        Error::new(ErrorKind::SomeError { msg: v.msg })
     }
 }
 
 impl From<Error> for RuntimeError {
     fn from(v: Error) -> Self {
         let msg = format!("{}", &v);
-        RuntimeError { line: v.meta.src().map(|src| src.line).unwrap_or(0),
+        RuntimeError { line: v.meta().src().map(|src| src.line).unwrap_or(0),
                        msg }
     }
 }
@@ -286,10 +282,42 @@ impl From<ErrorKind> for RuntimeError {
 }
 
 /// Structural Error Type
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Error {
-    pub meta: MetaSet,
-    pub ty: ErrorKind,
+    inner: Box<ErrorInner>
+}
+
+#[derive(Debug, Clone)]
+struct ErrorInner {
+    meta: MetaSet,
+    ty: ErrorKind,
+    rust_trace: Arc<Backtrace>,
+}
+
+impl Error {
+    pub fn new(kind: ErrorKind) -> Error {
+        Error {
+            inner: Box::new(
+                ErrorInner { meta: Default::default(),
+                             ty: kind,
+                             rust_trace: Arc::new(Backtrace::capture()) }
+            )
+        }
+    }
+
+    pub fn kind(&self) -> &ErrorKind {
+        &self.inner.ty
+    }
+
+    pub fn meta(&self) -> &MetaSet {
+        &self.inner.meta
+    }
+}
+
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.meta == other.inner.meta && self.inner.ty == other.inner.ty
+    }
 }
 
 fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Result {
@@ -300,38 +328,39 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         if num.is_one() {""} else {"s"}
     }
 
-    match &err.ty {
+    let meta = err.meta();
+    match err.kind() {
         IllegalInstruction { inst } =>
             write!(f, "Illegal instruction: <{}>", inst)?,
         TypeError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
                    nameof(expect.sym()),
-                   FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta },
+                   FmtArgnOp { pre: "", post: ", ", db, meta },
                    nameof(got.sym()))?,
         STypeError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
                    expect,
-                   FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta },
+                   FmtArgnOp { pre: "", post: ", ", db, meta },
                    got)?,
         TypeNError { expect, got } =>
             write!(f, "Type Error: Expected one of ({}) {}but got {}",
                    expect.iter().map(|v| nameof(v.sym())).collect::<Vec<_>>().join(", "),
-                   FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta},
+                   FmtArgnOp { pre: "", post: ", ", db, meta },
                    nameof(got.sym()))?,
         EnumError { expect, got } =>
             write!(f, "Type Error: Expected {:?} {}but got {}",
                    expect.iter().copied().map(nameof).collect::<Vec<_>>(),
-                   FmtArgnOp { pre: "", post: ", ", db, meta: &err.meta},
+                   FmtArgnOp { pre: "", post: ", ", db, meta },
                    nameof(*got))?,
         UnexpectedDottedList => {
             write!(f, "Type Error: Unexpected dotted list")?;
-            if let Some(op) = err.meta.op() {
+            if let Some(op) = meta.op() {
                 write!(f, " given to {}", op.name(db))?
             }
         }
         ArgError { expect, got_num } => {
             write!(f, "Argument Error: ")?;
-            if let Some(op) = err.meta.op() {
+            if let Some(op) = meta.op() {
                 write!(f, "{} ", op.name(db))?
             }
             match expect {
@@ -348,7 +377,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         }
         IfaceNotImplemented { got } => {
             write!(f, "Operation Not Supported: (")?;
-            if let Some(op) = err.meta.op() {
+            if let Some(op) = meta.op() {
                 write!(f, "{}", op.name(db))?;
             } else {
                 write!(f, "?")?;
@@ -360,7 +389,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         }
         ArgTypeError {  expect, got } => {
             write!(f, "Argument Error: ")?;
-            if let Some(op) = err.meta.op() {
+            if let Some(op) = meta.op() {
                 write!(f, "{} ", op.name(db))?
             }
             write!(f, "expected ({}) but got ({})",
@@ -379,7 +408,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                     from, val, to)?,
         NotEnough { expect, got } => {
             write!(f, "Stack Error: ")?;
-            if let Some(op) = err.meta.op() {
+            if let Some(op) = meta.op() {
                 write!(f, "Operation `{}' ", op.name(db))?
             }
             write!(f, "expected {} stack element{}, but got {}",
@@ -443,7 +472,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         x => unimplemented!("{:?}", x),
     }
 
-    if let Some(src) = err.meta.src() {
+    if let Some(src) = meta.src() {
         write!(f, " {}", src)?;
     }
     Ok(())
@@ -451,58 +480,58 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
 
 impl Error {
     pub fn src(mut self, src: Source) -> Error {
-        self.meta.amend(Meta::Source(LineCol {
+        self.inner.meta.amend(Meta::Source(LineCol {
             line: src.line,
             col: src.col
         }));
         if let Some(file) = src.file {
-            self.meta.amend(Meta::SourceFile(file));
+            self.inner.meta.amend(Meta::SourceFile(file));
         }
         self
     }
 
     pub fn see_also(mut self, what: &'static str, src: Source) -> Self {
-        self.meta.amend(Meta::Related(Some(OpName::OpStr(what)), src));
+        self.inner.meta.amend(Meta::Related(Some(OpName::OpStr(what)), src));
         self
     }
 
     pub fn see_also_sym(mut self, what: SymID, src: Source) -> Self {
-        self.meta.amend(Meta::Related(Some(OpName::OpSym(what)), src));
+        self.inner.meta.amend(Meta::Related(Some(OpName::OpSym(what)), src));
         self
     }
 
     pub fn amend(mut self, meta: Meta) -> Self {
-        self.meta.amend(meta);
+        self.inner.meta.amend(meta);
         self
     }
 
     pub fn fallback(mut self, meta: Meta) -> Self {
-        self.meta.fallback(meta);
+        self.inner.meta.fallback(meta);
         self
     }
 
     pub fn fop(mut self, new_op: SymID) -> Error {
-        self.meta.fallback(Meta::Op(OpName::OpSym(new_op)));
+        self.inner.meta.fallback(Meta::Op(OpName::OpSym(new_op)));
         self
     }
 
     pub fn bop(mut self, new_op: Builtin) -> Error {
-        self.meta.amend(Meta::Op(OpName::OpBt(new_op)));
+        self.inner.meta.amend(Meta::Op(OpName::OpBt(new_op)));
         self
     }
 
     pub fn op(mut self, new_op: SymID) -> Error {
-        self.meta.amend(Meta::Op(OpName::OpSym(new_op)));
+        self.inner.meta.amend(Meta::Op(OpName::OpSym(new_op)));
         self
     }
 
     pub fn argn(mut self, n: u32) -> Error {
-        self.meta.amend(Meta::OpArgn(n));
+        self.inner.meta.amend(Meta::OpArgn(n));
         self
     }
 
     pub fn cause(&self) -> &Error {
-        match &self.ty {
+        match self.kind() {
             ErrorKind::Traceback { tb } => {
                 &tb.err
             },
@@ -537,28 +566,19 @@ impl Error {
 
 impl serde::ser::Error for Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
-        Error {
-            ty: ErrorKind::SomeError { msg: msg.to_string() },
-            meta: Default::default(),
-        }
+        Error::new(ErrorKind::SomeError { msg: msg.to_string() })
     }
 }
 
 impl serde::de::Error for Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
-        Error {
-            ty: ErrorKind::SomeError { msg: msg.to_string() },
-            meta: Default::default(),
-        }
+        Error::new(ErrorKind::SomeError { msg: msg.to_string() })
     }
 }
 
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_error(&Error {
-            ty: self.clone(),
-            meta: Default::default(),
-        }, f, &SYM_DB)
+        fmt_error(&Error::new(self.clone()), f, &SYM_DB)
     }
 }
 
@@ -587,27 +607,21 @@ impl error::Error for ErrorKind {}
 
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        Some(&self.ty)
+        Some(self.kind())
     }
 }
 
 impl<T> From<SendError<T>> for Error where T: Debug {
     fn from(err: SendError<T>) -> Self {
-        Error {
-            meta: Default::default(),
-            ty: ErrorKind::SendError {
-                obj_dbg: format!("{:?}", err.0)
-            }
-        }
+        Error::new(ErrorKind::SendError {
+            obj_dbg: format!("{:?}", err.0)
+        })
     }
 }
 
 impl From<TryFromIntError> for Error {
     fn from(err: TryFromIntError) -> Self {
-        Error {
-            meta: Default::default(),
-            ty: ErrorKind::SomeError { msg: err.to_string() }
-        }
+        Error::new(ErrorKind::SomeError { msg: err.to_string() })
     }
 }
 
@@ -619,10 +633,9 @@ impl From<std::convert::Infallible> for Error {
 
 impl From<ParseErr> for Error {
     fn from(perr: ParseErr) -> Self {
-        Error {
-            meta: Default::default(),
-            ty: ErrorKind::SyntaxError { msg: perr.msg }
-        }.amend(Meta::Source(LineCol { line: perr.line, col: perr.col }))
+        Error::new(
+            ErrorKind::SyntaxError { msg: perr.msg },
+        ).amend(Meta::Source(LineCol { line: perr.line, col: perr.col }))
     }
 }
 
@@ -640,27 +653,22 @@ macro_rules! bail {
 
 macro_rules! error {
     ($kind:ident, $($init:tt)* ) => {
-        crate::error::Error {
-            meta: Default::default(),
-            ty: crate::error::ErrorKind::$kind { $($init)* },
-        }
+        crate::error::Error::new(crate::error::ErrorKind::$kind { $($init)* })
     };
 }
 
 macro_rules! err_src {
     ($src:expr, $kind:ident, $($init:tt)* ) => {
-        Err(crate::error::Error {
-            meta: Default::default(),
-            ty: (crate::error::ErrorKind::$kind { $($init)* }),
-        }.src($src))
+        Err(crate::error::Error::new(
+            (crate::error::ErrorKind::$kind { $($init)* })
+        ).src($src))
     };
 }
 
 macro_rules! error_src {
     ($src:expr, $kind:ident, $($init:tt)* ) => {
-        crate::error::Error {
-            meta: Default::default(),
-            ty: (crate::error::ErrorKind::$kind { $($init)* }),
-        }.src($src)
+        crate::error::Error::new(
+            (crate::error::ErrorKind::$kind { $($init)* }),
+        ).src($src)
     };
 }

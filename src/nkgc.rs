@@ -30,15 +30,14 @@ macro_rules! __with_ref_common {
      $($t:ident($m:pat) => $action:block),+) => {{
          #[allow(unused_unsafe)]
          unsafe {
-             let err = || $crate::error::Error {
-                 ty: $crate::error::ErrorKind::TypeNError {
+             let err = || $crate::error::Error::new(
+                 $crate::error::ErrorKind::TypeNError {
                      expect: vec![
                          $($crate::nuke::NkT::$t.into()),+
                      ],
                      got: $pv.bt_type_of(),
-                 },
-                 meta: Default::default(),
-             };
+                 }
+             );
              match $pv {
                  #[allow(unused_unsafe)]
                  $crate::nkgc::PV::Ref($ptr) => match $get {

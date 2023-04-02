@@ -841,10 +841,10 @@ mod tests {
         assert_eq!(dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                         y: dst_obj.y + src_obj.y });
         let expr = "(obj-y wrong-obj)";
-        let e = match vm.exec(expr).map_err(|e| e.src()) {
+        let e = match vm.exec(expr).map_err(|e| e.src().kind().clone()) {
             Ok(_) => panic!("Expression should fail: {expr}"),
-            Err(IError {ty: ErrorKind::Traceback { tb }, .. }) => tb.err.ty,
-            Err(e) => panic!("Unexpected error for {expr}: {}", e.to_string(&vm)),
+            Err(ErrorKind::Traceback { tb }, ..) => tb.err.kind().clone(),
+            Err(e) => panic!("Unexpected error for {expr}"),
         };
         dbg!(&e);
         assert!(matches!(e, ErrorKind::STypeError { .. }));

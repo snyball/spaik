@@ -402,13 +402,10 @@ mod tests {
     fn primitive_type_conversions() {
         let pv_big = ASMPV::u32(260);
         let v_big: Result<u8> = pv_big.try_into();
-        assert_eq!(v_big, Err(Error {
-            meta: Default::default(),
-            ty: ConversionError {
-                from: "u32",
-                to: "u8",
-                val: String::from("260")
-            }
+        assert_eq!(v_big.map_err(|e| e.kind().clone()), Err(ConversionError {
+            from: "u32",
+            to: "u8",
+            val: String::from("260")
         }));
     }
 

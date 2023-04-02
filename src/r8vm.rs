@@ -355,10 +355,10 @@ mod sysfns {
             let status = args.first().copied()
                                      .unwrap_or_else(
                                          || PV::Sym(Builtin::KwOk.sym()));
-            Err(Error { ty: ErrorKind::Exit {
-                status: status.try_into().map_err(|e: Error|
-                                                  e.argn(1).bop(Builtin::Exit))?
-            }, meta: Default::default() })
+            Err(Error::new(ErrorKind::Exit {
+                status: status.try_into()
+                              .map_err(|e: Error| e.argn(1).bop(Builtin::Exit))?
+            }))
         }
 
         fn instant(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
@@ -1740,15 +1740,15 @@ impl R8VM {
             let args: Vec<_> = (&self.mem.stack[top - nargs as usize..]).into_iter().copied().collect();
 
             let dip = self.ip_delta(ip);
-            if self.debug_mode { println!("<subr>::{}:", (*subr).name()) }
+            // if self.debug_mode { println!("<subr>::{}:", (*subr).name()) }
             let res = (*subr).call(self, &args[..]);
             invalid!(args); // (*subr).call
             self.mem.stack.drain(idx..).for_each(drop); // drain gang
             self.mem.push(res?);
-            if self.debug_mode {
-                println!("ret <subr>::{}", (*subr).name());
-                self.dump_stack()?;
-            }
+            // if self.debug_mode {
+            //     println!("ret <subr>::{}", (*subr).name());
+            //     self.dump_stack()?;
+            // }
             Ok(self.ret_to(dip))
         }, Continuation(cont) => {
             ArgSpec::normal(1).check(Builtin::Continuation.sym(), nargs)?;
@@ -1802,11 +1802,6 @@ impl R8VM {
         let mut regs: Regs<2> = Regs::new();
         let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
         use r8c::Op::*;
-        let mut orig = None;
-        if self.debug_mode {
-            let sym = self.traceframe(offs as usize);
-            orig = Some(sym);
-            println!("{}:", self.name(SymID::from(sym)));
         macro_rules! op2 {
             ($r:ident, $op:ident, $rp:expr) => {{
                 let len = self.mem.stack.len();
@@ -1816,23 +1811,30 @@ impl R8VM {
                 self.mem.stack.push($rp);
             }};
         }
+        // let mut orig = None;
+        // if self.debug_mode {
+        //     let sym = self.traceframe(offs as usize);
+        //     orig = Some(sym);
+        //     println!("{}:", self.name(SymID::from(sym)));
+        // }
         let mut run = || loop {
             // let op = *ip;
-            let ipd = self.ip_delta(ip);
-            let op = *self.pmem.get_unchecked(ipd);
+            // let ipd = self.ip_delta(ip);
+            // let op = *self.pmem.get_unchecked(ipd);
 
-            if self.debug_mode {
-                match op {
-                    VCALL(f, _) => println!("{}:", self.name(SymID::from(f))),
-                    CALL(ip, _) => {
-                        let sym = self.traceframe(ip as usize);
-                        println!("{}:", self.name(SymID::from(sym)));
-                    }
-                    _ => ()
-                }
-                println!("  {}", op);
-            }
+            // if self.debug_mode {
+            //     match op {
+            //         VCALL(f, _) => println!("{}:", self.name(SymID::from(f))),
+            //         CALL(ip, _) => {
+            //             let sym = self.traceframe(ip as usize);
+            //             println!("{}:", self.name(SymID::from(sym)));
+            //         }
+            //         _ => ()
+            //     }
+            //     println!("  {}", op);
+            // }
 
+            let op = *ip;
             ip = ip.offset(1);
             match op {
                 // List processing
@@ -2151,9 +2153,9 @@ impl R8VM {
                 }
 
                 HCF() => {
-                    if self.debug_mode {
-                        println!("hcf from {:?}", orig.map(|s| self.name(s)));
-                    }
+                    // if self.debug_mode {
+                    //     println!("hcf from {:?}", orig.map(|s| self.name(s)));
+                    // }
                     return Ok(())
                 },
             }
