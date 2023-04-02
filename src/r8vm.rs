@@ -16,7 +16,7 @@ use crate::{
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree, sexpr_modified_sym_to_str},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
-    stylize::Stylize,
+    stylize::Stylize, chasm::LblMap,
 };
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::{self, addr_of_mut}, sync::Mutex, path::Path};
@@ -709,6 +709,7 @@ pub struct R8VM {
     macros: FnvHashMap<SymIDInt, SymID>,
     pub(crate) funcs: FnvHashMap<SymIDInt, Func>,
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
+    pub(crate) labels: LblMap,
     func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
     pub(crate) srctbl: SourceList,
     catch: Vec<usize>,
@@ -736,6 +737,7 @@ impl Default for R8VM {
             func_arg_syms: Default::default(),
             stdout: Mutex::new(Box::new(io::stdout())),
             stdin: Mutex::new(Box::new(io::stdin())),
+            labels: Default::default(),
             debug_mode: false,
             frame: Default::default(),
             srctbl: Default::default(),
@@ -2301,10 +2303,6 @@ impl R8VM {
             name = *mac_fn;
         }
         let func = self.funcs.get(&name.into()).ok_or("No such function")?;
-        let labels: Cow<FnvHashMap<u32, Lbl>> =
-            self.func_labels.get(&name)
-                            .map(Cow::Borrowed)
-                            .unwrap_or_else(|| Cow::Owned(FnvHashMap::default()));
         let start = func.pos as isize;
 
         let get_jmp = |op: r8c::Op| {
@@ -2323,11 +2321,11 @@ impl R8VM {
             use r8c::Op::*;
             if let Some(delta) = get_jmp(op) {
                 return Some((op.name().to_lowercase(),
-                             vec![labels.get(&((pos + delta - start) as u32))
-                                        .map(|lbl| format!("{}", lbl))
-                                        .unwrap_or(format!("{}", delta))
-                                        .style_asm_label_ref()
-                                        .to_string()]))
+                             vec![self.labels.get(&((pos + delta) as u32))
+                                  .map(|lbl| format!("{}", lbl))
+                                  .unwrap_or(format!("{}", delta))
+                                  .style_asm_label_ref()
+                                  .to_string()]))
             }
             let sym_name = |sym: SymIDInt| self.sym_name(sym.into()).to_string();
             Some((op.name().to_lowercase(), match op {
@@ -2343,7 +2341,7 @@ impl R8VM {
                  func.args)?;
         for i in start..start+(func.sz as isize) {
             let op = self.pmem[i as usize];
-            if let Some(s) = labels.get(&((i - start) as u32)) {
+            if let Some(s) = self.labels.get(&(i as u32)) {
                 writeln!(stdout, "{}:", s.style_asm_label())?;
             }
             let (name, args) = fmt_special(i, op).unwrap_or(

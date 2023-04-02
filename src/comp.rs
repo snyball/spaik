@@ -1017,6 +1017,7 @@ impl R8Compiler {
         vm.pmem.append(&mut self.code);
         vm.mem.env.append(&mut self.consts);
         vm.srctbl.append(&mut self.srctbl);
+        vm.labels.extend(self.labels.drain());
         for (name, spec, names, pos, sz) in self.new_fns.drain(..) {
             let name = match name {
                 Sym::Id(id) => id,
