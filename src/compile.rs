@@ -148,6 +148,13 @@ macro_rules! builtins {
             pub fn to_string(&self) -> String {
                 String::from(self.get_str())
             }
+
+            fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
+                Some(match s.as_ref() {
+                    $($str => Builtin::$sym),*,
+                    _ => return None
+                })
+            }
         }
 
         impl std::fmt::Display for Builtin {
