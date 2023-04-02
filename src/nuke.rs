@@ -19,8 +19,15 @@ use std::time::SystemTime;
 use fnv::FnvHashMap;
 use std::sync::Mutex;
 use std::collections::hash_map::Entry;
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::sync::atomic;
+
+macro_rules! align_diff {
+    ($p:expr, $align_t:ty) => {{
+        let ptr_align_diff = align_mut($p, align_of::<$align_t>()) as isize - $p as isize;
+        if ptr_align_diff != 0 { dbg!(ptr_align_diff); }
+    }};
+}
 
 macro_rules! with_atom {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
@@ -1014,7 +1021,6 @@ pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
 }
 
 #[must_use = "Relocation must be confirmed"]
-#[derive(Debug)]
 pub struct RelocateToken;
 
 impl Drop for RelocateToken {
@@ -1152,6 +1158,31 @@ impl Nuke {
         RelocateToken
     }
 
+    pub unsafe fn grow_realloc(&mut self, fit: usize) -> RelocateToken {
+        let new_sz = (self.sz << 1).max(self.sz + fit);
+        let layout = Layout::from_size_align_unchecked(self.sz,
+                                                       align_of::<NkAtom>());
+        let old_mem = self.mem as usize;
+        self.mem = realloc(self.mem, layout, new_sz);
+        self.sz = new_sz;
+        let mut node = self.fst_mut();
+        loop {
+            let old_addr = old_mem + (node as usize - self.mem as usize);
+            self.reloc.push(old_addr as *const NkAtom, node);
+            let old_next = (*node).next;
+            if old_next.is_null() {
+                self.last = node;
+                self.free = (node as *mut u8).add((*node).full_size());
+                break;
+            }
+            let next = self.mem.add(old_next as usize - old_mem) as *mut NkAtom;
+            (*node).next = next;
+            node = next;
+        }
+
+        RelocateToken
+    }
+
     pub unsafe fn grow(&mut self, fit: usize) -> RelocateToken {
         let new_sz = (self.sz << 1).max(self.sz + fit);
         let last_layout = Layout::from_size_align_unchecked(self.sz,
@@ -1161,7 +1192,8 @@ impl Nuke {
         let mut used = 0;
         let mut num_atoms = 0;
 
-        let layout = Layout::from_size_align_unchecked(self.sz, align_of::<NkAtom>());
+        let layout = Layout::from_size_align_unchecked(self.sz,
+                                                       align_of::<NkAtom>());
         let mem_start = alloc(layout);
         let mut mem = mem_start;
         let mut new_node = ptr::null_mut();
@@ -1171,7 +1203,13 @@ impl Nuke {
             memcpy(mem, node, sz);
             self.reloc.push(node, mem);
             new_node = mem as *mut NkAtom;
-            mem = align_mut(mem.add(sz), align_of::<NkAtom>());
+
+            let nmem = mem.add(sz);
+            mem = align_mut(nmem, align_of::<NkAtom>());
+
+            let mem_diff = mem as usize - nmem as usize;
+            debug_assert_eq!(mem_diff, 0); // FIXME: Remove me
+
             (*new_node).next = mem as *mut NkAtom;
             node = (*node).next;
 
@@ -1193,7 +1231,7 @@ impl Nuke {
 
     pub unsafe fn make_room(&mut self, fit: usize) -> RelocateToken {
         if self.used + fit > self.sz {
-            self.grow(fit)
+            self.grow_realloc(fit)
         } else {
             self.compact()
         }
@@ -1219,17 +1257,22 @@ impl Nuke {
     }
 
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
-        let padding = align_of::<T>() - 1;
-        let max_sz = size_of::<T>() + size_of::<NkAtom>() + padding;
+        let max_padding = align_of::<T>() - 1;
+        let max_sz = size_of::<T>() + size_of::<NkAtom>() + max_padding;
         let ret = self.will_overflow(max_sz).then(|| self.make_room(max_sz));
 
         let mut cur = align_mut(self.free as *mut NkAtom,
                                 align_of::<NkAtom>());
+        let cur_diff = cur as usize - self.free as usize;
+        assert_eq!(cur_diff, 0); // FIXME: Remove me later
+        self.used += cur_diff;
+
         let p = (cur as *mut u8).add(mem::size_of::<NkAtom>()) as *mut T;
         let pa = align_mut(p, align_of::<T>());
+        let pdiff = pa as usize - p as usize;
         let full_sz = mem::size_of::<T>()
                     + mem::size_of::<NkAtom>()
-                    + ((pa as *const u8 as usize) - (p as *const u8 as usize));
+                    + pdiff;
 
         let last = self.last;
         self.last = cur;
@@ -1240,8 +1283,10 @@ impl Nuke {
         self.num_allocs += 1;
 
         (*cur).next = ptr::null_mut();
-        (*cur).sz = mem::size_of::<T>() as NkSz;
+        (*cur).sz = (full_sz - mem::size_of::<NkAtom>()) as NkSz;
         (*cur).init(T::type_of());
+        debug_assert_eq!((cur as *mut u8).add((*cur).full_size()),
+                         self.free);
 
         (*last).next = cur;
 
@@ -1250,7 +1295,7 @@ impl Nuke {
 
     #[inline]
     pub fn size_of<T: Fissile>() -> usize {
-        mem::size_of::<T>() + mem::size_of::<NkAtom>()
+        mem::size_of::<T>() + mem::size_of::<NkAtom>() + mem::align_of::<T>() - 1
     }
 
     pub fn will_overflow(&mut self, sz: usize) -> bool {
@@ -1261,7 +1306,7 @@ impl Nuke {
     pub unsafe fn fit<T: Fissile>(&mut self, num: usize) -> RelocateToken {
         let full_sz = Nuke::size_of::<T>() * num;
         if self.will_overflow(full_sz) {
-            self.make_room(Nuke::size_of::<T>() * num)
+            self.make_room(full_sz)
         } else {
             RelocateToken
         }

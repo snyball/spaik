@@ -1185,7 +1185,7 @@ enum GCState {
 
 const DEFAULT_MEMSZ: usize = 32768;
 const DEFAULT_GRAYSZ: usize = 256;
-const DEFAULT_STACKSZ: usize = 256;
+const DEFAULT_STACKSZ: usize = 32;
 const DEFAULT_ENVSZ: usize = 0;
 // const GC_SLEEP_CYCLES: i32 = 10000;
 const GC_SLEEP_MEM_BYTES: i32 = 16384;
