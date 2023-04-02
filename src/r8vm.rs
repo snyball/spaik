@@ -1057,10 +1057,9 @@ impl R8VM {
         // Iter
         addfn!(iter);
 
-        let src = Some(Cow::Borrowed("<ζ>::core"));
-        vm.read_compile("(define (<ξ>::set-macro! macro fn) (set-macro macro fn) nil)",
+        let src = Some(Cow::Borrowed("<ζ>::boot-stage0"));
+        vm.read_compile(include_str!("../lisp/boot-stage0.lisp"),
                         src.clone()).unwrap();
-        vm.read_compile("(set-macro 'set-macro! '<ξ>::set-macro!)", src).unwrap();
 
         vm
     }
