@@ -2,6 +2,7 @@
 
 use core::slice;
 use std::collections::{HashSet, hash_set};
+use std::sync::atomic::AtomicU32;
 use std::{cmp, fmt, iter};
 use std::hash::{Hash, self, BuildHasher};
 use std::{ptr::NonNull, mem, ptr};
@@ -19,6 +20,18 @@ struct Sym {
     ptr: NonNull<u8>,
     len: usize,
     sz: usize,
+}
+
+impl Sym {
+    pub const fn from_static(st: &'static str) -> Sym {
+        let len = st.len();
+        Sym {
+            ptr: unsafe { NonNull::new_unchecked(st.as_ptr() as *mut u8) },
+            rc: GcRc::new(AtomicU32::new(2)),
+            len,
+            sz: len
+        }
+    }
 }
 
 struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
@@ -260,7 +273,7 @@ impl SwymDb {
                 ptr: NonNull::new(s.as_mut_ptr()).unwrap(),
                 len: s.len(),
                 sz: s.capacity(),
-                rc: GcRc::new(0)
+                rc: GcRc::new(AtomicU32::new(0))
             };
 
             let key = mem::ManuallyDrop::new(
@@ -287,7 +300,7 @@ impl SwymDb {
             ptr: NonNull::new(s.as_ptr() as *mut u8).unwrap(),
             len: s.len(),
             sz: 0,
-            rc: GcRc::new(0)
+            rc: GcRc::new(AtomicU32::new(0))
         };
         let key = mem::ManuallyDrop::new(
             SymKeyRef(SymRef((&mut sym) as *mut Sym))

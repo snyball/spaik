@@ -330,8 +330,8 @@ pub struct Object {
 pub struct GcRc(AtomicU32);
 
 impl GcRc {
-    pub fn new(init: u32) -> GcRc {
-        GcRc(init.into())
+    pub const fn new(init: AtomicU32) -> GcRc {
+        GcRc(init)
     }
 
     pub fn inc(&mut self) {
