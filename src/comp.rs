@@ -18,6 +18,10 @@ static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
 static MODULE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static DEFVAR_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+macro_rules! ignore {
+    ($($a:tt)*) => {};
+}
+
 macro_rules! def_macros {
     ($d:tt, $ret:expr, $self:expr) => {
         #[allow(unused_macros)]
@@ -29,8 +33,9 @@ macro_rules! def_macros {
         macro_rules! opcall {
             ($d op:ident $d ($d arg:expr),*) => {{
                 if $ret {
-                    $d ($self.compile(true, $d arg)?;)*
-                        asm!($d op);
+                    $d ($self.push($d arg)?;)*
+                    asm!($d op);
+                    $self.env_pop(count_args!($d($d arg),*))?;
                 } else {
                     $d ($self.compile(false, $d arg)?;)*
                 }
@@ -40,20 +45,21 @@ macro_rules! def_macros {
         #[allow(unused_macros)]
         macro_rules! opcall_mut {
             ($d op:ident $d ($d arg:expr),*) => {{
-                $d ($self.compile(true, $d arg)?;)*
+                $d ($self.push($d arg)?;)*
                 asm!($d op);
-                if !$ret { asm!(POP 1) }
+                if !$ret {
+                    asm!(POP 1);
+                }
+                $self.env_pop(count_args!($d($d arg),*))?;
             }};
         }
 
         #[allow(unused_macros)]
         macro_rules! vopcall {
             ($d op:ident $d argv:expr) => {{
-                let nargs = $d argv.len();
-                for arg in $d argv.into_iter() {
-                    $self.compile($ret, arg)?;
-                }
+                let nargs = $self.pushit(($d argv).into_iter())?;
                 if $ret { asm!($d op nargs) }
+                $self.env_pop(nargs)?;
             }};
         }
     };

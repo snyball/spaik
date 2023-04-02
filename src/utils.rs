@@ -79,8 +79,8 @@ impl<T: Copy + Default> Stack<T> {
 #[macro_export]
 macro_rules! count_args {
     () => { 0 };
-    ( $arg:ident ) => { 1 };
-    ( $arg:ident, $($tail:ident),* ) => {
+    ( $arg:expr ) => { 1 };
+    ( $arg:expr, $($tail:expr),* ) => {
         1 + count_args!($($tail),*)
     }
 }

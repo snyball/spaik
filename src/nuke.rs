@@ -1021,7 +1021,12 @@ const ALIGNMENT: isize = 4;
 const ALIGNMENT: isize = 8;
 
 #[must_use = "Relocation must be confirmed"]
+#[derive(Debug)]
 pub struct RelocateToken;
+
+impl Drop for RelocateToken {
+    fn drop(&mut self) {}
+}
 
 impl Nuke {
     pub fn new(sz: usize) -> Nuke {
@@ -1201,7 +1206,7 @@ impl Nuke {
     }
 
     pub fn confirm_relocation(&mut self, t: RelocateToken) {
-        #[allow(clippy::drop_non_drop)] drop(t);
+        drop(t);
         self.reloc.0.clear();
     }
 
@@ -1222,14 +1227,16 @@ impl Nuke {
     }
 
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
-        let cur = align_mut(self.free as *mut NkAtom, ALIGNMENT);
+        let padding = align_of::<T>();
+        let max_sz = size_of::<T>() + size_of::<NkAtom>() + padding;
+        let ret = self.will_overflow(max_sz).then(|| self.make_room(max_sz));
+
+        let mut cur = align_mut(self.free as *mut NkAtom, ALIGNMENT);
         let p = (cur as *mut u8).add(mem::size_of::<NkAtom>()) as *mut T;
         let pa = align_mut(p, align_of::<T>() as isize);
         let full_sz = mem::size_of::<T>()
                     + mem::size_of::<NkAtom>()
                     + ((pa as *const u8 as usize) - (p as *const u8 as usize));
-        let ret = (self.free.add(full_sz) >= self.offset(self.sz))
-                  .then(|| self.make_room(full_sz));
 
         let last = self.last;
         self.last = cur;
