@@ -848,6 +848,17 @@ impl R8Compiler {
         Ok(())
     }
 
+    pub fn bt2(&mut self, ret: bool, op: Builtin, a0: AST2, a1: AST2) -> Result<()> {
+        def_macros!($, ret, self);
+
+        match op {
+            Builtin::Apply => opcall_mut!(APL a0, a1),
+            x => unimplemented!("{x:?}"),
+        }
+
+        Ok(())
+    }
+
     fn compile(&mut self, ret: bool, AST2 { kind, src }: AST2) -> Result<()> {
         def_macros!($, ret, self);
 
@@ -948,6 +959,7 @@ impl R8Compiler {
                 if !ret { asm!(POP 1) }
             }
             M::Bt1(op, arg) => self.bt1(ret, op, *arg)?,
+            M::Bt2(op, a0, a1) => self.bt2(ret, op, *a0, *a1)?,
         }
 
         Ok(())

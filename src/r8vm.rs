@@ -58,7 +58,7 @@ chasm_def! {
     // JNSYM(dip: i32, sym: SymIDInt),
     CALL(pos: u32, nargs: u16),
     VCALL(func: SymIDInt, nargs: u16),
-    // TODO: APPLY()
+    APL(),
     CLZCALL(nargs: u16),
     RET(),
     CALLCC(dip: i32),
@@ -2103,6 +2103,23 @@ impl R8VM {
                     self.mem.push(rv);
                 }
                 CLZCALL(nargs) => ip = self.op_clzcall(ip, nargs)?,
+                APL() => {
+                    let args = self.mem.pop().unwrap();
+                    let nargs = with_ref!(args, Cons(_) => {
+                        Ok(args.into_iter().map(|a| self.mem.push(a)).count())
+                    }, Vector(xs) => {
+                        Ok((*xs).iter().map(|a| self.mem.push(*a)).count())
+                    }).map_err(|e| e.bop(Builtin::Apply))?;
+                    let nargs: u16 = match nargs.try_into() {
+                        Ok(n) => n,
+                        Err(e) => {
+                            self.mem.popn(nargs);
+                            self.mem.push(PV::Nil);
+                            return Err(e.into());
+                        }
+                    };
+                    ip = self.op_clzcall(ip, nargs)?;
+                }
                 CALLCC(dip) => {
                     let dip = self.ip_delta(ip) as isize + dip as isize;
                     let mut stack_dup = self.mem.stack.clone();
