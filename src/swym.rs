@@ -378,17 +378,27 @@ mod tests {
             let lmao_n = swym.put("lmao".to_string());
             assert_eq!(lmao1, lmao_n);
         }
+
+        let (p_ayy, p_lmao) = unsafe { ((*ayy.0).ptr.as_ptr(),
+                                        (*lmao1.0).ptr.as_ptr()) };
+
         let hm: FnvHashSet<String> = swym.into();
+
         let mut hm_cmp = FnvHashSet::default();
         hm_cmp.insert(String::from("ayy"));
         hm_cmp.insert(String::from("lmao"));
         assert_eq!(hm, hm_cmp);
+
+        // swym.into() should allocate new Strings, because ayy/lmao are still
+        // referenced.
+        assert_ne!((*hm.get("ayy").unwrap()).as_ptr(), p_ayy);
+        assert_ne!((*hm.get("lmao").unwrap()).as_ptr(), p_lmao);
     }
 
     #[test]
     fn go_for_a_swym_and_jump_into_a_hashset_the_next_day() {
         let mut swym = SwymDb::default();
-        {
+        let (p_ayy, p_lmao) = {
             let lmao1 = swym.put("lmao".to_string());
             let ayy = swym.put("ayy".to_string());
             let lmao2 = swym.put("lmao".to_string());
@@ -402,12 +412,21 @@ mod tests {
                 let lmao_n = swym.put("lmao".to_string());
                 assert_eq!(lmao1, lmao_n);
             }
-        }
+            unsafe { ((*ayy.0).ptr.as_ptr(),
+                      (*lmao1.0).ptr.as_ptr()) }
+        };
+
         let hm: FnvHashSet<String> = swym.into();
+
         let mut hm_cmp = FnvHashSet::default();
         hm_cmp.insert(String::from("ayy"));
         hm_cmp.insert(String::from("lmao"));
         assert_eq!(hm, hm_cmp);
+
+        // Confirm that we have the same exact String allocations as we started
+        // with.
+        assert_eq!((*hm.get("ayy").unwrap()).as_ptr(), p_ayy);
+        assert_eq!((*hm.get("lmao").unwrap()).as_ptr(), p_lmao);
     }
 
 
