@@ -82,7 +82,7 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                                          .collect::<Result<Vec<_>, _>>()?;
     for path in paths {
         match vm.read_compile_from(&path) {
-            Ok(_) => vmprintln!(vm, "Loaded {}", path.display()),
+            Ok(_) => (),
             Err(e) => {
                 vmprintln!(vm, "Error when loading {}", path.display());
                 let s = e.to_string(&vm);
@@ -98,7 +98,6 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let test_fns = vm.get_funcs_with_prefix(test_fn_prefix);
     let mut err_results = vec![];
 
-    vmprintln!(vm, "Running tests ...");
     for func in test_fns.iter() {
         let name = vm.sym_name(*func)
                      .chars()
