@@ -1,0 +1,2 @@
+(defun friend ()
+  (println ":^)"))
