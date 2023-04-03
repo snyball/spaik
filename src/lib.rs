@@ -698,6 +698,7 @@ mod tests {
 
     use super::*;
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn spaik_fork_send_from_rust_to_lisp() {
         setup();
@@ -712,6 +713,7 @@ mod tests {
         assert_eq!(init_var, 124);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn spaik_fork_send_from_lisp_to_rust() {
         setup();
@@ -918,6 +920,7 @@ mod tests {
         vm.add_load_path("lmao");
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[cfg(feature = "derive")]
     #[test]
     #[should_panic]
