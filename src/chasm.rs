@@ -388,7 +388,6 @@ macro_rules! chasm {
 mod tests {
     use super::*;
     use crate::r8vm::{R8VM, r8c};
-    use crate::error::Error;
     use std::io::Cursor;
 
     #[test]

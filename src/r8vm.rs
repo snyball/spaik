@@ -12,7 +12,7 @@ use crate::{
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result},
     fmt::LispFmt,
     nuke::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, PV, SPV, self, QuasiMut},
+    nkgc::{Arena, Cons, SymID, SymIDInt, PV, SPV, self, QuasiMut, Int},
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree, sexpr_modified_sym_to_str},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
@@ -1944,7 +1944,7 @@ impl R8VM {
                                         String(s) => { Ok((*s).len()) },
                                         Cons(_) => { Ok(li.iter().count()) })
                         .map_err(|e| e.bop(Builtin::Len))?;
-                    self.mem.push(PV::Int(len as i64));
+                    self.mem.push(PV::Int(len as Int));
                 }
 
                 // Value creation
@@ -1990,12 +1990,12 @@ impl R8VM {
                 MUL() => op2!(r, mul, r?),
 
                 INC(v, d) => match self.mem.stack[self.frame + (v as usize)] {
-                    PV::Int(ref mut x) => *x += i64::from(d),
+                    PV::Int(ref mut x) => *x += d as Int,
                     PV::Real(ref mut x) => *x += f32::from(d),
                     x => return Err(RuntimeError::new(format!("Cannot increment: {}", x)).into()),
                 },
                 DEC(v, d) => match self.mem.stack[self.frame + (v as usize)] {
-                    PV::Int(ref mut x) => *x -= i64::from(d),
+                    PV::Int(ref mut x) => *x -= d as Int,
                     PV::Real(ref mut x) => *x -= f32::from(d),
                     x => return Err(RuntimeError::new(format!("Cannot decrement: {}", x)).into()),
                 },
@@ -2131,7 +2131,7 @@ impl R8VM {
                     }
                     st.truncate(top - pop);
                 }
-                PUSH(n) => self.mem.push(PV::Int(i64::from(n))),
+                PUSH(n) => self.mem.push(PV::Int(n as Int)),
                 PUSHF(n) => self.mem.push(PV::Real(f32::from_bits(n))),
                 CHAR(c) => self.mem.push(PV::Char(char::from_u32_unchecked(c))),
                 SYM(id) => self.mem.push(PV::Sym(id.into())),
@@ -2139,7 +2139,7 @@ impl R8VM {
                 RST() => regs.restore(&mut self.mem),
                 TOP(d) => {
                     let top = self.mem.stack.len() - self.frame;
-                    self.mem.push(PV::Int((top as i64) - (d as i64)));
+                    self.mem.push(PV::Int((top as Int) - (d as Int)));
                 }
                 DUP() => self.mem.dup()?,
                 CLZEXP() => self.mem.clz_expand(self.frame)?,

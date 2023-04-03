@@ -172,10 +172,10 @@ impl From<SymID> for SymIDInt {
     }
 }
 
-impl From<SymID> for i64 {
+impl From<SymID> for Int {
     #[allow(clippy::cast_lossless)]
-    fn from(v: SymID) -> i64 {
-        v.id as i64
+    fn from(v: SymID) -> Int {
+        v.id as Int
     }
 }
 
@@ -195,14 +195,17 @@ impl fmt::Display for SymID {
     }
 }
 
+pub type Int = isize;
+pub type Float = f32;
+
 /// Primitive values
 #[derive(Debug, Copy, Clone, Default)]
 pub enum PV {
     Ref(*mut NkAtom),
     Sym(SymID),
-    Int(i64),
+    Int(Int),
     UInt(usize),
-    Real(f32),
+    Real(Float),
     Bool(bool),
     Char(char),
     #[default]
@@ -677,7 +680,7 @@ impl PV {
 
     // TODO: Create force_real, force_bool, etc, as well as int()->Option<i64>
     // Do it using some simple macros, that implement a trait called `PVT`
-    pub fn force_int(&self) -> i64 {
+    pub fn force_int(&self) -> isize {
         // FIXME: Should use mem::transmute funny-business instead
         match self {
             PV::Int(x) => *x,
@@ -1862,7 +1865,7 @@ mod tests {
         let mut gc = Arena::new(128);
         let len: u32 = 10000;
         for i in 0..len {
-            gc.push(PV::Int(i as i64));
+            gc.push(PV::Int(i as Int));
         }
         gc.list(len);
         let _li = gc.pop_spv().unwrap();

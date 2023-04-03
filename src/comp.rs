@@ -5,7 +5,7 @@ use std::sync::atomic::{Ordering, AtomicUsize};
 use chasm::LblMap;
 use fnv::{FnvHashSet, FnvHashMap};
 
-use crate::nkgc::{PV, SymID};
+use crate::nkgc::{PV, SymID, Int};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::Source;
@@ -17,10 +17,6 @@ use crate::error::Result;
 static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);
 static MODULE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static DEFVAR_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-macro_rules! ignore {
-    ($($a:tt)*) => {};
-}
 
 macro_rules! def_macros {
     ($d:tt, $ret:expr, $self:expr) => {
@@ -479,7 +475,7 @@ impl R8Compiler {
 
     pub fn bt_vec_set(&mut self,
                       ret: bool,
-                      src: Source,
+                      _src: Source,
                       dst: AST2,
                       idx: AST2,
                       init: AST2) -> Result<()> {
@@ -498,7 +494,7 @@ impl R8Compiler {
                   init: AST2) -> Result<()> {
         let bound = self.get_var_idx(dst, &src)?;
         if let BoundVar::Local(idx) = bound {
-            let mut inplace_op = |op, val: i64| {
+            let mut inplace_op = |op, val: Int| {
                 self.unit().add(op, &[idx.into(), val.into()]);
                 if ret { self.asm_op(chasm!(MOV idx)) }
             };

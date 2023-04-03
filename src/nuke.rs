@@ -163,6 +163,18 @@ macro_rules! fissile_types {
         }
 
         #[inline]
+        pub fn assert_atom_inner_alignment(atom: *const NkAtom) {
+            unsafe {
+                match atom_kind(atom) {
+                    $(NkT::$t => {
+                        let item = fastcast::<$path>(atom);
+                        assert_eq!(item as usize % align_of::<$path>(), 0);
+                    }),+
+                }
+            }
+        }
+
+        #[inline]
         pub fn to_fissile_ref(atom: *const NkAtom) -> NkRef {
             let atom = atom as *mut NkAtom;
             with_atom_inst!(atom, NkRef, {atom}, $(($t,$path)),+)
@@ -1195,6 +1207,13 @@ impl Nuke {
             Some(RelocateToken)
         } else {
             None
+        }
+    }
+
+    pub fn assert_alignment(&self) {
+        for atom in self.iter() {
+            assert_eq!(atom as usize % align_of::<NkAtom>(), 0);
+            assert_atom_inner_alignment(atom);
         }
     }
 
