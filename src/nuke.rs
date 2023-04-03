@@ -239,7 +239,7 @@ impl Clone for Iter {
 
 impl IntoLisp for Iter {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
-        Ok(mem.put(self))
+        Ok(mem.put_pv(self))
     }
 }
 
@@ -934,38 +934,35 @@ pub unsafe fn destroy_atom(atom: *mut NkAtom) {
 pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
     macro_rules! clone {
         ($x:expr) => {{
-            let p = mem.alloc();
-            unsafe { ptr::write(p, (*$x).clone()) }
+            let p = mem.put(unsafe { (*$x).clone() });
             NkAtom::make_raw_ref(p)
         }};
     }
     match to_fissile_ref(atom) {
         NkRef::Void(v) => clone!(v),
         NkRef::Cons(cns) => {
-            let p = mem.alloc::<Cons>();
             unsafe {
-                (*p).car = (*cns).car.deep_clone(mem);
-                (*p).cdr = (*cns).cdr.deep_clone(mem);
+                let car = (*cns).car.deep_clone(mem);
+                let cdr = (*cns).cdr.deep_clone(mem);
+                let p = mem.put(Cons { car, cdr });
+                NkAtom::make_raw_ref(p)
             }
-            NkAtom::make_raw_ref(p)
         },
         NkRef::Intr(intr) => {
-            let p = mem.alloc::<Intr>();
-            NkAtom::make_raw_ref(unsafe {
-                ptr::write(p, Intr {
+            unsafe {
+                let intr = Intr {
                     op: (*intr).op,
                     arg: (*intr).arg.deep_clone(mem),
-                }); p
-            })
+                };
+                NkAtom::make_raw_ref(mem.put(intr))
+            }
         }
         NkRef::Lambda(_l) => todo!(),
         NkRef::String(s) => clone!(s),
         NkRef::PV(_p) => todo!(),
         NkRef::Vector(xs) => unsafe {
             let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
-            let p = mem.alloc();
-            ptr::write(p, nxs);
-            NkAtom::make_raw_ref(p)
+            NkAtom::make_raw_ref(mem.put(nxs))
         },
         #[cfg(feature = "math")]
         NkRef::Vec4(v4) => clone!(v4),
@@ -1188,6 +1185,7 @@ impl Nuke {
                 if old_next.is_null() {
                     self.last = node;
                     self.free = (node as *mut u8).add((*node).full_size());
+                    self.used = self.free as usize - self.mem as usize;
                     break;
                 }
                 let next = self.mem.add(old_next as usize - old_mem) as *mut NkAtom;

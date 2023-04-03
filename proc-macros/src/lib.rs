@@ -264,7 +264,7 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
             fn into_pv(self, mem: &mut #root::raw::nkgc::Arena)
                        -> core::result::Result<#root::raw::nkgc::PV, #root::error::Error>
             {
-                Ok(mem.put(#root::nuke::Object::new(self)))
+                Ok(mem.put_pv(#root::nuke::Object::new(self)))
             }
         }
     };

@@ -132,13 +132,13 @@ impl IntoLisp for bool {
 
 impl IntoLisp for &str {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
-        Ok(mem.put(self.to_string()))
+        Ok(mem.put_pv(self.to_string()))
     }
 }
 
 impl IntoLisp for String {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
-        Ok(mem.put(self))
+        Ok(mem.put_pv(self))
     }
 }
 
@@ -155,7 +155,7 @@ impl<T> IntoLisp for Vec<T>
         let arr = self.into_iter()
                       .map(|v| v.into_pv(mem))
                       .collect::<Result<Vec<PV>, _>>()?;
-        Ok(mem.put(arr))
+        Ok(mem.put_pv(arr))
     }
 }
 
@@ -257,8 +257,7 @@ impl Clone for Box<dyn Subr> {
 
 impl IntoLisp for Box<dyn Subr> {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
-        let p = mem.alloc::<Self>();
-        unsafe { ptr::write(p, self) }
+        let p = mem.put(self);
         Ok(NkAtom::make_ref(p))
     }
 }

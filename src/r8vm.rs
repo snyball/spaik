@@ -1325,7 +1325,7 @@ impl R8VM {
                     } else if let Ok(num) = text.parse() {
                         PV::Real(num)
                     } else if let Some(strg) = tok.inner_str() {
-                        self.mem.put(string_parse(&strg)?)
+                        self.mem.put_pv(string_parse(&strg)?)
                     } else if text == "true" {
                         PV::Bool(true)
                     } else if text == "false" {
@@ -1883,8 +1883,7 @@ impl R8VM {
                     let vec = self.mem.stack
                                       .drain(len-(n as usize)..)
                                       .collect::<Vec<_>>();
-                    let ptr = self.mem.alloc::<Vec<PV>>();
-                    ptr::write(ptr, vec);
+                    let ptr = self.mem.put(vec);
                     self.mem.push(NkAtom::make_ref(ptr));
                 }
                 VPUSH() => {
@@ -2101,7 +2100,7 @@ impl R8VM {
                     let dip = self.ip_delta(ip) as isize + dip as isize;
                     let mut stack_dup = self.mem.stack.clone();
                     stack_dup.pop();
-                    let cnt = self.mem.put(
+                    let cnt = self.mem.put_pv(
                         Continuation::new(stack_dup, self.frame, dip as usize));
                     self.mem.push(cnt);
                     ip = self.op_clzcall(ip, 1)?;

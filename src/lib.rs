@@ -434,7 +434,7 @@ impl Spaik {
     pub fn add_load_path(&mut self, path: impl AsRef<str>) {
         let p = self.vm.var(Builtin::SysLoadPath.sym())
                        .fmt_unwrap(&self.vm);
-        let s = self.vm.mem.put(path.as_ref().to_string());
+        let s = self.vm.mem.put_pv(path.as_ref().to_string());
         with_ref_mut!(p, Vector(v) => {
             (*v).push(s);
             Ok(())

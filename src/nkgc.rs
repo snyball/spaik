@@ -1266,12 +1266,6 @@ impl Arena {
         }
     }
 
-    pub fn put<T>(&mut self, v: T) -> PV where T: Fissile {
-        let p = self.alloc::<T>();
-        unsafe { ptr::write(p, v) }
-        NkAtom::make_ref(p)
-    }
-
     #[inline]
     pub fn clz_expand(&mut self, idx: usize) -> Result<(), Error> {
         let lambda = self.stack[idx];
@@ -1536,7 +1530,7 @@ impl Arena {
                     } else if let Ok(num) = text.parse() {
                         PV::Real(num)
                     } else if let Some(strg) = tok.inner_str() {
-                        self.put(string_parse(&strg)?)
+                        self.put_pv(string_parse(&strg)?)
                     } else if text == "true" {
                         PV::Bool(true)
                     } else if text == "false" {
@@ -1585,15 +1579,12 @@ impl Arena {
      * not met the function will cause a buffer underflow read.
      */
     pub fn cons(&mut self) {
-        let mem = self.alloc::<Cons>();
         let top = self.stack.len();
         let args = &self.stack[top - 2..];
-        unsafe {
-            ptr::write(mem, Cons {
-                car: args[0],
-                cdr: args[1],
-            });
-        }
+        let mem = self.put(Cons {
+            car: args[0],
+            cdr: args[1],
+        });
         self.stack.truncate(top - 2);
         self.stack.push(NkAtom::make_ref(mem));
     }
@@ -1658,7 +1649,27 @@ impl Arena {
         }
     }
 
-    pub(crate) fn alloc<T: Fissile>(&mut self) -> *mut T {
+    pub fn put_pv<T>(&mut self, v: T) -> PV where T: Fissile {
+        let p = self.put(v);
+        NkAtom::make_ref(p)
+    }
+
+    pub fn put<T>(&mut self, v: T) -> *mut T where T: Fissile {
+        self.state = match self.state {
+            GCState::Sleep(bytes) => GCState::Sleep(bytes - Nuke::size_of::<T>() as i32),
+            x => x
+        };
+        unsafe {
+            let (ptr, grow) = self.nuke.alloc::<T>();
+            ptr::write(ptr, v);
+            if let Some(tok) = grow {
+                self.update_ptrs(tok);
+            }
+            ptr
+        }
+    }
+
+    fn alloc<T: Fissile>(&mut self) -> *mut T {
         self.state = match self.state {
             GCState::Sleep(bytes) => GCState::Sleep(bytes - Nuke::size_of::<T>() as i32),
             x => x
@@ -1673,8 +1684,7 @@ impl Arena {
     }
 
     pub fn push_new<T: Fissile>(&mut self, v: T) {
-        let ptr = self.alloc::<T>();
-        unsafe { std::ptr::write(ptr, v) }
+        let ptr = self.put(v);
         self.stack.push(NkAtom::make_ref(ptr));
     }
 
@@ -1876,7 +1886,7 @@ mod tests {
             let obj = Object::new(TestObj {
                 hello, thing,
             });
-            ar.put(obj);
+            ar.put_pv(obj);
         }
         drop(ar);
         println!("phew");
