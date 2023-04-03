@@ -1576,13 +1576,6 @@ impl Arena {
         Ok(())
     }
 
-    pub fn cons(&mut self) {
-        if self.stack.len() < 2 {
-            panic!("Attempted to cons with no values on the stack");
-        }
-        unsafe { self.cons_unchecked() }
-    }
-
     /**
      * Pop two elements off the stack and `cons` them together.
      *
@@ -1591,15 +1584,16 @@ impl Arena {
      * on the stack before it is called. If this requirement is
      * not met the function will cause a buffer underflow read.
      */
-    pub unsafe fn cons_unchecked(&mut self) {
-        let top = self.stack.len();
-        let sptr = self.stack.as_ptr().offset(top as isize - 1);
+    pub fn cons(&mut self) {
         let mem = self.alloc::<Cons>();
-        ptr::write(mem, Cons {
-            car: *sptr.offset(-1),
-            cdr: *sptr,
-        });
         let top = self.stack.len();
+        let args = &self.stack[top - 2..];
+        unsafe {
+            ptr::write(mem, Cons {
+                car: args[0],
+                cdr: args[1],
+            });
+        }
         self.stack.truncate(top - 2);
         self.stack.push(NkAtom::make_ref(mem));
     }
@@ -1658,8 +1652,9 @@ impl Arena {
 
     fn mem_fit<T: Fissile>(&mut self, n: usize) {
         unsafe {
-            let tok = self.nuke.fit::<T>(n);
-            self.update_ptrs(tok);
+            if let Some(tok) = self.nuke.fit::<T>(n) {
+                self.update_ptrs(tok);
+            }
         }
     }
 

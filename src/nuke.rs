@@ -1172,7 +1172,7 @@ impl Nuke {
         RelocateToken
     }
 
-    pub unsafe fn grow_realloc(&mut self, fit: usize) -> RelocateToken {
+    pub unsafe fn grow_realloc(&mut self, fit: usize) -> Option<RelocateToken> {
         let new_sz = (self.sz << 1).max(self.sz + fit);
         let layout = Layout::from_size_align_unchecked(self.sz,
                                                        align_of::<NkAtom>());
@@ -1194,9 +1194,10 @@ impl Nuke {
                 (*node).next = next;
                 node = next;
             }
+            Some(RelocateToken)
+        } else {
+            None
         }
-
-        RelocateToken
     }
 
     pub unsafe fn grow_alloc(&mut self, fit: usize) -> RelocateToken {
@@ -1245,12 +1246,11 @@ impl Nuke {
         RelocateToken
     }
 
-    pub unsafe fn make_room(&mut self, fit: usize) -> RelocateToken {
+    pub unsafe fn make_room(&mut self, fit: usize) -> Option<RelocateToken> {
         if self.used + fit > self.sz {
-            println!("GROW REALLOC");
             self.grow_realloc(fit)
         } else {
-            self.compact()
+            Some(self.compact())
         }
     }
 
@@ -1276,7 +1276,11 @@ impl Nuke {
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
         let max_padding = align_of::<T>() - 1;
         let max_sz = size_of::<T>() + size_of::<NkAtom>() + max_padding;
-        let ret = self.will_overflow(max_sz).then(|| self.make_room(max_sz));
+        let ret = if self.will_overflow(max_sz) {
+            self.make_room(max_sz)
+        } else {
+            None
+        };
 
         let mut cur = align_mut(self.free as *mut NkAtom,
                                 align_of::<NkAtom>());
@@ -1320,12 +1324,12 @@ impl Nuke {
     }
 
     #[inline]
-    pub unsafe fn fit<T: Fissile>(&mut self, num: usize) -> RelocateToken {
+    pub unsafe fn fit<T: Fissile>(&mut self, num: usize) -> Option<RelocateToken> {
         let full_sz = Nuke::size_of::<T>() * num;
         if self.will_overflow(full_sz) {
             self.make_room(full_sz)
         } else {
-            RelocateToken
+            None
         }
     }
 

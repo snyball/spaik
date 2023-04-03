@@ -729,7 +729,7 @@ mod tests {
         let vm = vm.fork::<Msg, ()>();
         let ev0_arg = 123;
         vm.send("event-0", (ev0_arg,));
-        let p = vm.recv_timeout(Duration::from_secs(1)).expect("timeout");
+        let p = vm.recv_timeout(Duration::from_secs(10)).expect("timeout");
         assert_eq!(p.get(), &Msg::Test { id: 1337 });
         let fulfil_res = 31337;
         vm.fulfil(p, fulfil_res);

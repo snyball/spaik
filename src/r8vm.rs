@@ -1821,8 +1821,8 @@ impl R8VM {
         // }
         let mut run = || loop {
             // let op = *ip;
-            // let ipd = self.ip_delta(ip);
-            // let op = *self.pmem.get_unchecked(ipd);
+            let ipd = self.ip_delta(ip);
+            let op = *self.pmem.get_unchecked(ipd);
 
             // if self.debug_mode {
             //     match op {
@@ -1836,7 +1836,7 @@ impl R8VM {
             //     println!("  {}", op);
             // }
 
-            let op = *ip;
+            // let op = *ip;
             ip = ip.offset(1);
             match op {
                 // List processing
@@ -1861,7 +1861,7 @@ impl R8VM {
                     let len = self.mem.pop()?.force_int() as u32;
                     self.mem.list(len);
                 }
-                CONS() => self.mem.cons_unchecked(),
+                CONS() => self.mem.cons(),
                 APPEND(n) => self.mem.append(n)?,
 
                 // Iterators
