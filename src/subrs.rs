@@ -8,7 +8,6 @@ use crate::fmt::{LispFmt, VisitSet};
 use crate::sym_db::SymDB;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
-use std::ptr;
 
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to create an SPV reference-counter
