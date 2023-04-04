@@ -401,15 +401,15 @@ impl<'a> Excavator<'a> {
         Ok(ArgList2(spec, syms))
     }
 
-    pub fn to_ast(&self, v: PV) -> Result<AST2> {
-        self.cav(v)
+    pub fn to_ast(&self, v: PV, src: Source) -> Result<AST2> {
+        self.cav(v, src)
     }
 
-    fn cav(&self, v: PV) -> Result<AST2> {
+    fn cav(&self, v: PV, src: Source) -> Result<AST2> {
         let src = if let PV::Ref(p) = v {
-            self.mem.get_tag(p).cloned().unwrap_or_else(Source::none)
+            self.mem.get_tag(p).cloned().unwrap_or(src)
         } else {
-            Source::none()
+            src
         };
         self.dig(v, src)
     }

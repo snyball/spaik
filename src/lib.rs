@@ -64,6 +64,7 @@ pub(crate) mod sexpr_parse;
 pub(crate) mod tok;
 pub(crate) mod nuke;
 pub(crate) mod swym;
+pub(crate) mod pmem;
 pub(crate) mod stak;
 pub(crate) mod lisp_test;
 mod stack_gymnastics;

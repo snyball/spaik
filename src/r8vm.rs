@@ -1229,7 +1229,7 @@ impl R8VM {
         let mut dot = false;
         let mut num: u32 = 0;
         let mut srcs = vec![];
-        let mut src_idx = vec![0];
+        let mut src_idxs = vec![0];
         let mut cc = crate::comp::R8Compiler::new(self);
         macro_rules! wrap {
             ($push:expr) => {{
@@ -1268,7 +1268,7 @@ impl R8VM {
             srcs.push(LineCol { line, col });
             match text {
                 "(" => {
-                    src_idx.push(srcs.len());
+                    src_idxs.push(srcs.len());
                     pmods.push(take(&mut mods));
                     close.push(num + 1);
                     dots.push(dot);
@@ -1286,7 +1286,9 @@ impl R8VM {
                 "." => dot = true,
                 ")" => {
                     assert_no_trailing!(Meta::Source(LineCol { line, col }));
-                    let cur_srcs = srcs.drain(src_idx.pop().unwrap()..)
+                    let src_idx = src_idxs.pop().unwrap();
+                    let fst_src = srcs[src_idx].into_source(file.clone());
+                    let cur_srcs = srcs.drain(src_idx..)
                                        .map(|lc| lc.into_source(file.clone()));
                     mods = pmods.pop().expect("Unable to wrap expr");
                     if num > 0 && close.len() == 1 {
@@ -1307,7 +1309,7 @@ impl R8VM {
                         cc.set_offsets(self);
 
                         let excv = Excavator::new(&self.mem);
-                        let ast = excv.to_ast(v)?;
+                        let ast = excv.to_ast(v, fst_src)?;
                         self.mem.clear_tags();
                         if tokit.peek().is_some() {
                             cc.compile_top(ast)?;
@@ -1356,7 +1358,8 @@ impl R8VM {
                         wrap!(self.mem.push(pv));
                         let pv = self.mem.pop().unwrap();
                         let excv = Excavator::new(&self.mem);
-                        let ast = excv.to_ast(pv)?;
+                        let src = LineCol { line, col }.into_source(file.clone());
+                        let ast = excv.to_ast(pv, src)?;
                         modfn_pos = cc.compile_top_tail(ast)?;
                         cc.take(self)?;
                     } else {
@@ -2267,7 +2270,7 @@ impl R8VM {
     pub fn eval_pv(&mut self, ast: PV) -> Result<PV> {
         self.macroexpand_pv(ast, false).and_then(|ast| {
             let excv = Excavator::new(&self.mem);
-            let ast = excv.to_ast(ast)?;
+            let ast = excv.to_ast(ast, Source::none())?;
             let mut cc = R8Compiler::new(self);
             let modfn_pos = cc.compile_top_tail(ast)?;
             cc.take(self)?;
