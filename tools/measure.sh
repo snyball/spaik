@@ -8,7 +8,7 @@ declare -i tries=80
 
 cargo build --release --bin "$bin"
 
-compute="$(dirname "$0")/avg_compute.awk"
+stats="$(dirname "$0")/stats.awk"
 
 function run() {
     local -x LC_NUMERIC=en_US.UTF-8
@@ -21,4 +21,4 @@ function run() {
         echo -n "·" 1>&2
     done
     echo 1>&2
-} | awk -v CSVOUT='' -f "$compute"
+} | awk -v CSVOUT='' -f "$stats"
