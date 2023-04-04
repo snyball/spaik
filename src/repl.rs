@@ -4,6 +4,7 @@
 use rustyline::{Editor, error::ReadlineError};
 #[cfg(feature = "readline")]
 use std::{process, fs};
+use crate::Spaik;
 use crate::r8vm::{R8VM, OutStream};
 use crate::nkgc::PV;
 use crate::compile::Builtin;
@@ -47,15 +48,15 @@ pub trait LineInput {
 }
 
 pub struct REPL {
-    vm: R8VM,
+    vm: Spaik,
     exit_status: Option<i32>,
 }
 
 impl REPL {
     pub fn new(out_override: Option<Box<dyn OutStream>>) -> Result<REPL, Error> {
-        let mut vm = R8VM::new();
+        let mut vm = Spaik::new();
         if let Some(out) = out_override {
-            vm.set_stdout(out);
+            vm.vm.set_stdout(out);
         }
         Ok(REPL {
             vm,
@@ -64,11 +65,11 @@ impl REPL {
     }
 
     pub fn eval(&mut self, code: &str) {
-        match self.vm.eval(code) {
+        match self.vm.vm.eval(code) {
             Ok(PV::Nil) => {}
             Ok(res) => {
-                vmprint!(self.vm, "{}", "=> ".style_ret());
-                vmprintln!(self.vm, "{}", res.lisp_to_string(&self.vm));
+                vmprint!(self.vm.vm, "{}", "=> ".style_ret());
+                vmprintln!(self.vm.vm, "{}", res.lisp_to_string(&self.vm.vm));
             },
             Err(e) => {
                 match e.cause().kind() {
@@ -77,7 +78,7 @@ impl REPL {
                         self.exit_status = Some(i32::from(*status == Fail.sym()));
                     }
                     _ => {
-                        vmprintln!(self.vm, "{}", e.to_string(&self.vm));
+                        vmprintln!(self.vm.vm, "{}", e.to_string(&self.vm.vm));
                     }
                 }
             },
@@ -89,7 +90,7 @@ impl REPL {
     }
 
     pub fn print_intro(&mut self) {
-        vmprint!(self.vm, "{}", make_intro());
+        vmprint!(self.vm.vm, "{}", make_intro());
     }
 
     #[cfg(not(feature = "readline"))]
@@ -102,15 +103,21 @@ impl REPL {
         let mut spaik_dir = dirs::data_local_dir().unwrap();
         spaik_dir.push("spaik");
         if let Err(e) = fs::create_dir_all(spaik_dir) {
-            vmprintln!(self.vm, "Error: {}", e);
+            vmprintln!(self.vm.vm, "Error: {}", e);
             process::exit(1);
         }
         let mut hist_path = dirs::data_local_dir().unwrap();
         hist_path.push("spaik");
         hist_path.push("history");
+        self.vm.add_load_path(".");
+        self.vm.add_load_path("lisp");
+        let mut config_dir = dirs::config_dir().unwrap();
+        config_dir.push("spaik");
+        self.vm.add_load_path(config_dir.to_str().unwrap());
+        self.vm.load("init").ok();
         let mut rl = Editor::<()>::new();
         if rl.load_history(&hist_path).is_err() {
-            vmprintln!(self.vm, "{} {}",
+            vmprintln!(self.vm.vm, "{} {}",
                        "Warning: No history log, will be created in".style_warning(),
                        hist_path.to_string_lossy().style_info());
         }
@@ -127,13 +134,13 @@ impl REPL {
                     self.exit_status = Some(0)
                 },
                 Err(err) => {
-                    vmprintln!(self.vm, "Read Error: {:?}", err);
+                    vmprintln!(self.vm.vm, "Read Error: {:?}", err);
                     self.exit_status = Some(1)
                 }
             }
         }
         if let Err(e) = rl.save_history(&hist_path) {
-            vmprintln!(self.vm, "Error: {}", e);
+            vmprintln!(self.vm.vm, "Error: {}", e);
         }
         process::exit(self.exit_status.unwrap_or_default())
     }

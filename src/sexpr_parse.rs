@@ -56,7 +56,7 @@ pub fn sexpr_modified_sym_to_str(m: Builtin) -> Option<&'static str> {
     })
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Debug)]
 pub struct Fragment {
     end: bool,
     c: char,

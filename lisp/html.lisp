@@ -1,6 +1,3 @@
-(defun chr (s)
-  (next (iter s)))
-
 (defun escape (s)
   (or (and (or (number? s) (bool? s)) (string s))
       (and (symbol? s) (escape (string s)))

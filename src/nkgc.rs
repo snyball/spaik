@@ -227,6 +227,10 @@ impl PartialEq for PV {
                     let sl = fastcast::<String>(*l);
                     let sr = fastcast::<String>(*r);
                     (*sl).eq(&*sr)
+                } else if tl == NkT::Intr && tl == atom_kind(*r) {
+                    let sl = fastcast::<Intr>(*l);
+                    let sr = fastcast::<Intr>(*r);
+                    (*sl).arg.eq(&(*sr).arg) && (*sl).op == (*sr).op
                 } else {
                     l == r
                 }
@@ -578,6 +582,10 @@ impl PV {
             Builtin::Unquote => QuasiMut::Unquote(arg),
             _ => return None
         }))
+    }
+
+    pub fn intr_set_inner(&mut self, p: PV) {
+        self.intr_mut().map(|(_, arg)| unsafe { *arg = p });
     }
 
     #[inline]

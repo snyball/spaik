@@ -328,3 +328,20 @@
          (let ((s 0))
            (range (i (0 65535)) (set s (+ s i)))
            s)))
+
+;;; ---[ macros ]----------------------------------------
+(defmacro make-lambda (x)
+  `(lambda () ,x))
+
+(test macros
+      (= ((make-lambda 1)) 1)
+      (= ((make-lambda (+ 1 2 3))) (+ 1 2 3))
+      (= (eval-when-compile ((make-lambda 1))) 1)
+      (= (read-compile "(apply (make-lambda 1) (vec))") 1)
+      (= ((read-compile "(make-lambda 1)")) 1)
+      (= (read-compile "((make-lambda 1))") 1))
+
+;;; ---[ evaaal ]----------------------------------------
+
+(test evaaal
+      (= (eval '(do-factorial-d)) (do-factorial-d)))

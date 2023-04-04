@@ -434,6 +434,12 @@ mod sysfns {
                          (*fn_name).try_into()?);
             Ok(PV::Nil)
         }
+
+        fn set_macro_character(&mut self, vm: &mut R8VM, args: (macro_name, fn_name)) -> Result<PV> {
+            vm.set_macro_character((*macro_name).try_into()?,
+                                   (*fn_name).try_into()?);
+            Ok(PV::Nil)
+        }
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -703,6 +709,8 @@ pub struct R8VM {
     pub(crate) mem: Arena,
     pub(crate) globals: FnvHashMap<SymID, usize>,
     pub(crate) trace_counts: FnvHashMap<SymID, usize>,
+    tok_tree: Fragment,
+    reader_macros: FnvHashMap<String, SymID>,
 
     // Named locations/objects
     breaks: FnvHashMap<usize, r8c::Op>,
@@ -726,6 +734,8 @@ impl Default for R8VM {
     fn default() -> Self {
         R8VM {
             pmem: Default::default(),
+            reader_macros: Default::default(),
+            tok_tree: standard_lisp_tok_tree(),
             consts: Default::default(),
             catch: Default::default(),
             mem: Default::default(),
@@ -1026,7 +1036,8 @@ impl R8VM {
         addfn!("read-compile-from", read_compile_from);
         addfn!("type-of", type_of);
         addfn!("sym-id", sym_id);
-        addfn!("set-macro", set_macro);
+        addfn!("sys/set-macro", set_macro);
+        addfn!("sys/set-macro-character", set_macro_character);
 
         // Debug
         addfn!("dump-fns", dump_all_fns);
@@ -1208,11 +1219,8 @@ impl R8VM {
     }
 
     pub fn read_compile(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV> {
-        lazy_static! {
-            static ref TREE: Fragment = standard_lisp_tok_tree();
-        }
-        let toks = tokenize(sexpr, &TREE)?;
-        let mut mods: Vec<Builtin> = vec![];
+        let toks = tokenize(sexpr, &self.tok_tree)?;
+        let mut mods: Vec<SymID> = vec![];
         let mut close = vec![];
         let mut pmods = vec![];
         let mut dots = vec![];
@@ -1226,13 +1234,13 @@ impl R8VM {
                 $push;
                 while let Some(op) = mods.pop() {
                     let p = self.mem.pop().expect("No expr to wrap");
-                    match op {
-                        Builtin::Unquote | Builtin::USplice => {
+                    match Builtin::from_sym(op) {
+                        Some(op @ (Builtin::Unquote | Builtin::USplice)) => {
                             let intr = Intr { op, arg: p };
                             self.mem.push_new(intr);
                         }
                         _ => {
-                            self.mem.push(PV::Sym(op.sym()));
+                            self.mem.push(PV::Sym(op));
                             self.mem.push(p);
                             self.mem.list(2);
                         }
@@ -1244,9 +1252,8 @@ impl R8VM {
             ($($meta:expr),*) => {
                 if !mods.is_empty() {
                     let mods = mods.into_iter()
-                                   .map(sexpr_modified_sym_to_str)
-                                   .collect::<Option<Vec<_>>>()
-                                   .unwrap()
+                                   .map(|s| self.sym_name(s))
+                                   .collect::<Vec<_>>()
                                    .join("");
                     return Err(error!(TrailingModifiers, mods)$(.amend($meta))*);
                 }
@@ -1317,7 +1324,12 @@ impl R8VM {
                                        .amend(Meta::Source(LineCol { line, col })))?;
                 }
                 _ => {
-                    let pv = if let Some(m) = sexpr_modifier_bt(text) {
+                    let sexpr_mod = sexpr_modifier_bt(text)
+                        .map(|b| b.sym())
+                        .or_else(|| {
+                            self.reader_macros.get(text).copied()
+                        });
+                    let pv = if let Some(m) = sexpr_mod {
                         mods.push(m);
                         continue;
                     } else if let Ok(int) = text.parse() {
@@ -1420,9 +1432,11 @@ impl R8VM {
         if quasi {
             if let Some(QuasiMut::Unquote(s) | QuasiMut::USplice(s)) = v.quasi_mut() {
                 self.mem.stack.push(v);
-                unsafe { *s = self.macroexpand_pv(*s, false)? }
+                let nv = unsafe { self.macroexpand_pv(*s, false)? };
                 invalid!(v); // macroexpand_pv
-                return Ok(self.mem.stack.pop().unwrap())
+                let mut v = self.mem.stack.pop().unwrap();
+                v.intr_set_inner(nv);
+                return Ok(v)
             }
         } else {
             let mut inds = 0;
@@ -1472,6 +1486,7 @@ impl R8VM {
             let mut dot = false;
             let mut idx = 0;
             loop {
+                // self.dump_stack().unwrap();
                 let PV::Ref(p) = v else { unreachable!("{v:?}") };
                 let Cons { car, cdr } = unsafe { *fastcast(p) };
                 let r = if dot {cdr} else {car};
@@ -1508,7 +1523,8 @@ impl R8VM {
                     }
                 }
             }
-            self.mem.pop()
+            let pv = self.mem.pop();
+            pv
         }
     }
 
@@ -1526,6 +1542,12 @@ impl R8VM {
 
     pub fn set_macro(&mut self, macro_sym: SymID, fn_sym: SymID) {
         self.macros.insert(macro_sym.into(), fn_sym);
+    }
+
+    pub fn set_macro_character(&mut self, macro_sym: SymID, fn_sym: SymID) {
+        let s = self.sym_name(macro_sym).to_string();
+        self.tok_tree.insert(&s);
+        self.reader_macros.insert(s, fn_sym);
     }
 
     pub fn defvar(&mut self, name: SymID, idx: usize, pos: usize) -> Result<()> {

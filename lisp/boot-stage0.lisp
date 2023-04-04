@@ -3,7 +3,13 @@
 ;; set-macro! becomes available by the time core.lisp is compiled.
 
 (define (<ξ>::set-macro! macro fn)
-  (set-macro macro fn)
+  (sys/set-macro macro fn)
   nil)
 
-(set-macro 'set-macro! '<ξ>::set-macro!)
+(define (<ξ>::set-macro-character! macro fn)
+  (sys/set-macro-character macro fn)
+  nil)
+
+(sys/set-macro 'set-macro! '<ξ>::set-macro!)
+
+(sys/set-macro 'set-macro-character! '<ξ>::set-macro-character!)
