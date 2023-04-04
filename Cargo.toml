@@ -21,13 +21,14 @@ lto = "fat"
 opt-level = "s"
 
 [features]
-default = ["math", "extra", "readline", "derive", "modules"]
+default = ["math", "extra", "readline", "derive", "modules", "freeze"]
 extra = ["comfy-table", "owo-colors"]
 readline = ["rustyline", "dirs"]
 wasm = ["wasm-bindgen"]
 math = ["glam"]
 modules = ["bincode"]
 derive = ["spaik-proc-macros"]
+freeze = ["bincode"]
 
 [dependencies]
 lazy_static = "1.4"

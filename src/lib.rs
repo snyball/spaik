@@ -684,7 +684,7 @@ macro_rules! args {
 
 #[cfg(test)]
 mod tests {
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     #[cfg(feature = "derive")]
     use spaik_proc_macros::{spaikfn, Fissile, EnumCall};
     use std::sync::Once;
@@ -790,12 +790,14 @@ mod tests {
     #[test]
     fn register_fn_mutate_struct() {
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {
             x: f32,
             y: f32,
         }
 
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj2 {
             x: f32,
             thing: String,
@@ -926,6 +928,7 @@ mod tests {
     #[should_panic]
     fn test_illegal_fork() {
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {
             x: f32,
             y: f32,

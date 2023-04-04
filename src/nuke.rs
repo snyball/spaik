@@ -17,6 +17,8 @@ use std::sync::atomic::AtomicU32;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
 use fnv::FnvHashMap;
+use serde::de::DeserializeOwned;
+use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
 use std::collections::hash_map::Entry;
 use std::alloc::{Layout, alloc, dealloc, realloc};
@@ -209,7 +211,13 @@ macro_rules! fissile_types {
 
 /// Marker-trait for data that can be stored inside a SPAIK `Object`, and
 /// referred to from Rust using `Gc<T>`.
-pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any + 'static {}
+#[cfg(not(feature = "freeze"))]
+pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any + 'static
+{}
+#[cfg(feature = "freeze")]
+pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any +
+    Serialize + DeserializeOwned + 'static
+{}
 
 pub trait CloneIterator: Iterator + Traceable {
     fn clone_box(&self) -> Box<dyn CloneIterator<Item = Self::Item>>;
@@ -304,6 +312,8 @@ pub struct VTable {
     lisp_fmt: unsafe fn(*const u8, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    /// Serialize the object
+    freeze: unsafe fn(*const u8, into: &mut Vec<u8>) -> usize,
 }
 
 impl Debug for VTable {
@@ -510,6 +520,19 @@ impl Object {
                     get_rc: |obj| unsafe {
                         let rc_mem = obj as *mut RcMem<T>;
                         (*rc_mem).rc.0.load(atomic::Ordering::SeqCst)
+                    },
+                    #[cfg(feature = "freeze")]
+                    freeze: |p, into| unsafe {
+                        use bincode::Options;
+                        let obj = p as *mut T;
+                        let opts = bincode::DefaultOptions::new();
+                        let sz = opts.serialized_size(&*obj).unwrap();
+                        opts.serialize_into(into, &*obj).unwrap();
+                        sz as usize
+                    },
+                    #[cfg(not(feature = "freeze"))]
+                    freeze: |p, into| {
+                        unimplemented!("cannot freeze Object without freeze feature enabled")
                     },
                     trace: delegate! { trace(gray) },
                     update_ptrs: delegate! { update_ptrs(reloc) },

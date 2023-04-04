@@ -103,6 +103,7 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                      .chars()
                      .skip(test_fn_prefix.len())
                      .collect::<String>();
+        vmprintln!(vm, "starting test {} ...", name.style_info());
         match vm.call_spv(*func, ()) {
             Ok(res) => match TestResult::new(res, &mut vm) {
                 Some(TestResult::Pass) =>

@@ -12,13 +12,13 @@ use crate::sexpr_parse::{tokenize, Fragment, standard_lisp_tok_tree, string_pars
 use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::mem::take;
+use std::mem::{take, size_of};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Debug};
 use std::{str, char};
-use std::ptr;
+use std::ptr::{self, addr_of};
 use std::time::Duration;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
@@ -1117,6 +1117,26 @@ impl Traceable for Stream {
     fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
+#[repr(C)]
+pub struct ILambda {
+    pub pos: usize,
+    pub args: ArgSpec,
+    pub len: usize,
+    pub locals: [PV],
+}
+
+pub trait SizeOf {
+    fn size_of(&self) -> usize;
+}
+
+impl SizeOf for ILambda {
+    fn size_of(&self) -> usize {
+        let end = addr_of!(self.locals[self.len]);
+        let beg = addr_of!(self.pos);
+        end as usize - beg as usize
+    }
+}
+
 // TODO: Should this be a DST? With locals stored inline?
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct Lambda {
@@ -1883,6 +1903,7 @@ mod tests {
     #[test]
     fn virtual_destructors() {
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {
             hello: Vec<u64>,
             thing: String,
