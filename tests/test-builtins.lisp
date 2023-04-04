@@ -329,6 +329,25 @@
            (range (i (0 65535)) (set s (+ s i)))
            s)))
 
+;;; ---[ unused ]----------------------------------------
+(defun black-box (x) x)
+(define *test-global* 0)
+(defun shenanigans (x)
+  (set *test-global* (+ *test-global* x)))
+
+(test dead-code
+      (= (let ((x 0))
+           (+ 1 2 3 4 5 (set x 5))
+           (+ 1 2 3 (set x (+ x 5)) 4 5)
+           (- 1 2 3 (set x (+ x 5)) 4 5)
+           x)
+         15)
+      (= (progn
+           (+ 1 (shenanigans 10))
+           (< 1 (shenanigans 30))
+           *test-global*)
+         40))
+
 ;;; ---[ macros ]----------------------------------------
 (defmacro make-lambda (x)
   `(lambda () ,x))
