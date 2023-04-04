@@ -8,6 +8,7 @@ use crate::error::Source;
 use fnv::FnvHashMap;
 use std::hash::Hash;
 use std::mem;
+use serde::{Serialize, Deserialize};
 
 type VarIdx = u32;
 
@@ -113,6 +114,7 @@ macro_rules! builtins {
     ($(($sym:ident, $str:expr)),*) => {
         #[repr(i32)]
         #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub enum Builtin {
             $(
                 $sym

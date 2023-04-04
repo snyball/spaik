@@ -8,6 +8,9 @@ use crate::subrs::{IntoLisp, FromLisp};
 use crate::sym_db::SymDB;
 use core::slice;
 use std::any::{TypeId, Any, type_name};
+use std::collections::HashMap;
+use std::hash::Hasher;
+use std::io::{Write, Read};
 use std::mem::{self, size_of, align_of};
 use std::ptr::{drop_in_place, self};
 use std::cmp::{Ordering, PartialEq, PartialOrd};
@@ -16,11 +19,11 @@ use core::fmt::Debug;
 use std::sync::atomic::AtomicU32;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
-use fnv::FnvHashMap;
+use fnv::{FnvHashMap, FnvHasher};
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
-use std::collections::hash_map::Entry;
+use std::collections::hash_map::{Entry, RandomState, DefaultHasher};
 use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::sync::atomic;
 
@@ -313,7 +316,7 @@ pub struct VTable {
     /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// Serialize the object
-    freeze: unsafe fn(*const u8, into: &mut Vec<u8>) -> usize,
+    freeze: unsafe fn(*const u8, into: &mut dyn Write) -> usize,
 }
 
 impl Debug for VTable {
@@ -496,16 +499,39 @@ impl Display for ObjPtr {
     }
 }
 
+pub type ThawFn = fn(from: &mut dyn Read) -> Result<Object, Error>;
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct TypePath(&'static str);
+
+impl TypePath {
+    pub fn of<T>() -> Self {
+        TypePath(type_name::<T>())
+    }
+}
+
+lazy_static! {
+    static ref VTABLES: Mutex<FnvHashMap<TypeId, &'static VTable>> =
+        Mutex::new(FnvHashMap::default());
+    static ref THAW_FNS: Mutex<FnvHashMap<TypePath, ThawFn>> =
+        Mutex::new(FnvHashMap::default());
+}
+
 impl Object {
     pub fn new<T: Userdata>(obj: T) -> Object {
-        lazy_static! {
-            static ref VTABLES: Mutex<FnvHashMap<TypeId, &'static VTable>> =
-                Mutex::new(FnvHashMap::default());
-        }
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
         let layout = unsafe { ud_layout::<T>() };
+        #[cfg(feature = "freeze")]
+        if let Entry::Vacant(e) = THAW_FNS.lock().unwrap().entry(TypePath::of::<T>()) {
+            e.insert(|from| {
+                use bincode::Options;
+                let opts = bincode::DefaultOptions::new();
+                let obj: T = opts.deserialize_from(from).unwrap();
+                Ok(Object::new(obj))
+            });
+        }
         let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<T>()) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
@@ -529,10 +555,6 @@ impl Object {
                         let sz = opts.serialized_size(&*obj).unwrap();
                         opts.serialize_into(into, &*obj).unwrap();
                         sz as usize
-                    },
-                    #[cfg(not(feature = "freeze"))]
-                    freeze: |p, into| {
-                        unimplemented!("cannot freeze Object without freeze feature enabled")
                     },
                     trace: delegate! { trace(gray) },
                     update_ptrs: delegate! { update_ptrs(reloc) },
@@ -686,6 +708,7 @@ impl<T: Userdata> Drop for Gc<T> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Continuation {
     stack: Option<Vec<PV>>,
     pub frame: usize,
@@ -748,10 +771,17 @@ impl LispFmt for Continuation {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Intr {
     pub op: Builtin,
     pub arg: PV,
 }
+
+// #[derive(Copy, Clone, Debug)]
+// #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
+// pub struct Struct {
+//     pub arg: ,
+// }
 
 impl LispFmt for Intr {
     fn lisp_fmt(&self,
@@ -774,6 +804,7 @@ impl Traceable for Intr {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Void;
 
 impl Traceable for Void {
@@ -804,7 +835,6 @@ fissile_types! {
     (Mat2, Builtin::Mat2, glam::Mat2),
     (Mat3, Builtin::Mat3, glam::Mat3),
     (Mat4, Builtin::Mat4, glam::Mat4),
-    (Stream, Builtin::Stream, crate::nkgc::Stream),
     (Struct, Builtin::Struct, crate::nuke::Object),
     (Iter, Builtin::Struct, crate::nuke::Iter),
     (Continuation, Builtin::Continuation, crate::nuke::Continuation),
@@ -820,7 +850,6 @@ fissile_types! {
     (String, Builtin::String, std::string::String),
     (PV, Builtin::Ref, crate::nkgc::PV),
     (Vector, Builtin::Vector, Vec<PV>),
-    (Stream, Builtin::Stream, crate::nkgc::Stream),
     (Struct, Builtin::Struct, crate::nuke::Object),
     (Iter, Builtin::Struct, crate::nuke::Iter),
     (Continuation, Builtin::Continuation, crate::nuke::Continuation),
@@ -1000,7 +1029,6 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         NkRef::Mat3(m3) => clone!(m3),
         #[cfg(feature = "math")]
         NkRef::Mat4(m4) => clone!(m4),
-        NkRef::Stream(s) => clone!(s),
         NkRef::Struct(s) => clone!(s),
         NkRef::Iter(i) => clone!(i),
         NkRef::Continuation(_c) => todo!(),
@@ -1011,7 +1039,6 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
 #[allow(dead_code)]
 pub struct Nuke {
     free: *mut u8,
-    grow_num: usize,
     used: usize,
     num_frees: usize,
     num_allocs: usize,
@@ -1076,7 +1103,6 @@ impl Nuke {
 
         let mut nk = Nuke {
             free: ptr::null_mut(),
-            grow_num: sz,
             used: 0,
             num_frees: 0,
             num_allocs: 0,
@@ -1233,50 +1259,35 @@ impl Nuke {
         }
     }
 
-    pub unsafe fn grow_alloc(&mut self, fit: usize) -> RelocateToken {
-        let new_sz = (self.sz << 1).max(self.sz + fit);
-        let last_layout = Layout::from_size_align_unchecked(self.sz,
-                                                            align_of::<NkAtom>());
-        self.sz = new_sz;
+    pub fn shallow_clone(&self) -> Nuke {
+        let mut nk = Nuke::new(self.sz);
 
-        let mut used = 0;
-        let mut num_atoms = 0;
-
-        let layout = Layout::from_size_align_unchecked(self.sz,
-                                                       align_of::<NkAtom>());
-        let mem_start = alloc(layout);
-        let mut mem = mem_start;
+        let mut mem = nk.mem;
         let mut new_node = ptr::null_mut();
-        let mut node = self.fst_mut();
-        while !node.is_null() {
-            let sz = (*node).full_size();
-            memcpy(mem, node, sz);
-            self.reloc.push(node, mem);
-            new_node = mem as *mut NkAtom;
-
-            let nmem = mem.add(sz);
-            mem = align_mut(nmem, align_of::<NkAtom>());
-
-            let mem_diff = mem as usize - nmem as usize;
-            debug_assert_eq!(mem_diff, 0); // FIXME: Remove me
-
-            (*new_node).next = mem as *mut NkAtom;
-            node = (*node).next;
-
-            used += sz;
-            num_atoms += 1;
+        let mut node = self.fst();
+        unsafe {
+            while !node.is_null() {
+                let sz = (*node).full_size();
+                memcpy(mem, node, sz);
+                nk.reloc.push(node, mem);
+                new_node = mem as *mut NkAtom;
+                let nmem = mem.add(sz);
+                mem = align_mut(nmem, align_of::<NkAtom>());
+                (*new_node).next = mem as *mut NkAtom;
+                node = (*node).next;
+            }
+            (*new_node).next = ptr::null_mut();
+        }
+        nk.free = mem;
+        nk.last = new_node;
+        nk.used = self.used;
+        nk.num_allocs = self.num_allocs;
+        nk.num_atoms = self.num_atoms;
+        #[cfg(not(target_arch = "wasm32"))] {
+            nk.start_time = self.start_time;
         }
 
-        self.free = mem;
-        (*new_node).next = ptr::null_mut();
-        self.last = new_node;
-        dealloc(self.mem, last_layout);
-        self.mem = mem_start;
-
-        debug_assert!(num_atoms == self.num_atoms, "Number of atoms did not match");
-        debug_assert!(used == self.used, "Usage count did not match");
-
-        RelocateToken
+        nk
     }
 
     pub unsafe fn make_room(&mut self, fit: usize) -> Option<RelocateToken> {
@@ -1406,6 +1417,10 @@ impl Nuke {
             time: SystemTime::now().duration_since(self.start_time)
                                    .unwrap(),
         }
+    }
+
+    pub fn freeze(&self) -> i32 {
+        todo!()
     }
 }
 
@@ -1577,7 +1592,7 @@ impl Ord for PtrPair {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PtrMap(Vec<PtrPair>);
 
 impl PtrMap {

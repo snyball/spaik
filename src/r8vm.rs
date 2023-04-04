@@ -20,6 +20,7 @@ use crate::{
 };
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
+use serde::{Serialize, Deserialize};
 
 chasm_def! {
     r8c:
@@ -590,6 +591,7 @@ mod sysfns {
 pub type ArgInt = u16;
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 #[repr(C)]
 pub struct ArgSpec {
     pub nargs: ArgInt,

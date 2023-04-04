@@ -199,9 +199,14 @@ impl<T, E> IntoLisp for Result<T, E>
  *         This invariant is ensured by the lispy proc-macro, which you
  *         should use instead of implementing Subr yourself.
 */
+#[cfg(not(feature = "freeze"))]
 pub unsafe trait Subr: CloneSubr + Send + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
-
+    fn name(&self) -> &'static str;
+}
+#[cfg(feature = "freeze")]
+pub unsafe trait Subr: CloneSubr + Send + 'static {
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
     fn name(&self) -> &'static str;
 }
 

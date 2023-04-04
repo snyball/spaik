@@ -12,7 +12,7 @@ use crate::sexpr_parse::{tokenize, Fragment, standard_lisp_tok_tree, string_pars
 use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::mem::{take, size_of};
+use std::mem::take;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};
@@ -210,6 +210,22 @@ pub enum PV {
     Char(char),
     #[default]
     Nil,
+}
+
+impl<'de> Deserialize<'de> for PV {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        todo!()
+    }
+}
+
+impl Serialize for PV {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer {
+        todo!()
+    }
 }
 
 impl PartialEq for PV {
@@ -863,6 +879,7 @@ macro_rules! mark_gray {
 }
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Cons {
     pub car: PV,
     pub cdr: PV,
@@ -1139,6 +1156,7 @@ impl SizeOf for ILambda {
 
 // TODO: Should this be a DST? With locals stored inline?
 #[derive(Eq, PartialEq, Debug, Clone)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Lambda {
     pub pos: usize,
     pub locals: Vec<PV>,
@@ -1824,6 +1842,57 @@ impl Arena {
             }
         }
         self.sweep_compact();
+    }
+
+    pub fn freeze(&self) -> i32 {
+        let mut nk = self.nuke.shallow_clone();
+
+        let mut out: Vec<u8> = vec![];
+        let base = nk.fst() as usize;
+        let mut reloc = PtrMap::default();
+        unsafe {
+            for obj in nk.iter() {
+                let offset = obj as usize - base;
+                reloc.push(obj, offset as *const NkAtom);
+                match to_fissile_ref(obj) {
+                    NkRef::Void(_) => unimplemented!(),
+                    NkRef::Cons(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Intr(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Lambda(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::String(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::PV(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Vector(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Vec4(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Mat2(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Mat3(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Mat4(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Continuation(x) =>
+                        bincode::serialize_into(&mut out, &*x).unwrap(),
+                    NkRef::Iter(_) => todo!(),
+                    NkRef::Subroutine(_) => todo!(),
+                    NkRef::Struct(s) => {
+                        todo!()
+                        // bincode::serialize_into(&mut out, Intr {
+                        //     op: Builtin::Struct,
+                        //     arg: PV::UInt(),
+                        // }).unwrap()
+                    },
+                }
+                // bincode::serialize_into(out, *obj);
+            }
+        }
+
+        todo!()
     }
 }
 
