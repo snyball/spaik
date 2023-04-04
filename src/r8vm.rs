@@ -1433,7 +1433,7 @@ impl R8VM {
             if let Some(QuasiMut::Unquote(s) | QuasiMut::USplice(s)) = v.quasi_mut() {
                 self.mem.stack.push(v);
                 let nv = unsafe { self.macroexpand_pv(*s, false)? };
-                invalid!(v); // macroexpand_pv
+                invalid!(v, s); // macroexpand_pv
                 let mut v = self.mem.stack.pop().unwrap();
                 v.intr_set_inner(nv);
                 return Ok(v)
