@@ -1378,7 +1378,7 @@ impl R8VM {
 
     pub fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV> {
         let op = self.mem.from_top(n as usize);
-        let v = if let Some(m) = op.op().and_then(|op| self.macros.get(&op.into())).copied() {
+        let v = if let Some(m) = op.sym().and_then(|op| self.macros.get(&op.into())).copied() {
             if dot {
                 return Err(error!(UnexpectedDottedList,).bop(Builtin::Apply))
             }
