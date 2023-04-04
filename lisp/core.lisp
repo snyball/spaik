@@ -42,6 +42,7 @@
 (defun cdddr (x)
   (cdr (cdr (cdr x))))
 (defun caaaar (x)
+  ;;   khaaaaaaaaaaan
   (car (car (car (car x)))))
 (defun caaadr (x)
   (car (car (car (cdr x)))))
@@ -262,6 +263,9 @@
 (defun mean (xs)
   (/ (sum xs) (len xs)))
 
+(defun chr (s)
+  (next (iter s)))
+
 (defmacro m-map (m xs)
   (let ((p '()))
     (dolist (x xs)
@@ -277,6 +281,16 @@
                     unsigned-integer
                     float bool
                     string cons))
+
+(defun keyword? (x)
+  (and (symbol? x)
+       (= (chr (string x))
+          (chr ":"))))
+
+(defun keyword-name (x)
+  (let ((it (iter (string x))))
+    (next it)
+    (apply concat (collect it))))
 
 (defun number? (x)
   (or (integer? x)

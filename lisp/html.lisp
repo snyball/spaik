@@ -27,16 +27,6 @@
                       (true x))))
         (apply concat out))))
 
-(defun keyword? (x)
-  (and (symbol? x)
-       (= (chr (string x))
-          (chr ":"))))
-
-(defun keyword-s (x)
-  (let ((it (iter (string x))))
-    (next it)
-    (apply concat (collect it))))
-
 (defmacro html (&body b)
   (let ((s (vec 'vec)))
     (dolist (elem b)
@@ -48,7 +38,7 @@
                   (push s tag)
                   (while (keyword? (cadr elem))
                     (push s " ")
-                    (push s (keyword-s (cadr elem)))
+                    (push s (keyword-name (cadr elem)))
                     (set elem (cdr elem))
                     (push s "=\"")
                     (if (cons? (cadr elem))
