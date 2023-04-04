@@ -53,9 +53,15 @@ macro_rules! def_macros {
         #[allow(unused_macros)]
         macro_rules! vopcall {
             ($d op:ident $d argv:expr) => {{
-                let nargs = $self.pushit(($d argv).into_iter())?;
-                if $ret { asm!($d op nargs) }
-                $self.env_pop(nargs)?;
+                if $ret {
+                    let nargs = $self.pushit(($d argv).into_iter())?;
+                    asm!($d op nargs);
+                    $self.env_pop(nargs)?;
+                } else {
+                    for arg in ($d argv).into_iter() {
+                        $self.compile(false, arg)?;
+                    }
+                }
             }};
         }
     };
