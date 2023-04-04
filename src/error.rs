@@ -305,6 +305,10 @@ impl Error {
         }
     }
 
+    pub fn backtrace(&self) -> Arc<Backtrace> {
+        self.inner.rust_trace.clone()
+    }
+
     pub fn kind(&self) -> &ErrorKind {
         &self.inner.ty
     }

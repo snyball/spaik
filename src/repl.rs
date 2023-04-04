@@ -5,7 +5,7 @@ use rustyline::{Editor, error::ReadlineError};
 #[cfg(feature = "readline")]
 use std::{process, fs};
 use crate::Spaik;
-use crate::r8vm::{R8VM, OutStream};
+use crate::r8vm::OutStream;
 use crate::nkgc::PV;
 use crate::compile::Builtin;
 use crate::error::{Error, ErrorKind};

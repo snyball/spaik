@@ -22,13 +22,6 @@ use std::collections::hash_map::Entry;
 use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::sync::atomic;
 
-macro_rules! align_diff {
-    ($p:expr, $align_t:ty) => {{
-        let ptr_align_diff = align_mut($p, align_of::<$align_t>()) as isize - $p as isize;
-        if ptr_align_diff != 0 { dbg!(ptr_align_diff); }
-    }};
-}
-
 macro_rules! with_atom {
     ($item:ident, $fn:block, $(($t:ident, $path:path)),+) => {
         unsafe {

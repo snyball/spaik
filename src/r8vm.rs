@@ -13,7 +13,7 @@ use crate::{
     fmt::LispFmt,
     nuke::*,
     nkgc::{Arena, Cons, SymID, SymIDInt, PV, SPV, self, QuasiMut, Int},
-    sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree, sexpr_modified_sym_to_str},
+    sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
     stylize::Stylize, chasm::LblMap,

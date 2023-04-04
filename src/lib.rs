@@ -846,7 +846,7 @@ mod tests {
         let e = match vm.exec(expr).map_err(|e| e.src().kind().clone()) {
             Ok(_) => panic!("Expression should fail: {expr}"),
             Err(ErrorKind::Traceback { tb }, ..) => tb.err.kind().clone(),
-            Err(e) => panic!("Unexpected error for {expr}"),
+            Err(e) => panic!("Unexpected error for {expr}: {e:?}"),
         };
         dbg!(&e);
         assert!(matches!(e, ErrorKind::STypeError { .. }));

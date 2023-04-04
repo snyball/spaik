@@ -149,7 +149,7 @@ macro_rules! builtins {
                 String::from(self.get_str())
             }
 
-            fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
+            pub fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
                 Some(match s.as_ref() {
                     $($str => Builtin::$sym),*,
                     _ => return None
