@@ -1287,7 +1287,7 @@ impl R8VM {
                     let cur_srcs = srcs.drain(src_idx.pop().unwrap()..)
                                        .map(|lc| lc.into_source(file.clone()));
                     mods = pmods.pop().expect("Unable to wrap expr");
-                    if close.len() == 1 {
+                    if num > 0 && close.len() == 1 {
                         let v = if mods.is_empty() {
                             let idx = self.mem.stack.len() - num as usize;
                             let stack = take(&mut self.mem.stack);
