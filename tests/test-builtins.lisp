@@ -344,4 +344,4 @@
 ;;; ---[ evaaal ]----------------------------------------
 
 (test evaaal
-      (= (eval '(do-factorial-d)) (do-factorial-d)))
+      (equal? (eval '(do-factorial-d)) (do-factorial-d)))
