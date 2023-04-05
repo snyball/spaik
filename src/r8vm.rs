@@ -1216,7 +1216,7 @@ impl R8VM {
 
     /// Reads LISP code into an AST.
     pub fn read(&mut self, lisp: &str) -> Result<()> {
-        self.mem.read(lisp)
+        todo!()
     }
 
     pub fn read_compile_from(&mut self, path: impl AsRef<Path>) -> Result<PV> {
