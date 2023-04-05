@@ -1,5 +1,6 @@
 //! SPAIK v2 Compiler
 
+use std::iter;
 use std::sync::atomic::{Ordering, AtomicUsize};
 
 use chasm::LblMap;
@@ -98,6 +99,7 @@ pub struct R8Compiler {
 #[derive(Debug, Clone, Copy)]
 struct LoopCtx {
     start: Lbl,
+    epilogue: Option<Lbl>,
     end: Lbl,
     ret: bool,
     height: usize,
@@ -509,13 +511,13 @@ impl R8Compiler {
                 //        (set x (+ 1 x)) => INC x, 1
                 //        (set x (- x 1)) => DEC x, 1
                 //        (set x (- 1 x)) => Not special
-                Some(M2::Add(M::Atom(PV::Sym(sym)), M::Atom(PV::Int(num)))) |
-                Some(M2::Add(M::Atom(PV::Int(num)), M::Atom(PV::Sym(sym))))
+                Some(M2::Add(M::Var(sym), M::Atom(PV::Int(num)))) |
+                Some(M2::Add(M::Atom(PV::Int(num)), M::Var(sym)))
                     if *sym == dst => {
                     inplace_op(INC, *num);
                     return Ok(())
                 }
-                Some(M2::Sub(M::Atom(PV::Sym(sym)), M::Atom(PV::Int(num))))
+                Some(M2::Sub(M::Var(sym), M::Atom(PV::Int(num))))
                     if *sym == dst => {
                     inplace_op(DEC, *num);
                     return Ok(())
@@ -604,13 +606,19 @@ impl R8Compiler {
 
     fn bt_loop(&mut self,
                ret: bool,
-               seq: impl IntoIterator<Item = AST2>) -> Result<()> {
+               seq: impl IntoIterator<Item = AST2>,
+               epl: Option<impl IntoIterator<Item = AST2>>) -> Result<()> {
         let start = self.unit().label("loop_start");
         let end = self.unit().label("loop_end");
+        let epl_lbl = if epl.is_some() { Some(self.unit().label("epilogue")) } else { None };
         let height = self.with_env(|env| env.len())?;
-        self.loops.push(LoopCtx { start, end, ret, height });
+        self.loops.push(LoopCtx { start, end, epilogue: epl_lbl, ret, height });
         self.unit().mark(start);
         self.compile_seq(false, seq)?;
+        if let Some(epl) = epl {
+            self.unit().mark(epl_lbl.unwrap());
+            self.compile_seq(false, epl)?;
+        }
         self.unit().op(chasm!(JMP start));
         self.unit().mark(end);
         self.loops.pop();
@@ -652,10 +660,14 @@ impl R8Compiler {
                         .ok_or(error_src!(src, OutsideContext,
                                           op: Builtin::Next,
                                           ctx: Builtin::Loop))?;
-        let LoopCtx { start, height, .. } = outer;
+        let LoopCtx { start, epilogue, height, .. } = outer;
         let dist = self.with_env(|env| env.len())? - height;
         self.asm_op(chasm!(POP dist));
-        self.asm_op(chasm!(JMP start));
+        if let Some(epl) = epilogue {
+            self.asm_op(chasm!(JMP epl));
+        } else {
+            self.asm_op(chasm!(JMP start));
+        }
         Ok(())
     }
 
@@ -875,6 +887,9 @@ impl R8Compiler {
 
         match op {
             Builtin::Apply => opcall_mut!(APL a0, a1),
+            Builtin::LoopWithEpilogue => self.bt_loop(ret,
+                                                      Some(a0).into_iter(),
+                                                      Some(Some(a1).into_iter()))?,
             x => unimplemented!("{x:?}"),
         }
 
@@ -937,7 +952,10 @@ impl R8Compiler {
             M::Let(decls, progn) => {
                 self.bt_let(ret, decls, progn)?
             },
-            M::Loop(prog) => self.bt_loop(ret, prog)?,
+            M::Loop(prog) => {
+                let s: Option<iter::Empty<AST2>> = None;
+                self.bt_loop(ret, prog, s)?
+            },
             M::Break(arg) => self.bt_break(src, arg)?,
             M::Next => self.bt_loop_next(src)?,
             M::Throw(arg) => {

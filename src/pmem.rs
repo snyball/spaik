@@ -13,7 +13,7 @@ struct PMem {
 
 impl PMem {
     pub fn new(sz: usize) -> Self {
-        let layout = Layout::for_value(&Op::HCF());
+        let layout = Layout::array::<Op>(sz);
         let mem = todo!();
         Self { mem, sz, len: 0, ip: mem }
     }

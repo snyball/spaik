@@ -183,6 +183,7 @@ builtins! {
     (If, "if"),
     (Compile, "compile"),
     (Send, "send"),
+    (LoopWithEpilogue, "loop-with-epilogue"),
     (Async, "async"),
     (ZSendMessage, "<ζ>::send-message"),
     (SymID, "sym-id"),

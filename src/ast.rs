@@ -89,6 +89,7 @@ pub enum M {
     CallCC(Prog),
 }
 
+#[derive(Debug)]
 pub enum M2<'a> {
     Add(&'a M, &'a M),
     Sub(&'a M, &'a M),
@@ -724,7 +725,8 @@ impl<'a> Excavator<'a> {
             Builtin::Get => self.wrap_two_args(M::Get, args, src),
             Builtin::Throw => self.wrap_one_arg(M::Throw, args, src),
             op @ Builtin::Len => self.wrap_one_arg(|a| M::Bt1(op, a), args, src),
-            op @ Builtin::Apply => self.wrap_two_args(|a0, a1| M::Bt2(op, a0, a1), args, src),
+            op @ (Builtin::Apply | Builtin::LoopWithEpilogue) =>
+                self.wrap_two_args(|a0, a1| M::Bt2(op, a0, a1), args, src),
             Builtin::Next => self.bt_next(args, src),
             _ => self.sapp(bt.sym(), args, src),
         }.map_err(|e| e.fallback(Meta::Op(OpName::OpSym(bt.sym()))))

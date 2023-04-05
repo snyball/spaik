@@ -143,8 +143,6 @@
 (defmacro iter-end? (res)
   `(= ,res '<ζ>::iter-stop))
 
-;;; FIXME: (next)/(break) don't work inside dolist/range,
-;;;        a compiler built-in is needed to fix it.
 (defmacro dolist (cnd &body body)
   (let ((name (car cnd))
         (init (car (cdr cnd)))
@@ -161,38 +159,21 @@
     (when (eq? x y)
       (break true))))
 
-;; FIXME: (next) doesn't work in range. In order for (next) to work there needs
-;; to be a special loop constrct like (s-loop (a..) (b..)) where (next) in (a..)
-;; jumps to (b..) rather than the start of the next loop. Alternatively...
-;; There could be a
-(defmacro defexample (name &body body))
-(defexample range-impl
-    `(with-labels
-       :loop-start
-       (if (not (< ,loop-var ,max))
-           (jmp :loop-end))
-       (with-macros ((next (&? x)
-                        (if x '(next x)
-                            '(jmp :loop-next)))
-                     (break () '(jmp :loop-end)))
-         ,@body)
-       :loop-next
-       (inc! ,loop-var)
-       (jmp :loop-start)
-       :loop-end))
 (defmacro range (cnd &body body)
   (let ((loop-var (car cnd))
         (min (caadr cnd))
         (max (cadadr cnd)))
     `(let ((,loop-var ,min))
-       (while (< ,loop-var ,max)
-              ,@body
-              (inc! ,loop-var)))))
+       (loop-with-epilogue
+        (progn
+          (if (not (< ,loop-var ,max)) (break))
+          ,@body)
+        (inc! ,loop-var)))))
 
 (defun range-list (a b)
   (let ((xs nil))
     (range (x (a b))
-      (set xs (cons x xs)))
+           (set xs (cons x xs)))
     (reverse xs)))
 
 (defun filter (f xs)
@@ -200,7 +181,7 @@
     (let ((x (car xs)))
       (if (f x)
           (cons x (filter f (cdr xs)))
-        (filter f (cdr xs))))))
+          (filter f (cdr xs))))))
 
 (defun zip (xs ys)
   (when (and xs ys)
