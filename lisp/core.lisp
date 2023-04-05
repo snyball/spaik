@@ -204,7 +204,7 @@
 
 (defun any? (f xs)
   (dolist (x xs)
-    (when (f x)
+    (if (f x)
       (break (and)))))
 
 (defun elem? (x ys)
