@@ -193,13 +193,13 @@ impl fmt::Display for SyntaxErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SyntaxErrorKind::DotAtEndOfList =>
-                write!(f, "Dot operator (.) at end of list"),
+                write!(f, "Dot [.] operator at end of list"),
             SyntaxErrorKind::DotAfterDot =>
-                write!(f, "Dot operator (.) immediately after dot operator (.)"),
+                write!(f, "Dot [.] operator immediately after dot [.] operator"),
             SyntaxErrorKind::SpliceAfterDot =>
-                write!(f, "Splice operator (,@) after dot operator (.)"),
+                write!(f, "Splice operator [,@] after dot operator [.]"),
             SyntaxErrorKind::ModifierBeforeDot =>
-                write!(f, "Modifier e.g [,@] [,] [`] or ['] etc. at end of dotted list e.g (a b ' . c) instead of (a b . 'c)"),
+                write!(f, "Modifier e.g [,@] [,] [`] or ['] etc. before dot [.] operator e.g (a b ' . c) instead of (a b . 'c)"),
         }
     }
 }
