@@ -342,6 +342,30 @@ impl R8Compiler {
         (flipped, code)
     }
 
+    fn loop_ctx(&self) -> Result<&LoopCtx> {
+        self.loops
+            .last()
+            .ok_or(error!(OutsideContext,
+                          op: Builtin::Break,
+                          ctx: Builtin::Loop))
+    }
+
+    fn loop_epilogue(&self) -> Result<Lbl> {
+        self.loop_ctx().map(|ctx| ctx.epilogue.unwrap_or(ctx.start))
+    }
+
+    fn loop_end(&self) -> Result<Lbl> {
+        self.loop_ctx().map(|ctx| ctx.end)
+    }
+
+    fn loop_simple_jmp_to(&self, op: &M) -> Option<Result<Lbl>> {
+        match (op, self.loop_ctx().map(|x| x.ret).ok()) {
+            (M::Break(None), Some(false)) => Some(self.loop_end()),
+            (M::Next, Some(false)) => Some(self.loop_epilogue()),
+            _ => None
+        }
+    }
+
     fn bt_if(&mut self, ret: bool,
              cond: AST2, if_t: Option<AST2>, if_f: Option<AST2>
     ) -> Result<()> {
@@ -358,26 +382,40 @@ impl R8Compiler {
             _ => ((JT, JN), cond)
         };
         self.compile(true, cond)?;
-        let end_lbl = self.unit().label("if_end");
-        let if_false_lbl = self.unit().label("if_false");
-        let _jmp_loc = if flipped {
-            self.unit().op(chasm!(jt if_false_lbl))
+
+        if let Some(lbl) = self.loop_simple_jmp_to(&if_t.kind) {
+            if flipped {
+                self.unit().op(chasm!(jn lbl?));
+            } else {
+                self.unit().op(chasm!(jt lbl?));
+            }
+            if let Some(if_false) = if_f {
+                self.compile(ret, if_false)?;
+            } else if ret {
+                self.unit().op(chasm!(NIL));
+            }
         } else {
-            self.unit().op(chasm!(jn if_false_lbl))
-        };
-        self.compile(ret, if_t)?;
-        if let Some(if_false) = if_f {
-            self.asm_op(chasm!(JMP end_lbl));
-            self.unit().mark(if_false_lbl);
-            self.compile(ret, if_false)?;
-            self.unit().mark(end_lbl);
-        } else if ret {
-            self.asm_op(chasm!(JMP end_lbl));
-            self.unit().mark(if_false_lbl);
-            self.unit().op(chasm!(NIL));
-            self.unit().mark(end_lbl);
-        } else {
-            self.unit().mark(if_false_lbl);
+            let end_lbl = self.unit().label("if_end");
+            let if_false_lbl = self.unit().label("if_false");
+            let _jmp_loc = if flipped {
+                self.unit().op(chasm!(jt if_false_lbl))
+            } else {
+                self.unit().op(chasm!(jn if_false_lbl))
+            };
+            self.compile(ret, if_t)?;
+            if let Some(if_false) = if_f {
+                self.asm_op(chasm!(JMP end_lbl));
+                self.unit().mark(if_false_lbl);
+                self.compile(ret, if_false)?;
+                self.unit().mark(end_lbl);
+            } else if ret {
+                self.asm_op(chasm!(JMP end_lbl));
+                self.unit().mark(if_false_lbl);
+                self.unit().op(chasm!(NIL));
+                self.unit().mark(end_lbl);
+            } else {
+                self.unit().mark(if_false_lbl);
+            }
         }
         Ok(())
     }
