@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicU32;
 use std::{cmp, fmt, iter};
 use std::hash::{Hash, self, BuildHasher};
 use std::{ptr::NonNull, mem, ptr};
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 use std::fmt::Debug;
 
 use fnv::FnvHashSet;
@@ -296,6 +296,9 @@ impl SwymDb {
             } else {
                 let layout = Layout::for_value(&sym);
                 let p = alloc(layout) as *mut Sym;
+                if p.is_null() {
+                    handle_alloc_error(layout);
+                }
                 ptr::write(p, sym);
                 let sym = SymRef::new(p);
                 self.map.insert(SymKeyRef(sym.clone()));
@@ -323,6 +326,9 @@ impl SwymDb {
             let layout = Layout::for_value(&sym);
             unsafe {
                 let p = alloc(layout) as *mut Sym;
+                if p.is_null() {
+                    handle_alloc_error(layout);
+                }
                 ptr::write(p, sym);
                 let sym = SymRef::new(p);
                 self.map.insert(SymKeyRef(sym.clone()));

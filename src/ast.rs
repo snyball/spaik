@@ -107,13 +107,13 @@ impl M {
     }
 
     pub fn binary(&self) -> Option<(M2, (&Source, &Source))> {
-        let (m2, s0, s1) = (match self {
+        let (m2, s0, s1) = match self {
             M::Add(a) if a.len() == 2 => (M2::Add(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
             M::Sub(a) if a.len() == 2 => (M2::Sub(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
             M::Mul(a) if a.len() == 2 => (M2::Mul(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
             M::Div(a) if a.len() == 2 => (M2::Div(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
             _ => return None
-        });
+        };
         Some((m2, (s0, s1)))
     }
 }
@@ -379,7 +379,7 @@ impl<'a> Excavator<'a> {
                                 syms.push((sym, src));
                                 break;
                             }
-                            None if had_opt => return Err(ErrorKind::SyntaxError {
+                            None if had_opt => return Err(ErrorKind::SyntaxErrorMsg {
                                 msg: "Normal argument follows &?".to_string()
                             }.into()),
                             None | Some(_) => spec.nargs += 1,
@@ -388,14 +388,14 @@ impl<'a> Excavator<'a> {
                     }
                 }
             } else {
-                return Err(ErrorKind::SyntaxError {
+                return Err(ErrorKind::SyntaxErrorMsg {
                     msg: format!("Did not expect: {}", arg),
                 }.into());
             }
         }
 
         if it.next().is_some() {
-            return Err(ErrorKind::SyntaxError {
+            return Err(ErrorKind::SyntaxErrorMsg {
                 msg: "Additional argument follows &rest".to_string(),
             }.into());
         }
@@ -674,9 +674,7 @@ impl<'a> Excavator<'a> {
                                src }
                 }
                 ConsItem::Cdr(x) => match x.quasi() {
-                    Some(Quasi::USplice(_)) => bail!(SyntaxError {
-                        msg: "Splice after dot".to_string()
-                    }),
+                    Some(Quasi::USplice(_)) => bail!(SyntaxError(SyntaxErrorKind::SpliceAfterDot)),
                     Some(Quasi::Unquote(arg)) => self.dig(arg, src.clone())?,
                     None => self.quasi(x, src.clone())?,
                 }

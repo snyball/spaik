@@ -12,7 +12,8 @@ install-tools:
     rustup target add x86_64-unknown-linux-gnu
 
 test:
-    cargo test
+    just test-wasm
+    cargo test --no-default-features
 
 test-wasm:
     cargo test --target wasm32-wasi

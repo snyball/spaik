@@ -213,7 +213,7 @@ pub enum PV {
 }
 
 impl<'de> Deserialize<'de> for PV {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(_d: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de> {
         todo!()
@@ -221,7 +221,7 @@ impl<'de> Deserialize<'de> for PV {
 }
 
 impl Serialize for PV {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, _d: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer {
         todo!()
@@ -1411,7 +1411,7 @@ impl Arena {
         let alloc = || unsafe { (*self_ptr).alloc::<Cons>() };
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let mut cell = self.alloc::<Cons>();
+        let mut cell = alloc();
         let orig_cell = cell;
         for item in self.stack[idx..top - 1].iter() {
             let next = alloc();
@@ -1441,7 +1441,7 @@ impl Arena {
         let alloc = || unsafe { (*self_ptr).alloc::<Cons>() };
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let mut cell = self.alloc::<Cons>();
+        let mut cell = alloc();
         let orig_cell = cell;
         for item in self.stack[idx..top - 1 - dot as usize].iter() {
             let next = alloc();
@@ -1471,13 +1471,12 @@ impl Arena {
         assert!(if dot { n >= 2 } else { true });
         self.mem_fit::<Cons>(n as usize);
         let self_ptr = self as *mut Arena;
-        let alloc = || unsafe { (*self_ptr).alloc::<Cons>() };
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let mut cell = self.alloc::<Cons>();
+        let mut cell = unsafe { (*self_ptr).alloc::<Cons>() };
         let orig_cell = cell;
         for item in self.stack[idx..top - 1 - dot as usize].iter() {
-            let next = alloc();
+            let next = unsafe { (*self_ptr).alloc::<Cons>() };
             unsafe {ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))}
             cell = next;
         }
@@ -1871,7 +1870,7 @@ impl Arena {
 
     #[cfg(feature = "freeze")]
     pub fn freeze(&self) -> i32 {
-        let mut nk = self.nuke.shallow_clone();
+        let nk = self.nuke.shallow_clone();
 
         let mut out: Vec<u8> = vec![];
         let base = nk.fst() as usize;
@@ -1906,7 +1905,7 @@ impl Arena {
                         bincode::serialize_into(&mut out, &*x).unwrap(),
                     NkRef::Iter(_) => todo!(),
                     NkRef::Subroutine(_) => todo!(),
-                    NkRef::Struct(s) => {
+                    NkRef::Struct(_s) => {
                         todo!()
                         // bincode::serialize_into(&mut out, Intr {
                         //     op: Builtin::Struct,

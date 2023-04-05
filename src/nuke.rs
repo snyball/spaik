@@ -8,8 +8,6 @@ use crate::subrs::{IntoLisp, FromLisp};
 use crate::sym_db::SymDB;
 use core::slice;
 use std::any::{TypeId, Any, type_name};
-use std::collections::HashMap;
-use std::hash::Hasher;
 use std::io::{Write, Read};
 use std::mem::{self, size_of, align_of};
 use std::ptr::{drop_in_place, self};
@@ -19,11 +17,11 @@ use core::fmt::Debug;
 use std::sync::atomic::AtomicU32;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
-use fnv::{FnvHashMap, FnvHasher};
+use fnv::FnvHashMap;
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
-use std::collections::hash_map::{Entry, RandomState, DefaultHasher};
+use std::collections::hash_map::Entry;
 use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::sync::atomic;
 
@@ -316,6 +314,7 @@ pub struct VTable {
     /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// Serialize the object
+    #[allow(dead_code)]
     freeze: unsafe fn(*const u8, into: &mut dyn Write) -> usize,
 }
 
@@ -1086,6 +1085,14 @@ pub unsafe fn memcpy<R, W>(dst: *mut W, src: *const R, sz: usize) {
 #[inline(always)]
 pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
     ptr::copy(src as *const u8, dst as *mut u8, sz);
+}
+
+pub unsafe fn malloc<T>(sz: usize) -> *mut T {
+    alloc(Layout::array::<T>(sz).unwrap()) as *mut T
+}
+
+pub unsafe fn free<T>(p: *mut T, sz: usize) {
+    dealloc(p as *mut u8, Layout::array::<T>(sz).unwrap())
 }
 
 #[must_use = "Relocation must be confirmed"]

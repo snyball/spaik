@@ -9,7 +9,7 @@ use crate::{
     ast::Excavator,
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{Builtin, SourceList},
-    error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result},
+    error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
     fmt::LispFmt,
     nuke::*,
     nkgc::{Arena, Cons, SymID, SymIDInt, PV, SPV, self, QuasiMut, Int},
@@ -1287,10 +1287,13 @@ impl R8VM {
                     ctx: Builtin::List,
                     op: Builtin::ConsDot
                 }),
-                "." if dot => bail!(SyntaxError {
-                    msg: "Illegal use of the dot (.) operator".to_string()
-                }),
-                "." => dot = true,
+                "." if dot => bail!(SyntaxError(SyntaxErrorKind::DotAfterDot)),
+                "." => {
+                    if tokit.peek().map(|t| t.text == ")").unwrap_or_default() {
+                        bail!(SyntaxError(SyntaxErrorKind::DotAtEndOfList))
+                    }
+                    dot = true
+                },
                 ")" => {
                     assert_no_trailing!(Meta::Source(LineCol { line, col }));
                     let src_idx = src_idxs.pop().unwrap();
@@ -1358,6 +1361,9 @@ impl R8VM {
                     } else {
                         PV::Sym(self.put_sym(text))
                     };
+
+                    if dot && tokit.peek().map(|t| t.text == ")").unwrap_or_default() {
+                    }
 
                     if !close.is_empty() {
                         wrap!(self.mem.push(pv));

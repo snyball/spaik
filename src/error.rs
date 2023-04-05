@@ -182,6 +182,26 @@ impl fmt::Display for FmtArgnOp<'_, '_> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum SyntaxErrorKind {
+    DotAtEndOfList,
+    DotAfterDot,
+    SpliceAfterDot,
+}
+
+impl fmt::Display for SyntaxErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SyntaxErrorKind::DotAtEndOfList =>
+                write!(f, "Dot operator (.) at end of list"),
+            SyntaxErrorKind::DotAfterDot =>
+                write!(f, "Dot operator (.) immediately after dot operator (.)"),
+            SyntaxErrorKind::SpliceAfterDot =>
+                write!(f, "Splice operator (,@) after dot operator (.)"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     SendError { obj_dbg: String },
     IllegalInstruction { inst: R8C },
@@ -194,9 +214,8 @@ pub enum ErrorKind {
     EnumError { expect: Vec<SymID>, got: SymID },
     ArgError { expect: ArgSpec, got_num: u32 },
     OutsideContext { op: Builtin, ctx: Builtin },
-    SyntaxError { msg: String },
+    SyntaxErrorMsg { msg: String },
     LinkError { dst: String, src: usize },
-    IDError { id: usize },
     ConversionError { from: &'static str,
                       to: &'static str,
                       val: String },
@@ -205,8 +224,6 @@ pub enum ErrorKind {
     SomeError { msg: String },
     UndefinedFunction { name: SymID },
     UndefinedVariable { var: SymID },
-    UndefinedFunctionString { name: String },
-    UndefinedVariableString { name: String },
     ModuleLoadError { lib: SymID },
     ModuleNotFound { lib: SymID },
     Unsupported { op: &'static str },
@@ -221,6 +238,8 @@ pub enum ErrorKind {
     UnclosedDelimiter { open: &'static str },
     TrailingModifiers { mods: String },
     MacroexpandRecursionLimit { lim: usize },
+    SyntaxError(SyntaxErrorKind),
+    IDError { id: usize },
     None,
 }
 
@@ -403,10 +422,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         OutsideContext { op, ctx } =>
             write!(f, "Syntax Error: Operator {} not allowed outside of {} context",
                    nameof(op.sym()), nameof(ctx.sym()))?,
-        SyntaxError { msg } =>
+        SyntaxErrorMsg { msg } =>
             write!(f, "Syntax Error: {}", msg)?,
-        //LinkError
-        //IDError
         ConversionError { from, to, val } =>
             write!(f, "Conversion Error: Could not convert the {} value `{}' into {}",
                     from, val, to)?,
@@ -457,8 +474,6 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
             let err: std::io::Error = (*kind).into();
             write!(f, "IOError: {}", err)?;
         }
-        ErrorKind::MissingFeature { flag } =>
-            write!(f, "Missing Feature: {}", flag)?,
         CharSpecError { spec } =>
             write!(f, "Invalid char spec `{}', use exactly one character in the symbol",
                    nameof(*spec))?,
@@ -473,7 +488,16 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         MacroexpandRecursionLimit { lim } =>
             write!(f, "Macro Recursion Error: Macro expansion was recursive beyond {} levels", lim)?,
         None => write!(f, "")?,
-        x => unimplemented!("{:?}", x),
+        SendError { obj_dbg } =>
+            write!(f, "Send Error: {obj_dbg}")?,
+        LinkError { dst, src: _ } =>
+            write!(f, "Link Error: Symbol not found {dst}")?,
+        MissingFeature { flag } =>
+            write!(f, "Missing Feature: The {} feature was not enabled for this version of SPAIK", flag)?,
+        SyntaxError(kind) =>
+            write!(f, "Syntax Error: {}", kind)?,
+        IDError { id } =>
+            write!(f, "ID Error: id number {id} was out of range for enum")?,
     }
 
     if let Some(src) = meta.src() {
@@ -638,7 +662,7 @@ impl From<std::convert::Infallible> for Error {
 impl From<ParseErr> for Error {
     fn from(perr: ParseErr) -> Self {
         Error::new(
-            ErrorKind::SyntaxError { msg: perr.msg },
+            ErrorKind::SyntaxErrorMsg { msg: perr.msg },
         ).amend(Meta::Source(LineCol { line: perr.line, col: perr.col }))
     }
 }
@@ -650,8 +674,8 @@ macro_rules! err {
 }
 
 macro_rules! bail {
-    ($kind:ident { $($init:tt)* } ) => {
-        return Err((crate::error::ErrorKind::$kind { $($init)* }).into())
+    ($kind:ident $($init:tt)*) => {
+        return Err((crate::error::ErrorKind::$kind  $($init)* ).into())
     };
 }
 
