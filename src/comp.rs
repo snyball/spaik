@@ -549,16 +549,32 @@ impl R8Compiler {
                 //        (set x (+ 1 x)) => INC x, 1
                 //        (set x (- x 1)) => DEC x, 1
                 //        (set x (- 1 x)) => Not special
-                Some(M2::Add(M::Var(sym), M::Atom(PV::Int(num)))) |
-                Some(M2::Add(M::Atom(PV::Int(num)), M::Var(sym)))
+                Some((M2::Add(M::Var(sym), M::Atom(PV::Int(num))), _)) |
+                Some((M2::Add(M::Atom(PV::Int(num)), M::Var(sym)), _))
                     if *sym == dst => {
                     inplace_op(INC, *num);
                     return Ok(())
                 }
-                Some(M2::Sub(M::Var(sym), M::Atom(PV::Int(num))))
+                Some((M2::Sub(M::Var(sym), M::Atom(PV::Int(num))), _))
                     if *sym == dst => {
                     inplace_op(DEC, *num);
                     return Ok(())
+                }
+                Some((M2::Add(M::Var(u), M::Var(v)), (src_u, src_v))) => 'out: {
+                    let (src, src_src) =
+                        if *u == dst { (*v, src_v) }
+                        else if *v == dst { (*u, src_u) }
+                        else { break 'out };
+                    if let BoundVar::Local(src_idx) = self.get_var_idx(src, src_src)? {
+                        self.unit().op(chasm!(ADDS idx, src_idx));
+                        return Ok(())
+                    }
+                }
+                Some((M2::Sub(M::Var(u), M::Var(v)), (_, src_v))) if *u == dst => {
+                    if let BoundVar::Local(src_idx) = self.get_var_idx(*v, src_v)? {
+                        self.unit().op(chasm!(SUBS idx, src_idx));
+                        return Ok(())
+                    }
                 }
                 _ => ()
             }

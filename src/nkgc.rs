@@ -329,8 +329,27 @@ macro_rules! num_op {
                 (x, y) =>
                     return Err(error!(IfaceNotImplemented,
                                       got: vec![x.type_of(), y.type_of()])
-                               .op(Builtin::$sym.sym()))
+                               .bop(Builtin::$sym))
             })
+        }
+    };
+}
+
+macro_rules! inplace_num_op {
+    ($name:ident, $sym:tt, $op:tt, $op_inplace:tt) => {
+        pub fn $name(&mut self, o: &PV) -> Result<(), Error> {
+            use PV::*;
+            match (&mut *self, o) {
+                (Int(x), Real(y)) => *self = Real(*x as f32 $op y),
+                (Int(x), Int(y)) => *x $op_inplace y,
+                (Real(x), Int(y)) => *x $op_inplace *y as f32,
+                (Real(x), Real(y)) => *x $op_inplace y,
+                (x, y) =>
+                    return Err(error!(IfaceNotImplemented,
+                                      got: vec![x.type_of(), y.type_of()])
+                               .bop(Builtin::$sym))
+            }
+            Ok(())
         }
     };
 }
@@ -757,6 +776,9 @@ impl PV {
     num_op!(sub, Sub, -);
     num_op!(div, Div, /);
     num_op!(mul, Mul, *);
+
+    inplace_num_op!(add_mut, Add, +, +=);
+    inplace_num_op!(sub_mut, Sub, -, -=);
 
     pub fn pow(&self, o: &PV) -> Result<PV, Error> {
         use PV::*;

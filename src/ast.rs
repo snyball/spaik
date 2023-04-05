@@ -106,14 +106,15 @@ impl M {
         AST2 { kind: self, src }
     }
 
-    pub fn binary(&self) -> Option<M2> {
-        match self {
-            M::Add(a) if a.len() == 2 => Some(M2::Add(&a[0].kind, &a[1].kind)),
-            M::Sub(a) if a.len() == 2 => Some(M2::Sub(&a[0].kind, &a[1].kind)),
-            M::Mul(a) if a.len() == 2 => Some(M2::Mul(&a[0].kind, &a[1].kind)),
-            M::Div(a) if a.len() == 2 => Some(M2::Div(&a[0].kind, &a[1].kind)),
-            _ => None
-        }
+    pub fn binary(&self) -> Option<(M2, (&Source, &Source))> {
+        let (m2, s0, s1) = (match self {
+            M::Add(a) if a.len() == 2 => (M2::Add(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
+            M::Sub(a) if a.len() == 2 => (M2::Sub(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
+            M::Mul(a) if a.len() == 2 => (M2::Mul(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
+            M::Div(a) if a.len() == 2 => (M2::Div(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
+            _ => return None
+        });
+        Some((m2, (s0, s1)))
     }
 }
 

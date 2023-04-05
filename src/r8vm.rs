@@ -106,6 +106,8 @@ chasm_def! {
     // Math
     INC(var: u16, amount: u16),
     DEC(var: u16, amount: u16),
+    ADDS(dst: u16, src: u16),
+    SUBS(dst: u16, src: u16),
     ADD(),
     SUB(),
     DIV(),
@@ -2016,12 +2018,20 @@ impl R8VM {
                 DIV() => op2!(r, div, r?),
                 MUL() => op2!(r, mul, r?),
 
-                INC(v, d) => match self.mem.stack[self.frame + (v as usize)] {
+                ADDS(dst, src) => {
+                    let o = *self.mem.stack.get_unchecked(self.frame + (src as usize));
+                    self.mem.stack.get_unchecked_mut(self.frame + (dst as usize)).add_mut(&o)?;
+                }
+                SUBS(dst, src) => {
+                    let o = *self.mem.stack.get_unchecked(self.frame + (src as usize));
+                    self.mem.stack.get_unchecked_mut(self.frame + (dst as usize)).sub_mut(&o)?;
+                }
+                INC(v, d) => match self.mem.stack.get_unchecked_mut(self.frame + (v as usize)) {
                     PV::Int(ref mut x) => *x += d as Int,
                     PV::Real(ref mut x) => *x += f32::from(d),
                     x => return Err(RuntimeError::new(format!("Cannot increment: {}", x)).into()),
                 },
-                DEC(v, d) => match self.mem.stack[self.frame + (v as usize)] {
+                DEC(v, d) => match self.mem.stack.get_unchecked_mut(self.frame + (v as usize)) {
                     PV::Int(ref mut x) => *x -= d as Int,
                     PV::Real(ref mut x) => *x -= f32::from(d),
                     x => return Err(RuntimeError::new(format!("Cannot decrement: {}", x)).into()),
