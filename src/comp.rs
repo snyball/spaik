@@ -725,7 +725,7 @@ impl R8Compiler {
     fn bt_next(&mut self, ret: bool, arg: AST2) -> Result<()> {
         let AST2 { src, kind } = arg;
         match kind {
-            M::Atom(PV::Sym(var)) => {
+            M::Var(var) => {
                 let bound = self.get_var_idx(var, &src)?;
                 match bound {
                     BoundVar::Local(idx) => self.asm_op(chasm!(NXIT idx)),
