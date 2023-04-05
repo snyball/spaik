@@ -547,6 +547,8 @@ impl Object {
                         let rc_mem = obj as *mut RcMem<T>;
                         (*rc_mem).rc.0.load(atomic::Ordering::SeqCst)
                     },
+                    #[cfg(not(feature = "freeze"))]
+                    freeze: |p, into| unsafe { unimplemented!("freeze"); },
                     #[cfg(feature = "freeze")]
                     freeze: |p, into| unsafe {
                         use bincode::Options;
