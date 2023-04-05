@@ -42,6 +42,7 @@
                          (dolist (arg args)
                            (set res (evil-r arg env)))
                          res))
+               ('println (println (apply concat args)))
                ('lambda (let ((x (caar args))
                               (body `(progn ,@(cdr args))))
                           (lambda (arg)
@@ -52,13 +53,13 @@
                (_ ((evil-r op env)
                    (evil-r (car args) env))))))
           (true (progn
-                  (println "Undefined pattern: " expr)
-                  (+ "1" 1))))))
+                  (println "Undefined pattern: {expr}")
+                  (error 'undefined-pattern))))))
 
 (defun evil (expr)
   (evil-r expr (lambda (x)
-                 (println "Undefined variable: " x)
-                 (+ "1" 1))))
+                 (println "Undefined variable: {x}")
+                 (error 'undefined-variable))))
 
 (defun evil-examples ()
   (println (evil '((lambda (x) (+ x 1330)) 7)))
