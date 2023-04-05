@@ -1292,6 +1292,11 @@ impl R8VM {
                     if tokit.peek().map(|t| t.text == ")").unwrap_or_default() {
                         bail!(SyntaxError(SyntaxErrorKind::DotAtEndOfList))
                     }
+
+                    if !mods.is_empty() {
+                        bail!(SyntaxError(SyntaxErrorKind::ModifierBeforeDot))
+                    }
+
                     dot = true
                 },
                 ")" => {
@@ -1361,12 +1366,6 @@ impl R8VM {
                     } else {
                         PV::Sym(self.put_sym(text))
                     };
-
-                    if dot
-                    && tokit.peek().map(|t| t.text == ")").unwrap_or_default()
-                    && !mods.is_empty() {
-                        bail!(SyntaxError(SyntaxErrorKind::ModifierAtEndOfDottedList))
-                    }
 
                     if !close.is_empty() {
                         wrap!(self.mem.push(pv));

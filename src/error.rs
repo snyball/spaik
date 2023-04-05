@@ -186,7 +186,7 @@ pub enum SyntaxErrorKind {
     DotAtEndOfList,
     DotAfterDot,
     SpliceAfterDot,
-    ModifierAtEndOfDottedList,
+    ModifierBeforeDot,
 }
 
 impl fmt::Display for SyntaxErrorKind {
@@ -198,8 +198,8 @@ impl fmt::Display for SyntaxErrorKind {
                 write!(f, "Dot operator (.) immediately after dot operator (.)"),
             SyntaxErrorKind::SpliceAfterDot =>
                 write!(f, "Splice operator (,@) after dot operator (.)"),
-            SyntaxErrorKind::ModifierAtEndOfDottedList =>
-                write!(f, "Modifier e.g [,@] [,] [`] or ['] etc. at end of dotted list e.g (a b . 'c)"),
+            SyntaxErrorKind::ModifierBeforeDot =>
+                write!(f, "Modifier e.g [,@] [,] [`] or ['] etc. at end of dotted list e.g (a b ' . c) instead of (a b . 'c)"),
         }
     }
 }
