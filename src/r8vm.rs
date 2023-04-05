@@ -1362,7 +1362,10 @@ impl R8VM {
                         PV::Sym(self.put_sym(text))
                     };
 
-                    if dot && tokit.peek().map(|t| t.text == ")").unwrap_or_default() {
+                    if dot
+                    && tokit.peek().map(|t| t.text == ")").unwrap_or_default()
+                    && !mods.is_empty() {
+                        bail!(SyntaxError(SyntaxErrorKind::ModifierAtEndOfDottedList))
                     }
 
                     if !close.is_empty() {
