@@ -443,6 +443,10 @@ mod sysfns {
                                    (*fn_name).try_into()?);
             Ok(PV::Nil)
         }
+
+        fn panic(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            panic!("{}", tostring(vm, *x))
+        }
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -1034,6 +1038,7 @@ impl R8VM {
         addfn!(eval);
         addfn!(read);
         addfn!(macroexpand);
+        addfn!(panic);
         addfn!("make-symbol", make_symbol);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
