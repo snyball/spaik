@@ -1844,6 +1844,10 @@ impl Arena {
         self.sweep_compact();
     }
 
+    #[cfg(not(feature = "freeze"))]
+    pub fn freeze(&self) -> i32 { unimplemented!("freeze") }
+
+    #[cfg(feature = "freeze")]
     pub fn freeze(&self) -> i32 {
         let mut nk = self.nuke.shallow_clone();
 
