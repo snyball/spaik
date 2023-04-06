@@ -22,8 +22,10 @@ let _: Ignore = vm.eval(r#"(+ 1 *global*)"#)?;
 
 ### Exporting functions to SPAIK
 
-Here the function Rust `add_to` is being created, and can be called from Rust
-like normal, while a binding of the same name is put into the struct `Fns`.
+It is often useful to for functions to be called from both Rust and Lisp,
+here the function `add_to` is being defined as both a Rust function in the
+global scope, and as a SPAIK function in `Fns`. We can then choose to 
+register the `Fns::add_to` function in the VM.
 
 ``` rust
 use spaik::prelude::*;
