@@ -31,7 +31,7 @@ vm.load("stuff");
 ```
 
 The `add_load_path` method adds the given string to the global `sys/load-path`
-variable, which is just a SPAIK vector. You can mutate this from SPAIK to:
+variable, which is just a SPAIK vector. You can mutate this from SPAIK too:
 
 ``` common-lisp
 (eval-when-compile (push sys/load-path "my-dependencies"))
