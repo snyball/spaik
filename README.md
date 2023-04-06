@@ -92,7 +92,8 @@ for single-threaded `Spaik`, but returns `Result<()>`.
 
 ### The `html` macro
 
-If you really wanted to, you could use SPAIK as an html templating language.
+Because of how easy it is to create new syntax constructs in LISPs, you can
+use SPAIK as a rudimentary html templating engine.
 
 ``` common-lisp
 (load html)
