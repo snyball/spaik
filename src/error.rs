@@ -5,7 +5,6 @@ use num_traits::PrimInt as Integer;
 use crate::Builtin;
 use crate::perr::ParseErr;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
-use crate::r8vm::r8c::Op as R8C;
 use crate::nkgc::SymID;
 use crate::fmt::LispFmt;
 use crate::sym_db::{SymDB, SYM_DB};

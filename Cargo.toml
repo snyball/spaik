@@ -18,7 +18,8 @@ panic = "abort"
 inherits = "release"
 panic = "abort"
 lto = "fat"
-opt-level = "s"
+opt-level = "z"
+codegen-units = 1
 
 [features]
 default = ["math", "extra", "readline", "derive", "modules", "freeze"]

@@ -9,7 +9,7 @@ use crate::sym_db::SymDB;
 use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::io::{Write, Read};
-use std::mem::{self, size_of, align_of, ManuallyDrop};
+use std::mem::{self, size_of, align_of};
 use std::ptr::{drop_in_place, self};
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt::{self, Display};
@@ -1326,7 +1326,7 @@ impl Nuke {
     }
 
     pub fn confirm_relocation(&mut self, t: RelocateToken) {
-        ManuallyDrop::new(t);
+        mem::forget(t);
         self.reloc.0.clear();
     }
 

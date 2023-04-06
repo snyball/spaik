@@ -247,7 +247,7 @@ macro_rules! std_subrs {
 
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, borrow::Cow, io::{BufWriter, self}, fs};
+    use std::{fmt::Write, borrow::Cow, io::BufWriter, fs};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, compile::Builtin, utils::Success};
     use super::{R8VM, tostring, ArgSpec};
@@ -1234,7 +1234,7 @@ impl R8VM {
     }
 
     /// Reads LISP code into an AST.
-    pub fn read(&mut self, lisp: &str) -> Result<()> {
+    pub fn read(&mut self, _lisp: &str) -> Result<()> {
         todo!()
     }
 

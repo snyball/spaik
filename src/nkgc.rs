@@ -3,16 +3,13 @@
 use crate::compile::{Builtin, BUILTIN_SYMBOLS};
 use crate::r8vm::{RuntimeError, ArgSpec, R8VM};
 use crate::nuke::{*, self};
-use crate::error::{ErrorKind, Error, Source, Meta, LineCol};
+use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::subrs::FromLisp;
 use crate::sym_db::SymDB;
 use crate::sintern::SIntern;
-use crate::sexpr_parse::{tokenize, Fragment, standard_lisp_tok_tree, string_parse, sexpr_modifier_bt, sexpr_modified_sym_to_str};
-use crate::tok::Token;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::mem::take;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
 use serde::{Serialize, Deserialize};

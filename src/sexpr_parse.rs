@@ -4,7 +4,6 @@ use crate::Builtin;
 use crate::perr::*;
 use crate::tok::*;
 use crate::error::Error;
-use std::fmt::Write;
 use std::io;
 
 pub fn string_parse(tok: &Token) -> PResult<String> {
@@ -44,16 +43,6 @@ pub fn sexpr_modifier_bt(tok: &str) -> Option<Builtin> {
         "`" => Builtin::Quasi,
         "," => Builtin::Unquote,
         ",@" => Builtin::USplice,
-        _ => return None,
-    })
-}
-
-pub fn sexpr_modified_sym_to_str(m: Builtin) -> Option<&'static str> {
-    Some(match m {
-        Builtin::Quote => "'",
-        Builtin::Quasi => "`",
-        Builtin::Unquote => ",",
-        Builtin::USplice => ",@",
         _ => return None,
     })
 }
