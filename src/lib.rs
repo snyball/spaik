@@ -145,7 +145,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod prelude {
     pub use super::{SymDB, SymID, Subr, IntoLisp, FromLisp,
-                    Ignore, IntoSubr, SpaikPlug, Spaik, EnumCall};
+                    Ignore, IntoSubr, SpaikPlug, Spaik, EnumCall,
+                    spaikfn};
 }
 
 type AnyResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;

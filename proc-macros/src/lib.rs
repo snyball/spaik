@@ -58,14 +58,14 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
                 #anon_namespace::#obj_ident;
         }
 
-        unsafe impl #spaik_root::subrs::Subr for #anon_namespace::#obj_ident {
+        unsafe impl #spaik_root::raw::subrs::Subr for #anon_namespace::#obj_ident {
             fn call(&mut self,
                     vm: &mut #spaik_root::raw::r8vm::R8VM,
                     args: &[#spaik_root::raw::nkgc::PV])
                     -> core::result::Result<#spaik_root::raw::nkgc::PV,
                                             #spaik_root::error::Error>
             {
-                use #spaik_root::r8vm::ArgSpec;
+                use #spaik_root::raw::r8vm::ArgSpec;
                 use #spaik_root::error::Error;
                 const SPEC: ArgSpec = ArgSpec::normal(#nargs);
                 SPEC.check(Default::default(), args.len() as u16)?;
@@ -82,7 +82,7 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
             }
         }
 
-        impl From<#anon_namespace::#obj_ident> for Box<dyn #spaik_root::subrs::Subr> {
+        impl From<#anon_namespace::#obj_ident> for Box<dyn #spaik_root::raw::subrs::Subr> {
             fn from(x: #anon_namespace::#obj_ident) -> Self {
                 Box::new(x)
             }
@@ -259,7 +259,7 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
 
         impl Userdata for #name {}
 
-        impl #root::subrs::IntoLisp for #name {
+        impl #root::raw::subrs::IntoLisp for #name {
             fn into_pv(self, mem: &mut #root::raw::nkgc::Arena)
                        -> core::result::Result<#root::raw::nkgc::PV, #root::error::Error>
             {

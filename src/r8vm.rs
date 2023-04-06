@@ -721,7 +721,7 @@ pub struct R8VM {
     /// Memory
     pub(crate) pmem: Vec<r8c::Op>,
     consts: Vec<NkSum>,
-    pub(crate) mem: Arena,
+    pub mem: Arena,
     pub(crate) globals: FnvHashMap<SymID, usize>,
     pub(crate) trace_counts: FnvHashMap<SymID, usize>,
     tok_tree: Fragment,
