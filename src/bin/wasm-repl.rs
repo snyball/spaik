@@ -2,6 +2,7 @@
 
 // extern crate console_error_panic_hook;
 
+use spaik::nuke::malloc;
 use spaik::repl::REPL;
 use core::slice;
 use std::alloc::Layout;
@@ -96,9 +97,7 @@ pub extern fn repl_eval(ptr: *const c_char, sz: usize) {
 
 #[no_mangle]
 pub extern fn alloc(sz: usize) -> *mut u8 {
-    unsafe {
-        std::alloc::alloc(Layout::from_size_align(sz, 1).unwrap())
-    }
+    unsafe { malloc(sz) }
 }
 
 /**

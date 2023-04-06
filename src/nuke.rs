@@ -22,7 +22,7 @@ use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
 use std::collections::hash_map::Entry;
-use std::alloc::{Layout, alloc, dealloc, realloc};
+use std::alloc::{Layout, alloc, dealloc, realloc, handle_alloc_error};
 use std::sync::atomic;
 
 macro_rules! with_atom {
@@ -566,6 +566,9 @@ impl Object {
         };
         let mem = unsafe {
             let p = alloc(layout) as *mut T;
+            if p.is_null() {
+                handle_alloc_error(layout);
+            }
             ptr::write(p, obj);
             (*(p as *mut RcMem<T>)).rc = GcRc(1.into());
             p as *mut u8
@@ -1088,7 +1091,12 @@ pub unsafe fn memmove<R, W>(dst: *mut W, src: *const R, sz: usize) {
 }
 
 pub unsafe fn malloc<T>(sz: usize) -> *mut T {
-    alloc(Layout::array::<T>(sz).unwrap()) as *mut T
+    let layout = Layout::array::<T>(sz).unwrap();
+    let p = alloc(layout) as *mut T;
+    if p.is_null() {
+        handle_alloc_error(layout);
+    }
+    p
 }
 
 pub unsafe fn free<T>(p: *mut T, sz: usize) {
@@ -1123,6 +1131,10 @@ impl Nuke {
             #[cfg(not(target_arch = "wasm32"))]
             start_time: SystemTime::now(),
         };
+
+        if nk.mem.is_null() {
+            handle_alloc_error(layout);
+        }
 
         nk.last = nk.fst_mut();
         nk.free = nk.offset(mem::size_of::<NkAtom>());

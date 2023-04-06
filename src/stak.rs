@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 
 struct Stak<T> {
     ebp: *mut T,
@@ -13,6 +13,9 @@ impl<T> Stak<T> {
     pub fn new(sz: usize) -> Stak<T> {
         let layout = Layout::array::<T>(sz).unwrap();
         let buf = unsafe { alloc(layout) } as *mut T;
+        if buf.is_null() {
+            handle_alloc_error(layout);
+        }
         Stak { ebp: buf,
                top: buf,
                buf,

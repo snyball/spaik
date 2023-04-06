@@ -214,7 +214,11 @@ unsafe fn take_inner_string(p: *mut Sym) -> String {
         dealloc(p as *mut u8, layout);
         s
     } else {
-        let buf = alloc(Layout::array::<u8>((*p).len).unwrap());
+        let layout = Layout::array::<u8>((*p).len).unwrap();
+        let buf = alloc(layout);
+        if buf.is_null() {
+            handle_alloc_error(layout);
+        }
         memcpy(buf, (*p).ptr.as_ptr(), (*p).len);
         let s = String::from_raw_parts(buf, (*p).len, (*p).len);
         (*p).rc.is_dropped();

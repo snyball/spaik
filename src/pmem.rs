@@ -4,7 +4,7 @@
 
 use std::{alloc::{realloc, Layout}, mem::{size_of, align_of}};
 
-use crate::{r8vm::r8c::Op, raw::nuke::malloc};
+use crate::{r8vm::r8c::Op, nuke::malloc};
 
 struct PMem {
     mem: *mut Op,
