@@ -25,8 +25,8 @@ impl PMem {
             let ipd = self.ip.sub(self.mem as usize) as usize;
             let layout = Layout::array::<Op>(self.sz).unwrap();
             let mem = realloc(self.mem as *mut u8,
-                               layout,
-                               size_of::<Op>() * new_sz) as *mut Op;
+                              layout,
+                              size_of::<Op>() * new_sz) as *mut Op;
             if mem.is_null() {
                 handle_alloc_error(layout);
             }

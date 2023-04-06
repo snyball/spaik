@@ -1250,7 +1250,7 @@ impl Nuke {
                                                        align_of::<NkAtom>());
         let old_mem = self.mem as usize;
         let mem = realloc(self.mem, layout, new_sz);
-        if self.mem.is_null() {
+        if mem.is_null() {
             handle_alloc_error(layout);
         }
         self.mem = mem;
