@@ -416,8 +416,7 @@ impl<'a> Excavator<'a> {
         self.dig(v, src)
     }
 
-    fn wrap_one_arg<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2>
-        where F: Fn(Box<AST2>) -> M
+    fn wrap_one_arg(&self, wrap: fn(Box<AST2>) -> M, args: PV, src: Source) -> Result<AST2>
     {
         let mut it = args.iter();
         let arg = it.next().ok_or_else(|| error!(ArgError,
@@ -459,8 +458,7 @@ impl<'a> Excavator<'a> {
         })
     }
 
-    fn chain_cmp_op<F>(&self, cmp: F, args: PV, src: Source) -> Result<AST2>
-        where F: Fn(Box<AST2>, Box<AST2>) -> M
+    fn chain_cmp_op(&self, cmp: fn(Box<AST2>, Box<AST2>) -> M, args: PV, src: Source) -> Result<AST2>
     {
         let expect = ArgSpec::rest(2, 0);
         let err = |n| {
@@ -723,7 +721,7 @@ impl<'a> Excavator<'a> {
             Builtin::Push => self.wrap_two_args(M::Push, args, src),
             Builtin::Get => self.wrap_two_args(M::Get, args, src),
             Builtin::Throw => self.wrap_one_arg(M::Throw, args, src),
-            op @ Builtin::Len => self.wrap_one_arg(|a| M::Bt1(op, a), args, src),
+            op @ Builtin::Len => self.wrap_one_arg(|a| M::Bt1(Builtin::Len, a), args, src),
             op @ (Builtin::Apply | Builtin::LoopWithEpilogue) =>
                 self.wrap_two_args(|a0, a1| M::Bt2(op, a0, a1), args, src),
             Builtin::Next => self.bt_next(args, src),
