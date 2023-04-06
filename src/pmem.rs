@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use std::{alloc::{realloc, Layout}, mem::{size_of, align_of}};
+use std::{alloc::{realloc, Layout, handle_alloc_error}, mem::{size_of, align_of}};
 
 use crate::{r8vm::r8c::Op, nuke::malloc};
 
@@ -26,6 +26,9 @@ impl PMem {
             let layout =
                 Layout::from_size_align_unchecked(size_of::<Op>(), align_of::<Op>());
             self.mem = realloc(self.mem as *mut u8, layout, new_sz) as *mut Op;
+            if self.mem.is_null() {
+                handle_alloc_error(layout);
+            }
             self.ip = self.mem.add(ipd);
         }
     }
