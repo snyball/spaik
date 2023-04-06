@@ -447,8 +447,18 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn wrap_any_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2>
+    fn wrap_any_args_gen<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2>
         where F: FnOnce(Vec<AST2>) -> M
+    {
+        let args: Result<_> = args.into_iter().map(|a| self.dig(a, src.clone()))
+                                                .collect();
+        Ok(AST2 {
+            kind: wrap(args?),
+            src,
+        })
+    }
+
+    fn wrap_any_args(&self, wrap: fn(Vec<AST2>) -> M, args: PV, src: Source) -> Result<AST2>
     {
         let args: Result<_> = args.into_iter().map(|a| self.dig(a, src.clone()))
                                                 .collect();
@@ -731,7 +741,7 @@ impl<'a> Excavator<'a> {
     }
 
     fn sapp(&self, op: SymID, args: PV, src: Source) -> Result<AST2> {
-        self.wrap_any_args(|a| M::SymApp(op, a), args, src)
+        self.wrap_any_args_gen(|a| M::SymApp(op, a), args, src)
     }
 
     fn lambda_app(&self,
@@ -788,7 +798,7 @@ impl<'a> Excavator<'a> {
         if let M::Lambda(syms, body) = op.kind {
             self.lambda_app(syms, body, args, src)
         } else {
-            self.wrap_any_args(|a| M::App(Box::new(op), a), args, src)
+            self.wrap_any_args_gen(|a| M::App(Box::new(op), a), args, src)
         }
     }
 

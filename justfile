@@ -31,6 +31,13 @@ build-wasm:
          -x wasm-opt -Oz -o target/wasm-opt/{/} {}
     @echo "optimized wasm files saved to target/wasm-opt"
 
+build-mini:
+    cargo build --profile wasm \
+                --target x86_64-unknown-linux-gnu \
+                -Z build-std=std,panic_abort \
+                -Z build-std-features=panic_immediate_abort \
+                --no-default-features
+
 test-all: install-tools
     just build-wasm
     just test-wasm
