@@ -3,7 +3,6 @@ name = "spaik"
 version = "0.2.2"
 authors = ["Jonas Møller <jonas@nimda.no>"]
 description = "The SPAIK Programming Language"
-readme = "doc/README.md"
 edition = "2021"
 repository = "https://github.com/snyball/spaik"
 homepage = "https://github.com/snyball/spaik"
