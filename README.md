@@ -20,6 +20,27 @@ assert_eq!(res, 4);
 let _: Ignore = vm.eval(r#"(+ 1 *global*)"#)?;
 ```
 
+### Loading Code
+
+You probably don't want to store all your SPAIK code as embedded strings in Rust,
+so you can of course load SPAIK scripts from the filesystem.
+
+``` rust
+vm.add_load_path("my-spaik-programs");
+vm.load("stuff");
+```
+
+The `add_load_path` method adds the given string to the global `sys/load-path`
+variable, which is just a SPAIK vector. You can mutate this from SPAIK to:
+
+``` common-lisp
+(eval-when-compile (push sys/load-path "my-dependencies"))
+(load dependency)
+```
+
+But notice that we had to use `(eval-when-compile ...)` when adding the new
+path, because `(load ...)` also runs during compilation.
+
 ### Exporting functions to SPAIK
 
 It is often useful for functions to be called from both Rust and Lisp, here the
