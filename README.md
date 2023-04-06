@@ -58,7 +58,8 @@ enum Cmd {
     Subtract(i32),
 }
 
-// We can fork the vm onto its own thread first
+// We can fork the vm onto its own thread first, this takes a Spaik and
+// returns a thread-safe SpaikPlug handle.
 let mut vm = vm.fork::<Msg, Cmd>();
 
 vm.cmd(Cmd::Add(1337));
@@ -73,7 +74,8 @@ while recvd < 2 {
     }
 }
 
-// Join with the VM on the same thread again
+// Join with the VM on the same thread again, turning the SpaikPlug handle
+// back into a Spaik.
 let mut vm = vm.join();
 let glob: i32 = vm.eval("*global*").unwrap();
 ```
@@ -88,9 +90,10 @@ let glob: i32 = vm.eval("*global*").unwrap();
     (set *global* (+ *global* res x 1))))
 ```
 
-When using call-by-enum in a single-threaded setup, use the `query` method
-instead, which immediately returns the result. The `cmd` function also exists
-for single-threaded `Spaik`, but returns `Result<()>`.
+When using call-by-enum in a single-threaded setup, use the `Spaik::query`
+method instead, which immediately returns the result. The `cmd` method also
+exists for `Spaik`, but returns `Result<()>`. This is parallel to the `eval` /
+`exec` split, and is done for the same reason (type inference.)
 
 ### The `html` macro
 
