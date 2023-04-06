@@ -7,8 +7,8 @@ collection, iterators, continuations, async/await and wraps it up in a
 
 ### Basic usage
 
-For basic usage, all you need are the `eval` and `exec` methods, `exec` is
-just `eval` but it throws away the result.
+For basic usage, all you need are the `eval` and `exec` methods (`exec` is just
+`eval` but it throws away the result to aid type-inference.)
 
 ``` rust
 let mut vm = Spaik::new();
@@ -22,10 +22,10 @@ let _: Ignore = vm.eval(r#"(+ 1 *global*)"#)?;
 
 ### Exporting functions to SPAIK
 
-It is often useful to for functions to be called from both Rust and Lisp,
-here the function `add_to` is being defined as both a Rust function in the
-global scope, and as a SPAIK function in `Fns`. We can then choose to 
-register the `Fns::add_to` function in the VM.
+It is often useful for functions to be called from both Rust and Lisp, here the
+function `add_to` is being defined as both a Rust function in the global scope,
+and as a SPAIK function in `Fns`. We can then choose to  register the
+`Fns::add_to` function in the VM.
 
 ``` rust
 use spaik::prelude::*;
