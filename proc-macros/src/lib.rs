@@ -188,7 +188,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
                     let sym = &*mem.name(*arg);
                     let pv = match strs.iter().copied().position(|x| x == sym) {
                         #(Some(#count) => #idents
-                          .take()
+                                          .take()
                                           .expect("Duplicate argument should not be possible")
                                           .into_pv(mem)
                                           .unwrap()),*,
@@ -205,7 +205,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
     let out = quote! {
         impl #root::EnumCall for #name {
             fn pushargs(self, args: &[#root::raw::nkgc::SymID], mem: &mut #root::raw::nkgc::Arena)
-                        -> core::result::Result<(), #root::error::Error>
+                        -> #root::error::Result<()>
             {
                 use #root::IntoLisp;
                 match self {
@@ -213,7 +213,6 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
                 }
                 Ok(())
             }
-
             fn name(&self, mem: &mut #root::raw::nkgc::Arena) -> #root::raw::nkgc::SymID {
                 use #root::IntoLisp;
                 match self {
