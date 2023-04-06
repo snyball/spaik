@@ -9,7 +9,7 @@ use crate::sym_db::SymDB;
 use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::io::{Write, Read};
-use std::mem::{self, size_of, align_of};
+use std::mem::{self, size_of, align_of, ManuallyDrop};
 use std::ptr::{drop_in_place, self};
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt::{self, Display};
@@ -1107,7 +1107,9 @@ pub unsafe fn free<T>(p: *mut T, sz: usize) {
 pub struct RelocateToken;
 
 impl Drop for RelocateToken {
-    fn drop(&mut self) {}
+    fn drop(&mut self) {
+        panic!("Relocation of memory arena happened without updating pointers");
+    }
 }
 
 impl Nuke {
@@ -1324,7 +1326,7 @@ impl Nuke {
     }
 
     pub fn confirm_relocation(&mut self, t: RelocateToken) {
-        drop(t);
+        ManuallyDrop::new(t);
         self.reloc.0.clear();
     }
 

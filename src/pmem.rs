@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use std::{alloc::{realloc, Layout, handle_alloc_error}, mem::{size_of, align_of}};
+use std::{alloc::{realloc, Layout, handle_alloc_error}, mem::size_of};
 
 use crate::{r8vm::r8c::Op, nuke::malloc};
 
@@ -20,7 +20,8 @@ impl PMem {
     }
 
     pub fn fit(&mut self, fit: usize) {
-        let new_sz = (self.sz << 1).max(self.sz + fit);
+        let byte_fit = fit * size_of::<Op>();
+        let new_sz = (self.sz << 1).max(self.sz + byte_fit);
         unsafe {
             let ipd = self.ip.sub(self.mem as usize) as usize;
             let layout = Layout::array::<Op>(self.sz).unwrap();
