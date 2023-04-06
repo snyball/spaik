@@ -247,7 +247,7 @@ macro_rules! std_subrs {
 
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, borrow::Cow};
+    use std::{fmt::Write, borrow::Cow, io::{BufWriter, self}, fs};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, compile::Builtin, utils::Success};
     use super::{R8VM, tostring, ArgSpec};
@@ -435,6 +435,13 @@ mod sysfns {
         fn set_macro(&mut self, vm: &mut R8VM, args: (macro_name, fn_name)) -> Result<PV> {
             vm.set_macro((*macro_name).try_into()?,
                          (*fn_name).try_into()?);
+            Ok(PV::Nil)
+        }
+
+        fn dump_code_to(&mut self, vm: &mut R8VM, args: (to)) -> Result<PV> {
+            let to = tostring(vm, *to);
+            let mut out = BufWriter::new(fs::File::create(to)?);
+            vm.dump_code_to(&mut out)?;
             Ok(PV::Nil)
         }
 
@@ -1052,6 +1059,7 @@ impl R8VM {
         // Debug
         #[cfg(feature = "extra")] {
             addfn!("dump-fns", dump_all_fns);
+            addfn!("dump-code-to", dump_code_to);
             addfn!("dump-code", dump_code);
             addfn!("dump-macro-tbl", dump_macro_tbl);
             addfn!("dump-sym-tbl", dump_sym_tbl);
@@ -1088,6 +1096,13 @@ impl R8VM {
                         src.clone()).unwrap();
 
         vm
+    }
+
+    pub fn dump_code_to(&self, out: &mut dyn Write) -> Result<()> {
+        for op in self.pmem.iter() {
+            op.write(out)?;
+        }
+        Ok(())
     }
 
     pub fn new() -> R8VM {
