@@ -530,8 +530,7 @@ impl<'a> Excavator<'a> {
         }
     }
 
-    fn wrap_two_args<F>(&self, wrap: F, args: PV, src: Source) -> Result<AST2>
-        where F: FnOnce(Box<AST2>, Box<AST2>) -> M
+    fn wrap_two_args(&self, wrap: fn(Box<AST2>, Box<AST2>) -> M, args: PV, src: Source) -> Result<AST2>
     {
         let (u, v) = self.two_args(args, src.clone())?;
         Ok(AST2 { kind: wrap(u, v), src })
@@ -721,9 +720,11 @@ impl<'a> Excavator<'a> {
             Builtin::Push => self.wrap_two_args(M::Push, args, src),
             Builtin::Get => self.wrap_two_args(M::Get, args, src),
             Builtin::Throw => self.wrap_one_arg(M::Throw, args, src),
-            op @ Builtin::Len => self.wrap_one_arg(|a| M::Bt1(Builtin::Len, a), args, src),
-            op @ (Builtin::Apply | Builtin::LoopWithEpilogue) =>
-                self.wrap_two_args(|a0, a1| M::Bt2(op, a0, a1), args, src),
+            Builtin::Len => self.wrap_one_arg(|a| M::Bt1(Builtin::Len, a), args, src),
+            Builtin::Apply =>
+                self.wrap_two_args(|a0, a1| M::Bt2(Builtin::Apply, a0, a1), args, src),
+            Builtin::LoopWithEpilogue =>
+                self.wrap_two_args(|a0, a1| M::Bt2(Builtin::LoopWithEpilogue, a0, a1), args, src),
             Builtin::Next => self.bt_next(args, src),
             _ => self.sapp(bt.sym(), args, src),
         }.map_err(|e| e.fallback(Meta::Op(OpName::OpSym(bt.sym()))))
