@@ -1249,10 +1249,11 @@ impl Nuke {
         let layout = Layout::from_size_align_unchecked(self.sz,
                                                        align_of::<NkAtom>());
         let old_mem = self.mem as usize;
-        self.mem = realloc(self.mem, layout, new_sz);
+        let mem = realloc(self.mem, layout, new_sz);
         if self.mem.is_null() {
             handle_alloc_error(layout);
         }
+        self.mem = mem;
         self.sz = new_sz;
         if old_mem != self.mem as usize {
             let mut node = self.fst_mut();

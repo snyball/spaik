@@ -23,12 +23,15 @@ impl PMem {
         let new_sz = (self.sz << 1).max(self.sz + fit);
         unsafe {
             let ipd = self.ip.sub(self.mem as usize) as usize;
-            let layout =
-                Layout::from_size_align_unchecked(size_of::<Op>(), align_of::<Op>());
-            self.mem = realloc(self.mem as *mut u8, layout, new_sz) as *mut Op;
-            if self.mem.is_null() {
+            let layout = Layout::array::<Op>(self.sz).unwrap();
+            let mem = realloc(self.mem as *mut u8,
+                               layout,
+                               size_of::<Op>() * new_sz) as *mut Op;
+            if mem.is_null() {
                 handle_alloc_error(layout);
             }
+            self.mem = mem;
+            self.sz = new_sz;
             self.ip = self.mem.add(ipd);
         }
     }
