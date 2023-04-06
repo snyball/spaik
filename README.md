@@ -107,4 +107,8 @@ use SPAIK as a rudimentary html templating engine.
 ```
 
 
+### Internal Architecture
 
+SPAIK code is bytecode compiled and runs on a custom VM called the Rodent VM
+(R8VM,) which uses a moving tracing garbage collector. For more detailed
+information about its internals, see [HACKING.md](HACKING.md).
