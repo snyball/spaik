@@ -88,7 +88,7 @@ let glob: i32 = vm.eval("*global*").unwrap();
     (set *global* (+ *global* res x 1))))
 ```
 
-When using the call-by-enum in a single-threaded setup, use the `query` method
+When using call-by-enum in a single-threaded setup, use the `query` method
 instead, which immediately returns the result. The `cmd` function also exists
 for single-threaded `Spaik`, but returns `Result<()>`.
 
