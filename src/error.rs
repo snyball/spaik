@@ -207,7 +207,6 @@ impl fmt::Display for SyntaxErrorKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     SendError { obj_dbg: String },
-    IllegalInstruction { inst: R8C },
     STypeError { expect: String, got: String },
     UnexpectedDottedList,
     TypeError { expect: Builtin, got: Builtin },
@@ -356,8 +355,6 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
 
     let meta = err.meta();
     match err.kind() {
-        IllegalInstruction { inst } =>
-            write!(f, "Illegal instruction: <{}>", inst)?,
         TypeError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
                    nameof(expect.sym()),
