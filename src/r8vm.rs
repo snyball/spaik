@@ -1038,7 +1038,6 @@ impl R8VM {
         addfn!(eval);
         addfn!(read);
         addfn!(macroexpand);
-        addfn!(panic);
         addfn!("make-symbol", make_symbol);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
@@ -1049,17 +1048,20 @@ impl R8VM {
         addfn!("sys/set-macro-character", set_macro_character);
 
         // Debug
-        addfn!("dump-fns", dump_all_fns);
-        addfn!("dump-code", dump_code);
-        addfn!("dump-macro-tbl", dump_macro_tbl);
-        addfn!("dump-sym-tbl", dump_sym_tbl);
-        addfn!("dump-env-tbl", dump_env_tbl);
-        addfn!("dump-fn-tbl", dump_fn_tbl);
-        addfn!("dump-gc-stats", dump_gc_stats);
-        addfn!("dump-stack", dump_stack);
-        addfn!(disassemble);
+        #[cfg(feature = "extra")] {
+            addfn!("dump-fns", dump_all_fns);
+            addfn!("dump-code", dump_code);
+            addfn!("dump-macro-tbl", dump_macro_tbl);
+            addfn!("dump-sym-tbl", dump_sym_tbl);
+            addfn!("dump-env-tbl", dump_env_tbl);
+            addfn!("dump-fn-tbl", dump_fn_tbl);
+            addfn!("dump-gc-stats", dump_gc_stats);
+            addfn!("dump-stack", dump_stack);
+            addfn!(disassemble);
+        }
 
         // Control-Flow
+        addfn!(panic);
         addfn!(error);
         addfn!(exit);
 
