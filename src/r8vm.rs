@@ -1029,10 +1029,13 @@ impl R8VM {
         // IO
         addfn!(println);
         addfn!(print);
-        addfn!(instant);
 
         // Modules
-        addfn!(load);
+        #[cfg(not(target_arch = "wasm32"))] {
+            addfn!(load);
+            addfn!(instant);
+            addfn!("read-compile-from", read_compile_from);
+        }
 
         // Meta
         addfn!(eval);
@@ -1041,7 +1044,6 @@ impl R8VM {
         addfn!("make-symbol", make_symbol);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
-        addfn!("read-compile-from", read_compile_from);
         addfn!("type-of", type_of);
         addfn!("sym-id", sym_id);
         addfn!("sys/set-macro", set_macro);
