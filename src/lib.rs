@@ -61,6 +61,7 @@ pub(crate) mod sym_db;
 pub(crate) mod subrs;
 pub(crate) mod compile;
 pub(crate) mod sexpr_parse;
+pub use sexpr_parse::minify;
 pub(crate) mod tok;
 pub(crate) mod nuke;
 pub(crate) mod swym;

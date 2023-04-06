@@ -3,6 +3,8 @@
 use crate::Builtin;
 use crate::perr::*;
 use crate::tok::*;
+use crate::error::Error;
+use std::fmt::Write;
 use std::io;
 
 pub fn string_parse(tok: &Token) -> PResult<String> {
@@ -389,6 +391,25 @@ pub fn tokenize<'a>(text: &'a str, frags: &Fragment) -> PResult<Vec<Token<'a>>> 
     }
 
     Ok(toks)
+}
+
+pub fn minify(text: &str, f: &mut dyn io::Write) -> Result<(), Error> {
+    let mut it = tokenize(text, &standard_lisp_tok_tree())?.into_iter().peekable();
+    macro_rules! ops {
+        () => { "(" | ")" | "," | ",@" | "'" | "`" | "#'" | "#" };
+    }
+    while let Some(tok) = it.next() {
+        if matches!(tok.text, ops!()) {
+            write!(f, "{}", tok.text)?;
+            continue;
+        }
+        match it.peek().map(|t| t.text) {
+            Some(ops!()) => write!(f, "{}", tok.text)?,
+            Some(_) => write!(f, "{} ", tok.text)?,
+            None => write!(f, "{}", tok.text)?,
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
