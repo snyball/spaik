@@ -1,4 +1,4 @@
-//! SPAIK R8 Virtual Machine
+//! The Rodent VM
 
 #[cfg(feature = "extra")]
 use comfy_table::Table;
