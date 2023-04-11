@@ -36,8 +36,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // We can join with the VM again on the same thread
     let mut vm = vm.join();
-    let glob: i32 = vm.eval("*global*").unwrap();
+    let glob: i32 = vm.eval("*global*")?;
     assert_eq!(glob, 10 + 31337 + 1 + 20 + 31337 + 1);
+
+    println!("*global*: {}", vm.get::<i32>("*global*")?);
 
     Ok(())
 }
