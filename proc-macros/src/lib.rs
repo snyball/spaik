@@ -60,16 +60,16 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
 
         unsafe impl #spaik_root::raw::subrs::Subr for #anon_namespace::#obj_ident {
             fn call(&mut self,
-                    vm: &mut #spaik_root::raw::r8vm::R8VM,
-                    args: &[#spaik_root::raw::nkgc::PV])
-                    -> core::result::Result<#spaik_root::raw::nkgc::PV,
+                    vm: &mut #spaik_root::proc_macro_deps::R8VM,
+                    args: &[#spaik_root::proc_macro_deps::PV])
+                    -> core::result::Result<#spaik_root::proc_macro_deps::PV,
                                             #spaik_root::error::Error>
             {
-                use #spaik_root::raw::r8vm::ArgSpec;
+                use #spaik_root::proc_macro_deps::ArgSpec;
                 use #spaik_root::error::Error;
                 const SPEC: ArgSpec = ArgSpec::normal(#nargs);
                 SPEC.check(Default::default(), args.len() as u16)?;
-                #(let #spaik_root::raw::nkgc::ObjRef(#inputs_it)
+                #(let #spaik_root::proc_macro_deps::ObjRef(#inputs_it)
                   =
                   args[#inputs_it_idx_1].try_into()
                   .map_err(|e: Error| e.argn(#inputs_it_idx_2))?;
@@ -82,7 +82,7 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
             }
         }
 
-        impl From<#anon_namespace::#obj_ident> for Box<dyn #spaik_root::raw::subrs::Subr> {
+        impl From<#anon_namespace::#obj_ident> for Box<dyn #spaik_root::Subr> {
             fn from(x: #anon_namespace::#obj_ident) -> Self {
                 Box::new(x)
             }
@@ -204,7 +204,8 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
 
     let out = quote! {
         impl #root::EnumCall for #name {
-            fn pushargs(self, args: &[#root::raw::nkgc::SymID], mem: &mut #root::raw::nkgc::Arena)
+            fn pushargs(self, args: &[#root::proc_macro_deps::SymID],
+                        mem: &mut #root::proc_macro_deps::Arena)
                         -> #root::error::Result<()>
             {
                 use #root::IntoLisp;
@@ -213,7 +214,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
                 }
                 Ok(())
             }
-            fn name(&self, mem: &mut #root::raw::nkgc::Arena) -> #root::raw::nkgc::SymID {
+            fn name(&self, mem: &mut #root::proc_macro_deps::Arena) -> #root::proc_macro_deps::SymID {
                 use #root::IntoLisp;
                 match self {
                     #(Self::#variant_2 #query_nil => mem.put_sym(#variant_name_s)),*
@@ -241,7 +242,7 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
     let field_kws = fields.map(|f| format!(":{}", f.ident.expect("Identifier")));
 
     let out = quote! {
-        impl #root::raw::nkgc::Traceable for #name {
+        impl #root::proc_macro_deps::Traceable for #name {
             fn trace(&self, _gray: &mut Vec<*mut #root::nuke::NkAtom>) {}
             fn update_ptrs(&mut self, _reloc: &#root::nuke::PtrMap) {}
         }
@@ -259,9 +260,9 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
 
         impl Userdata for #name {}
 
-        impl #root::raw::subrs::IntoLisp for #name {
-            fn into_pv(self, mem: &mut #root::raw::nkgc::Arena)
-                       -> core::result::Result<#root::raw::nkgc::PV, #root::error::Error>
+        impl #root::IntoLisp for #name {
+            fn into_pv(self, mem: &mut #root::proc_macro_deps::Arena)
+                       -> core::result::Result<#root::proc_macro_deps::PV, #root::error::Error>
             {
                 Ok(mem.put_pv(#root::nuke::Object::new(self)))
             }

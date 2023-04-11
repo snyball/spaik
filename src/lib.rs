@@ -90,6 +90,11 @@ pub type Str = Arc<str>;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
 
+pub mod proc_macro_deps {
+    pub use crate::r8vm::{R8VM, ArgSpec};
+    pub use crate::nkgc::{PV, ObjRef, SymID, Arena, Traceable};
+}
+
 /// This module makes it possible to interact with SPAIK internals.
 ///
 /// Everything in `raw::*` which is not re-exported by the top level spaik

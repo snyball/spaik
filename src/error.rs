@@ -325,6 +325,10 @@ impl Error {
         }
     }
 
+    pub fn is_none(&self) -> bool {
+        matches!(self.inner.ty, ErrorKind::None)
+    }
+
     pub fn backtrace(&self) -> Arc<Backtrace> {
         self.inner.rust_trace.clone()
     }
