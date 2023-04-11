@@ -6,7 +6,7 @@ use comfy_table::Table;
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
 use crate::{
-    ast::Excavator,
+    ast::{Excavator, Visitor, PrinterVisitor},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{Builtin, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
@@ -16,7 +16,7 @@ use crate::{
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
-    stylize::Stylize, chasm::LblMap,
+    stylize::Stylize, chasm::LblMap, opt::Optomat,
 };
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
@@ -1343,8 +1343,10 @@ impl R8VM {
                         cc.set_offsets(self);
 
                         let excv = Excavator::new(&self.mem);
-                        let ast = excv.to_ast(v, fst_src)?;
+                        let mut ast = excv.to_ast(v, fst_src)?;
                         self.mem.clear_tags();
+                        let mut opto = Optomat::new();
+                        opto.visit(&mut ast)?;
                         if tokit.peek().is_some() {
                             cc.compile_top(ast)?;
                         } else {

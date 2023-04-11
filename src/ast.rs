@@ -274,8 +274,14 @@ impl AST2 {
             _ => unknown,
         }
     }
+}
 
-    pub fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()> {
+pub trait Visitable {
+    fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()>;
+}
+
+impl Visitable for AST2 {
+    fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()> {
         macro_rules! visit {
             ($($arg:expr),*) => {{
                 $(visitor.visit(&mut *$arg)?;)*
@@ -333,6 +339,15 @@ impl AST2 {
             M::Get(ref mut x, ref mut y) => visit!(x, y),
             M::Pop(ref mut x) => visit!(x),
             M::CallCC(ref mut x) => visit!(x),
+        }
+        Ok(())
+    }
+}
+
+impl Visitable for Vec<AST2> {
+    fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()> {
+        for x in self.iter_mut() {
+            x.visit(visitor)?;
         }
         Ok(())
     }

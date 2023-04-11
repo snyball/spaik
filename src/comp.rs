@@ -10,7 +10,7 @@ use crate::nkgc::{PV, SymID, Int};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
 use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::Source;
-use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor};
+use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor, Visitable};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
 use crate::compile::*;
 use crate::error::Result;
