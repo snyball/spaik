@@ -393,9 +393,8 @@ pub fn minify(text: &str, f: &mut dyn io::Write) -> Result<(), Error> {
             continue;
         }
         match it.peek().map(|t| t.text) {
-            Some(ops!()) => write!(f, "{}", tok.text)?,
+            Some(ops!()) | None => write!(f, "{}", tok.text)?,
             Some(_) => write!(f, "{} ", tok.text)?,
-            None => write!(f, "{}", tok.text)?,
         }
     }
     Ok(())
