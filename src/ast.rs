@@ -164,12 +164,12 @@ impl Display for M {
                 }
                 wargs!(progn);
             },
-            M::Defvar(name, init) => write!(f, "(defvar {name:?} {init})")?,
-            M::Set(name, init) => write!(f, "(set {name:?} {init})")?,
-            M::VecSet(name, idx, init) => write!(f, "(set (get {name:?} {idx}) {init})")?,
+            M::Defvar(name, init) => write!(f, "(defvar {name} {init})")?,
+            M::Set(name, init) => write!(f, "(set {name} {init})")?,
+            M::VecSet(name, idx, init) => write!(f, "(set (get {name} {idx}) {init})")?,
             M::Defun(name, ArgList2(_, args), progn) => {
                 write!(f, "(define ({name}")?;
-                for arg in args { write!(f, " {arg:?}")?; }
+                for (arg, _) in args { write!(f, " {arg}")?; }
                 write!(f, ")")?;
                 wargs!(progn);
             },
@@ -219,7 +219,7 @@ impl Display for M {
             M::Get(vec, idx) => write!(f, "(get {vec} {idx})")?,
             M::Pop(vec) => write!(f, "(pop {vec})")?,
             M::CallCC(funk) => write!(f, "(call/cc {funk})")?,
-            M::Var(var) => write!(f, "{var:?}")?,
+            M::Var(var) => write!(f, "{var}")?,
         }
         Ok(())
     }
