@@ -40,6 +40,17 @@ impl Visitor for LowerConst {
 
 impl Visitor for Optomat {
     fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+        macro_rules! cmp_op {
+            ($a:ident $m:ident $b:ident $($q:tt)*) => {
+                match ($a.atom(), $b.atom()) {
+                    (Some((a, _)), Some((b, _))) =>
+                        *elem = AST2 { src: elem.src.clone(),
+                                       kind: M::Atom(a.$m(&b) $($q)*) },
+                    _ => { self.visit($a)?;
+                           self.visit($b)?; }
+                }
+            };
+        }
         match elem.kind {
             // Lowering
             M::Let(ref mut vars, ref mut body) => {
@@ -104,6 +115,12 @@ impl Visitor for Optomat {
                     if let Some(ref mut ifn) = ifn { ifn.visit(self)? }
                 }
             }
+            M::Gt(ref mut a, ref mut b) => cmp_op!(a gt b ?),
+            M::Gte(ref mut a, ref mut b) => cmp_op!(a gte b ?),
+            M::Lt(ref mut a, ref mut b) => cmp_op!(a lt b ?),
+            M::Lte(ref mut a, ref mut b) => cmp_op!(a lte b ?),
+            M::Eq(ref mut a, ref mut b) => cmp_op!(a eq b .into()),
+            M::Eqp(ref mut a, ref mut b) => cmp_op!(a equalp b .into()),
             _ => elem.visit(self)?,
         }
         Ok(())

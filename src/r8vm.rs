@@ -2074,11 +2074,7 @@ impl R8VM {
 
                 // Logic
                 EQL() => op2!(r, eq, r.into()),
-                EQLP() => {
-                    let y = self.mem.stack.pop().unwrap_unchecked();
-                    let x = self.mem.stack.pop().unwrap_unchecked();
-                    self.mem.stack.push(x.equalp(y).into());
-                },
+                EQLP() => op2!(r, equalp, r.into()),
                 GT() => op2!(r, gt, r?),
                 GTE() => op2!(r, gte, r?),
                 LT() => op2!(r, lt, r?),
