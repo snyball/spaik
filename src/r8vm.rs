@@ -2311,7 +2311,9 @@ impl R8VM {
     pub fn eval_pv(&mut self, ast: PV) -> Result<PV> {
         self.macroexpand_pv(ast, false).and_then(|ast| {
             let excv = Excavator::new(&self.mem);
-            let ast = excv.to_ast(ast, Source::none())?;
+            let mut ast = excv.to_ast(ast, Source::none())?;
+            let mut opto = Optomat::new();
+            opto.visit(&mut ast)?;
             let mut cc = R8Compiler::new(self);
             let modfn_pos = cc.compile_top_tail(ast)?;
             cc.take(self)?;

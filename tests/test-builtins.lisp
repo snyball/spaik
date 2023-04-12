@@ -33,12 +33,12 @@
       (= (/ 2.0) 0.5)
       (= (/ 8 2) 4)
       (= (/ 8 2 2) 2)
-      (equal? (map abs (range-list -10 0))
-              (reverse (range-list 1 11)))
-      (equal? (map math/fibonacci (range-list 1 21))
-              '(1 1 2 3 5 8 13 21 34 55 89 144 233 377 610 987 1597 2584 4181 6765))
-      (equal? (map math/factorial (range-list 0 13))
-              '(1 1 2 6 24 120 720 5040 40320 362880 3628800 39916800 479001600)))
+      (eq? (map abs (range-list -10 0))
+           (reverse (range-list 1 11)))
+      (eq? (map math/fibonacci (range-list 1 21))
+           '(1 1 2 3 5 8 13 21 34 55 89 144 233 377 610 987 1597 2584 4181 6765))
+      (eq? (map math/factorial (range-list 0 13))
+           '(1 1 2 6 24 120 720 5040 40320 362880 3628800 39916800 479001600)))
 
 ;;; ---[ loops ]---------------------------------------
 (test loops
@@ -47,26 +47,26 @@
                     (break y))))
            x)
          'abc)
-      (equal? (let ((xs nil))
-                (loop
-                 (set xs (cons 'x xs))
-                 (when (= (len xs) 1)
-                   (set xs (cons 'y xs))
-                   (next))
-                 (set xs (cons 'z xs))
-                 (break xs)))
-              '(z x y x)))
+      (eq? (let ((xs nil))
+             (loop
+              (set xs (cons 'x xs))
+              (when (= (len xs) 1)
+                (set xs (cons 'y xs))
+                (next))
+              (set xs (cons 'z xs))
+              (break xs)))
+           '(z x y x)))
 
 ;;; ---[ quasi ]---------------------------------------
 (test quasi-quoting
-      (equal? (let ((x 1) (y 'abc) (z 'xyz))
-                `(:x ,x :y ,y :z ,z))
-              '(:x 1 :y abc :z xyz))
-      (equal? `(x y z)
-              '(x y z))
-      (equal? (let ((x 1) (y 2) (z 3))
-                `(,x (,y ,z) ,y ,z ((,x))))
-              '(1 (2 3) 2 3 ((1)))))
+      (eq? (let ((x 1) (y 'abc) (z 'xyz))
+             `(:x ,x :y ,y :z ,z))
+           '(:x 1 :y abc :z xyz))
+      (eq? `(x y z)
+           '(x y z))
+      (eq? (let ((x 1) (y 2) (z 3))
+             `(,x (,y ,z) ,y ,z ((,x))))
+           '(1 (2 3) 2 3 ((1)))))
 
 ;;; ---[ let ]-----------------------------------------
 (test let-bindings
@@ -104,11 +104,11 @@
   (inc! var))
 
 (test static-variables
-      (equal? `(,(tests--static-var)
-                 ,(tests--static-var)
-                 ,(tests--static-var)
-                 ,(tests--static-var))
-              '(1 2 3 4)))
+      (eq? `(,(tests--static-var)
+             ,(tests--static-var)
+             ,(tests--static-var)
+             ,(tests--static-var))
+           '(1 2 3 4)))
 
 ;;; ---[ rest-args ]-----------------------------------
 (defun tests--mul-sum (x &rest r)
@@ -163,7 +163,6 @@
 (define static-2 0)
 (defun tests--inc-static-2 (n)
   (inc! static-2 n))
-
 ;(test eval-when-compile
 ;      (= (progn
 ;           (tests--inc-static-1 10)
@@ -220,18 +219,18 @@
 
 ;;; ---[ vector ]----------------------------------------
 (test vector
-      (equal? (let ((v (vec 1 2 3)))
-                `(,(pop v) ,(pop v) ,(pop v)))
-              '(3 2 1))
-      (equal? (let ((v (vec 1 2 3)))
-                (push v 10)
-                `(,(pop v) ,(pop v) ,(pop v)))
-              '(10 3 2))
-      (equal? (let ((v (vec 1 2 3)))
-                (push v 10)
-                (push v 12)
-                `(,(get v 0) ,(get v 4) ,(get v 3)))
-              '(1 12 10))
+      (eq? (let ((v (vec 1 2 3)))
+             `(,(pop v) ,(pop v) ,(pop v)))
+           '(3 2 1))
+      (eq? (let ((v (vec 1 2 3)))
+             (push v 10)
+             `(,(pop v) ,(pop v) ,(pop v)))
+           '(10 3 2))
+      (eq? (let ((v (vec 1 2 3)))
+             (push v 10)
+             (push v 12)
+             `(,(get v 0) ,(get v 4) ,(get v 3)))
+           '(1 12 10))
       (= (let ((v (vec)))
            (push v 1337))
          1337)
@@ -273,28 +272,28 @@
 (load self)
 
 (test self
-      (equal? (do-factorial)
-              '(1 2 6 24 120 720 5040 40320 362880 3628800))
-      (equal? (do-factorial-d)
-              '(1 2 6 24 120 720 5040 40320 362880 3628800))
-      (equal? (evil '((((lambda (f)
-                          (f f))
-                        (lambda (f)
-                          (lambda (g)
-                            (lambda (xs)
-                              (if xs
-                                  (cons (g (car xs))
-                                        (((f f) g) (cdr xs))))))))
-                       (lambda (x)
-                         (* x 2)))
-                      '(2 4 6 8 10 12)))
-              '(4 8 12 16 20 24))
-      (equal? (evil '((((lambda (x)
-                          (lambda (y)
-                            (lambda (z)
-                              (+ (* x (* 2 y)) z))))
-                        4) 5) 6))
-              46))
+      (eq? (do-factorial)
+           '(1 2 6 24 120 720 5040 40320 362880 3628800))
+      (eq? (do-factorial-d)
+           '(1 2 6 24 120 720 5040 40320 362880 3628800))
+      (eq? (evil '((((lambda (f)
+                       (f f))
+                     (lambda (f)
+                       (lambda (g)
+                         (lambda (xs)
+                           (if xs
+                               (cons (g (car xs))
+                                     (((f f) g) (cdr xs))))))))
+                    (lambda (x)
+                      (* x 2)))
+                   '(2 4 6 8 10 12)))
+           '(4 8 12 16 20 24))
+      (eq? (evil '((((lambda (x)
+                       (lambda (y)
+                         (lambda (z)
+                           (+ (* x (* 2 y)) z))))
+                     4) 5) 6))
+           46))
 
 ;;; ---[ gensym ]----------------------------------------
 (defun mapwise (f xs)
@@ -363,4 +362,4 @@
 ;;; ---[ evaaal ]----------------------------------------
 
 (test evaaal
-      (equal? (eval '(do-factorial-d)) (do-factorial-d)))
+      (eq? (eval '(do-factorial-d)) (do-factorial-d)))

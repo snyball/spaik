@@ -279,20 +279,6 @@
 (defun nil? (x)
   (= x nil))
 
-(defun equal-cons? (as bs)
-  (loop (when (or (= as nil)
-                  (= bs nil))
-          (break (= as bs)))
-   (unless (equal? (car as) (car bs))
-     (break false))
-   (set as (cdr as))
-   (set bs (cdr bs))))
-
-(defun equal? (a b)
-  (if (and (cons? a) (cons? b))
-      (equal-cons? a b)
-    (= a b)))
-
 (defmacro cond (&rest cnds)
   `(loop
     ,@(map (lambda (cnd)
