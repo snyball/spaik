@@ -247,10 +247,17 @@ impl AST2 {
         AST2 { src, kind: M::Atom(PV::Sym(sym)) }
     }
 
-    #[allow(dead_code)]
     pub fn is_atom(&self) -> bool {
         if let AST2 { kind: M::Atom(pv), .. } = self {
             pv.is_atom()
+        } else {
+            false
+        }
+    }
+
+    pub fn is_imm(&self) -> bool {
+        if let AST2 { kind: M::Atom(pv), .. } = self {
+            !matches!(pv, PV::Ref(_))
         } else {
             false
         }

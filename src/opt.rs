@@ -44,7 +44,7 @@ impl Visitor for Optomat {
             // Lowering
             M::Let(ref mut vars, ref mut body) => {
                 let consts = vars.iter().filter_map(|VarDecl(sym, _s, init)| {
-                    init.atom().map(|(atom, _s)| LowerConst(*sym, atom))
+                    init.imm().map(|(atom, _s)| LowerConst(*sym, atom))
                 });
                 let mut dead_vars = consts.clone()
                                           .filter(|p| !self.varmod.contains(&p.0))
@@ -96,6 +96,16 @@ impl AST2 {
     fn atom(&self) -> Option<(PV, &Source)> {
         match self.kind {
             M::Atom(atom) => Some((atom, &self.src)),
+            _ => None,
+        }
+    }
+
+    fn imm(&self) -> Option<(PV, &Source)> {
+        match self.kind {
+            M::Atom(atom) => match atom {
+                PV::Ref(_) => None,
+                pv => Some((pv, &self.src))
+            }
             _ => None,
         }
     }
