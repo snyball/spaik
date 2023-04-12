@@ -611,7 +611,7 @@ impl R8Compiler {
                                        outside,
                                        prog.iter_mut())?;
         let num = LAMBDA_COUNT.fetch_add(1, Ordering::SeqCst);
-        let name = format!("<λ>::{num}");
+        let name = format!("<λ>-{num}");
         let mut num = 0;
         for (var, bound) in lowered.iter() {
             if let BoundVar::Local(idx) = bound {
@@ -981,7 +981,7 @@ impl R8Compiler {
                 let spec = ArgSpec::none();
                 let (pos, sz) = self.lambda(spec, vec![], Some(*init))?;
                 let num = DEFVAR_COUNT.fetch_add(1, Ordering::SeqCst);
-                let name = format!("<δ>::{num}");
+                let name = format!("<δ>-{num}");
                 self.new_fns.push((Sym::Str(name), spec, vec![], pos, sz));
                 let idx = self.const_offset + self.consts.len();
                 self.consts.push(PV::Nil);
@@ -1066,7 +1066,7 @@ impl R8Compiler {
 
     pub fn compile_top_tail(&mut self, code: AST2) -> Result<usize> {
         let num = MODULE_COUNT.fetch_add(1, Ordering::SeqCst);
-        let name = format!("<σ>::{num}");
+        let name = format!("<σ>-{num}");
         self.compile(true, code)?;
         self.leave_fn();
         let pos = self.code.len() + self.code_offset;

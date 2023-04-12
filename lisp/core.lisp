@@ -103,10 +103,10 @@
   (let ((num (or n 1)))
     `(set ,var (- ,var ,num))))
 
-(define <β>::num 0)
+(define <β>-num 0)
 (defun gensym ()
-  (let ((sym (make-symbol (concat "<β>::" <β>::num))))
-    (inc! <β>::num)
+  (let ((sym (make-symbol (concat "<β>-" <β>-num))))
+    (inc! <β>-num)
     sym))
 
 (defmacro when (cnd &body if-true)
@@ -396,7 +396,7 @@
   (let ((k (gensym)))
     `(call/cc (lambda (,k)
                 (<ζ>-send-message ,expr ,k)
-                (throw '<ζ>::yield-await)))))
+                (throw '<ζ>-yield-await)))))
 
 (defmacro send (expr)
   `(<ζ>-send-message ,expr))
