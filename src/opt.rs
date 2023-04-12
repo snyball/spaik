@@ -105,7 +105,8 @@ impl Visitor for Optomat {
             M::If(ref mut cond, ref mut ift, ref mut ifn) => {
                 self.visit(cond)?;
                 if let Some((cond, src)) = cond.atom() {
-                    let nil = || Box::new(AST2 { src: src.clone(), kind: M::Atom(PV::Nil) });
+                    let nil = || Box::new(AST2 { src: src.clone(),
+                                                 kind: M::Atom(PV::Nil) });
                     if cond.into() {
                         if let Some(ref mut ift) = ift { ift.visit(self)? }
                         *elem = *ift.take().unwrap_or_else(nil);
@@ -114,9 +115,9 @@ impl Visitor for Optomat {
                         *elem = *ifn.take().unwrap_or_else(nil);
                     }
                 } else {
-                    cond.visit(self)?;
-                    if let Some(ref mut ift) = ift { ift.visit(self)? }
-                    if let Some(ref mut ifn) = ifn { ifn.visit(self)? }
+                    self.visit(cond)?;
+                    if let Some(ref mut ift) = ift { self.visit(ift)? }
+                    if let Some(ref mut ifn) = ifn { self.visit(ifn)? }
                 }
             }
             M::Gt(ref mut a, ref mut b) => cmp_op!(a gt b ?),
