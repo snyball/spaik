@@ -23,7 +23,6 @@ impl fmt::Display for ParseErr {
     }
 }
 
-#[macro_export]
 macro_rules! mperr {
     ( $tok:expr, $msg:literal $(, $fmt_arg:expr)* ) => {
         ParseErr {
@@ -36,7 +35,6 @@ macro_rules! mperr {
     }
 }
 
-#[macro_export]
 macro_rules! perr {
     ( $msg:expr ) => {
         perr!((0, 0), $msg.to_string())

@@ -2,33 +2,6 @@
 
 use std::convert::Infallible;
 
-#[macro_export]
-macro_rules! sym {
-    ($arg:ident) => { $crate::compile::Builtin::$arg.sym() };
-}
-
-#[macro_export]
-macro_rules! map {
-    ( $($k:expr => $v:expr),* $(,)* ) => {{
-        let mut m = HashMap::new();
-        $(
-            m.insert($k, $v);
-        )*
-        m
-    }};
-}
-
-#[macro_export]
-macro_rules! set {
-    [ $($v:expr),* $(,)* ] => {{
-        let mut m = HashSet::new();
-        $(
-            m.insert($v);
-        )*
-        m
-    }};
-}
-
 const STACK_SZ: usize = 32;
 
 // Helpful when needing to store a stack on *the* stack.
@@ -76,7 +49,6 @@ impl<T: Copy + Default> Stack<T> {
     }
 }
 
-#[macro_export]
 macro_rules! count_args {
     () => { 0 };
     ( $arg:expr ) => { 1 };
@@ -105,15 +77,8 @@ where T: Ord {
       .all(|(u, v)| u <= v)
 }
 
-#[macro_export]
-macro_rules! minto {
-    ($($v:expr),+) => {
-        &[$($v.into()),+]
-    };
-}
-
 /// SPAIK uses the convention:
-/// ```
+/// ```ignore
 /// invalid!(x, y, z) // <function that made them invalid>
 /// ```
 /// for marking variables that become invalidated, and may have pointers that no

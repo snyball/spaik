@@ -18,14 +18,9 @@
 //! ```rust
 //! use spaik::Spaik;
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let mut vm = Spaik::new();
-//!     // Evaluate strings
-//!     vm.exec(r#"(println "code")"#)?;
-//!     // Optionaly retrieve the result
-//!     let res: f32 = vm.eval(r#"(sqrt (+ 1 2))"#)?;
-//!     Ok(())
-//! }
+//! let mut vm = Spaik::new();
+//! vm.exec(r#"(println "code")"#).unwrap();
+//! let res: f32 = vm.eval(r#"(sqrt (+ 1 2))"#).unwrap();
 //! ```
 
 #![allow(clippy::trivial_regex)]
@@ -79,8 +74,10 @@ pub(crate) mod limits;
 pub(crate) mod math;
 pub(crate) mod comp;
 pub mod repl;
-pub mod scratch;
-pub mod stylize;
+pub(crate) mod scratch;
+/// SPAIK scratchpad for use in development of SPAIK itself.
+pub use scratch::main as scratch_main;
+pub(crate) mod stylize;
 
 #[cfg(feature = "derive")]
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
@@ -91,10 +88,8 @@ pub type Str = Arc<str>;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
 
-/**
+/** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)
- *
- * This is NOT a public interface.
  *
  * Everything inside this module should be considered an implementation detail,
  * and can change between even semver patch versions.
@@ -117,7 +112,8 @@ use serde::de::DeserializeOwned;
 pub use crate::compile::Builtin;
 pub use crate::nuke::Fissile;
 use crate::r8vm::R8VM;
-pub use crate::r8vm::{Args, ArgSpec, EnumCall};
+pub use crate::r8vm::{Args, EnumCall};
+pub(crate) use crate::r8vm::ArgSpec;
 use crate::nkgc::PV;
 pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, IntoSubr};
 pub use crate::error::Error as IError;
@@ -125,11 +121,23 @@ pub use crate::error::Result as IResult;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// The easiest way to get started with SPAIK is `use spaik::prelude::*`
 pub mod prelude {
     pub use super::{SymDB, SymID, Subr, IntoLisp, FromLisp,
-                    Ignore, IntoSubr, SpaikPlug, Spaik, EnumCall};
+                    Ignore, IntoSubr, SpaikPlug, Spaik, Gc};
     #[cfg(feature = "derive")]
-    pub use super::spaikfn;
+    pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
+}
+
+#[cfg(feature = "freeze")]
+use serde::{Serialize, Deserialize};
+
+/// Object for use in SPAIK examples
+#[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
+pub struct ExampleObject {
+    pub x: f32,
+    pub y: f32,
 }
 
 type AnyResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -191,7 +199,7 @@ impl Error {
 
 impl std::error::Error for Error {}
 
-/// A SPAIK Context
+/// A SPAIK Context, this is the main way to use SPAIK
 pub struct Spaik {
     vm: R8VM
 }
@@ -253,8 +261,32 @@ impl Spaik {
     }
 
     /// Get a reference to a user-defined object type stored in the vm.
+    ///
+    /// # Arguments
+    ///
+    /// - `var` : Variable name
+    ///
+    /// # Safety
+    ///
+    /// The returned pointer may not be dereferenced after a garbage-collection
+    /// cycle runs, which also means that no SPAIK code may run on this VM before
+    /// the pointer is dereferenced. A gc cycle may leave the returned pointer
+    /// dangling.
+    ///
+    /// # Safe Alternative
+    ///
+    /// Use `Gc<T>`, like this:
+    ///
+    /// ```rust
+    /// use spaik::prelude::*;
+    /// use spaik::ExampleObject;
+    /// let mut vm = Spaik::new_no_core();
+    /// vm.set("obj", ExampleObject { x: 1.0, y: 3.3 });
+    /// let mut obj: Gc<ExampleObject> = vm.get("obj").unwrap();
+    /// assert_eq!(obj.with(|r| (r.x, r.y)), (1.0, 3.3));
+    /// ```
     #[inline]
-    pub fn objref<T>(&mut self, var: impl AsSym) -> Result<*const T>
+    pub unsafe fn objref<T>(&mut self, var: impl AsSym) -> Result<*const T>
         where T: Userdata
     {
         self.objref_mut(var).map(|rf| rf as *const T)
@@ -263,7 +295,9 @@ impl Spaik {
     /// Get a clone of a user-defined object type stored in the vm.
     #[inline]
     pub fn obj<T: Userdata>(&mut self, var: impl AsSym) -> Result<T> {
-        self.objref_mut(var).map(|rf: *mut T| unsafe { (*rf).clone() })
+        unsafe {
+            self.objref_mut(var).map(|rf: *mut T| (*rf).clone())
+        }
     }
 
     /// Retrieve a variable as a mutable reference.
@@ -271,8 +305,28 @@ impl Spaik {
     /// # Arguments
     ///
     /// - `var` : Variable name
+    ///
+    /// # Safety
+    ///
+    /// The returned pointer may not be dereferenced after a garbage-collection
+    /// cycle runs, which also means that no SPAIK code may run on this VM before
+    /// the pointer is dereferenced. A gc cycle may leave the returned pointer
+    /// dangling.
+    ///
+    /// # Safe Alternative
+    ///
+    /// Use `Gc<T>`, like this:
+    ///
+    /// ```rust
+    /// use spaik::prelude::*;
+    /// use spaik::ExampleObject;
+    /// let mut vm = Spaik::new_no_core();
+    /// vm.set("obj", ExampleObject { x: 1.0, y: 3.3 });
+    /// let mut obj: Gc<ExampleObject> = vm.get("obj").unwrap();
+    /// assert_eq!(obj.with(|r| (r.x, r.y)), (1.0, 3.3));
+    /// ```
     #[inline]
-    pub fn objref_mut<T>(&mut self, var: impl AsSym) -> Result<*mut T>
+    pub unsafe fn objref_mut<T>(&mut self, var: impl AsSym) -> Result<*mut T>
         where T: Userdata
     {
         let name = var.as_sym(&mut self.vm);
@@ -661,7 +715,6 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
     }
 }
 
-#[macro_export]
 macro_rules! args {
     ($($arg:expr),*) => {
         &[$(&$arg as &dyn RefIntoLisp),*]

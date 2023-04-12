@@ -108,6 +108,17 @@ impl TryFrom<PV> for () {
     }
 }
 
+/**
+ * A type that all SPAIK values may be converted to.
+ *
+ * ```rust
+ * use spaik::{Spaik, Ignore};
+ * let mut vm = Spaik::new_no_core();
+ * // Both of these succeed
+ * let _: Ignore = vm.eval("1").unwrap();
+ * let _: Ignore = vm.eval(r#"(concat "a" "b")"#).unwrap();
+ * ```
+ */
 pub struct Ignore;
 
 impl IntoLisp for Ignore {

@@ -123,7 +123,6 @@ pub trait ChASMOpName {
         where Self: std::marker::Sized;
 }
 
-#[macro_export]
 macro_rules! chasm_def {
     ( $name:ident :  $($en:ident($($arg:ident : $targ:ty),*)),+  ) => {
         pub mod $name {
