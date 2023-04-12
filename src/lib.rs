@@ -84,12 +84,21 @@ pub mod stylize;
 
 #[cfg(feature = "derive")]
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
-pub use nkgc::{SPV, SymID, ObjRef};
+pub use nkgc::{SPV, SymID};
+pub(crate) use nkgc::ObjRef;
 pub use nuke::Gc;
 pub type Str = Arc<str>;
 pub use sym_db::SymDB;
 pub use nuke::Userdata;
 
+/**
+ * Dependencies for procedural macros (feature "derive".)
+ *
+ * This is NOT a public interface.
+ *
+ * Everything inside this module should be considered an implementation detail,
+ * and can change between even semver patch versions.
+ */
 pub mod proc_macro_deps {
     pub use crate::r8vm::{R8VM, ArgSpec};
     pub use crate::nkgc::{PV, ObjRef, SymID, Arena, Traceable};
