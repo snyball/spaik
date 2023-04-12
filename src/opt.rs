@@ -51,6 +51,26 @@ impl Visitor for Optomat {
                 }
             };
         }
+        macro_rules! sum_op {
+            ($xs:ident $m:ident) => {{
+                $xs.visit(self)?;
+                let mut consts = $xs.iter_mut().filter_map(|x| x.atom());
+                let Some((mut s, src)) = consts.next() else {
+                    return Ok(())
+                };
+                let src = src.clone();
+                for (x, src) in consts {
+                    s.$m(&x).map_err(|e| e.src(src.clone()))?;
+                }
+                $xs.retain(|x| !x.is_atom());
+                let s_elem = AST2 { src, kind: M::Atom(s) };
+                if $xs.is_empty() {
+                    *elem = s_elem;
+                } else {
+                    $xs.push(s_elem);
+                }
+            }};
+        }
         match elem.kind {
             // Lowering
             M::Let(ref mut vars, ref mut body) => {
@@ -80,24 +100,8 @@ impl Visitor for Optomat {
                 }
                 elem.visit(self)?;
             }
-            M::Add(ref mut xs) => {
-                xs.visit(self)?;
-                let mut consts = xs.iter_mut().filter_map(|x| x.atom());
-                let Some((mut s, src)) = consts.next() else {
-                    return Ok(())
-                };
-                let src = src.clone();
-                for (x, src) in consts {
-                    s.add_mut(&x).map_err(|e| e.src(src.clone()))?;
-                }
-                xs.retain(|x| !x.is_atom());
-                let s_elem = AST2 { src, kind: M::Atom(s) };
-                if xs.is_empty() {
-                    *elem = s_elem;
-                } else {
-                    xs.push(s_elem);
-                }
-            }
+            M::Add(ref mut xs) => sum_op!(xs add_mut),
+            M::Mul(ref mut xs) => sum_op!(xs mul_mut),
             M::If(ref mut cond, ref mut ift, ref mut ifn) => {
                 self.visit(cond)?;
                 if let Some((cond, src)) = cond.atom() {

@@ -771,6 +771,8 @@ impl PV {
 
     inplace_num_op!(add_mut, Add, +, +=);
     inplace_num_op!(sub_mut, Sub, -, -=);
+    inplace_num_op!(mul_mut, Mul, *, *=);
+    inplace_num_op!(div_mut, Mul, /, /=);
 
     pub fn pow(&self, o: &PV) -> Result<PV, Error> {
         use PV::*;
