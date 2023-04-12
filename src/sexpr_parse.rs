@@ -382,6 +382,15 @@ pub fn tokenize<'a>(text: &'a str, frags: &Fragment) -> PResult<Vec<Token<'a>>> 
     Ok(toks)
 }
 
+/**
+ * Remove unneeded whitespace from SPAIK code.
+ *
+ * # Arguments
+ *
+ * - `text` : Input SPAIK code
+ * - `io` : Output stream to write minified code to.
+ *
+ */
 pub fn minify(text: &str, f: &mut dyn io::Write) -> Result<(), Error> {
     let mut it = tokenize(text, &standard_lisp_tok_tree())?.into_iter().peekable();
     macro_rules! ops {
