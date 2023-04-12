@@ -861,9 +861,9 @@ impl fmt::Display for PtrMap {
 }
 
 macro_rules! trivial_trace {
-    ($($t:ty),*) => {$(impl Traceable for $t {
-        fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-        fn update_ptrs(&mut self, _reloc: &PtrMap) {}
+    ($($t:ty),*) => {$(impl $crate::nkgc::Traceable for $t {
+        fn trace(&self, _gray: &mut Vec<*mut $crate::nuke::NkAtom>) {}
+        fn update_ptrs(&mut self, _reloc: &$crate::nuke::PtrMap) {}
     })*};
 }
 

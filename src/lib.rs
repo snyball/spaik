@@ -58,6 +58,7 @@ pub(crate) mod compile;
 pub(crate) mod sexpr_parse;
 pub use sexpr_parse::minify;
 pub(crate) mod tok;
+#[macro_use]
 pub(crate) mod nuke;
 pub(crate) mod swym;
 pub(crate) mod pmem;
@@ -133,11 +134,26 @@ pub mod prelude {
 use serde::{Serialize, Deserialize};
 
 /// Object for use in SPAIK examples
-#[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct ExampleObject {
     pub x: f32,
     pub y: f32,
+}
+trivial_trace!(ExampleObject);
+impl Userdata for ExampleObject {}
+impl fmt::LispFmt for ExampleObject {
+    fn lisp_fmt(&self,
+                _db: &dyn sym_db::SymDB,
+                _visited: &mut fmt::VisitSet,
+                f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(ExampleObject :x {} :y {}", self.x, self.y)
+    }
+}
+impl IntoLisp for ExampleObject {
+    fn into_pv(self, mem: &mut proc_macro_deps::Arena) -> std::result::Result<PV, IError> {
+        Ok(mem.put_pv(nuke::Object::new(self)))
+    }
 }
 
 type AnyResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
