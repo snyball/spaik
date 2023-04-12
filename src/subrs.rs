@@ -1,7 +1,7 @@
 //! Rust Subroutines for SPAIK LISP
 
 use crate::r8vm::R8VM;
-use crate::nkgc::{PV, SPV, Traceable, Arena, ObjRef};
+use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::{nuke::*, SymID};
 use crate::fmt::{LispFmt, VisitSet};
@@ -233,12 +233,6 @@ impl LispFmt for Box<dyn Subr> {
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(subr {})", self.name())
     }
-}
-
-impl Traceable for Box<dyn Subr> {
-    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-
-    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 pub trait CloneSubr {

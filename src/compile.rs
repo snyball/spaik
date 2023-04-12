@@ -8,6 +8,7 @@ use crate::error::Source;
 use fnv::FnvHashMap;
 use std::hash::Hash;
 use std::mem;
+#[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 
 type VarIdx = u32;
@@ -185,7 +186,7 @@ builtins! {
     (Send, "send"),
     (LoopWithEpilogue, "loop-with-epilogue"),
     (Async, "async"),
-    (ZSendMessage, "<ζ>::send-message"),
+    (ZSendMessage, "<ζ>-send-message"),
     (SymID, "sym-id"),
     (Continuation, "continuation"),
     (Keyword, "keyword"),
@@ -222,7 +223,7 @@ builtins! {
     (Lambda, "lambda"),
     (GreekLambda, "λ"),
     (Call, "call"),
-    (Apply, "apply"), // TODO!!!
+    (Apply, "apply"),
     (True, "true"),
     (False, "false"),
     (Add, "+"),
@@ -236,7 +237,6 @@ builtins! {
     (Eq, "="),
     (Eqp, "eq?"),
     (Not, "not"),
-    (DefineStatic, "intr::define-static"),
     (Define, "define"),
     (Progn, "progn"),
     (Catch, "catch"),
@@ -262,7 +262,6 @@ builtins! {
     (String, "string"),
     (Closure, "closure"),
     (Stream, "stream"),
-    (Deref, "sys::deref"),
     (Ref, "ref"),
     (New, "new"),
     (Next, "next"),
@@ -271,13 +270,13 @@ builtins! {
     (UnsignedInteger, "unsigned-integer"),
     (Float, "float"),
     (Bool, "bool"),
-    (HaltFunc, "<ζ>::halt"),
-    (IP, "<ζ>::ip"),
-    (Frame, "<ζ>::frame"),
+    (HaltFunc, "<ζ>-halt"),
+    (IP, "<ζ>-ip"),
+    (Frame, "<ζ>-frame"),
     (DebugVarIdx, "dbg::var-idx"),
-    (LambdaObject, "<ζ>::lambda-object"),
-    (IterStop, "<ζ>::iter-stop"),
-    (ZCore, "<ζ>::core"),
+    (LambdaObject, "<ζ>-lambda-object"),
+    (IterStop, "<ζ>-iter-stop"),
+    (ZCore, "<ζ>-core"),
     (Subr, "subr"),
     (Nil, "nil"),
     (Iter, "iter"),

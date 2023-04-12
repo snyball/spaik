@@ -4,8 +4,7 @@ use std::mem::take;
 
 use fnv::FnvHashSet;
 
-use crate::{ast::{AST2, M, Visitor, VarDecl, Visitable}, nkgc::PV, error::{Source, ErrorKind}, Builtin, fmt::VisitSet, SymID, Args};
-use crate::error::Error;
+use crate::{ast::{AST2, M, Visitor, VarDecl, Visitable}, nkgc::PV, error::Source, SymID};
 
 #[derive(Debug, Default)]
 pub struct Optomat {
@@ -26,7 +25,7 @@ struct LowerConst(SymID, PV);
 impl Visitor for LowerConst {
     fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
         match elem.kind {
-            M::Set(ref mut name, ref init) if *name == self.0 => {
+            M::Set(ref mut name, _) if *name == self.0 => {
                 bail!(None)
             }
             M::Var(name) if name == self.0 => *elem = AST2 {

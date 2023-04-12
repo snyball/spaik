@@ -622,7 +622,7 @@ unsafe impl<T> Subr for send_message<T>
         self.sender.send(Promise { msg, cont })?;
         Ok(r)
     }
-    fn name(&self) -> &'static str { "<ζ>::send-message" }
+    fn name(&self) -> &'static str { "<ζ>-send-message" }
 }
 
 impl<T, Cmd> SpaikPlug<T, Cmd>
@@ -703,8 +703,6 @@ mod tests {
         INIT.call_once(pretty_env_logger::init);
     }
 
-    use crate::error::ErrorKind;
-
     use super::*;
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -726,7 +724,7 @@ mod tests {
     #[test]
     fn spaik_fork_send_from_lisp_to_rust() {
         setup();
-        #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+        #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
         #[serde(rename_all = "kebab-case")]
         enum Msg {
             Test { id: i32 },
@@ -798,6 +796,8 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn register_fn_mutate_struct() {
+        use crate::error::ErrorKind;
+
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {

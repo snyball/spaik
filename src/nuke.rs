@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
-use crate::subrs::{IntoLisp, FromLisp};
+use crate::subrs::{IntoLisp, FromLisp, self};
 use crate::sym_db::SymDB;
 use core::slice;
 use std::any::{TypeId, Any, type_name};
@@ -18,7 +18,7 @@ use std::sync::atomic::AtomicU32;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
 use fnv::FnvHashMap;
-use serde::de::DeserializeOwned;
+#[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
 use std::collections::hash_map::Entry;
@@ -217,7 +217,7 @@ pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any + 'static
 {}
 #[cfg(feature = "freeze")]
 pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any +
-    Serialize + DeserializeOwned + 'static
+    Serialize + serde::de::DeserializeOwned + 'static
 {}
 
 pub trait CloneIterator: Iterator + Traceable {
@@ -547,7 +547,7 @@ impl Object {
                         (*rc_mem).rc.0.load(atomic::Ordering::SeqCst)
                     },
                     #[cfg(not(feature = "freeze"))]
-                    freeze: |p, into| unsafe { unimplemented!("freeze"); },
+                    freeze: |_, _| unimplemented!("freeze"),
                     #[cfg(feature = "freeze")]
                     freeze: |p, into| unsafe {
                         use bincode::Options;
@@ -811,12 +811,6 @@ impl Traceable for Intr {
 #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Void;
 
-impl Traceable for Void {
-    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-
-    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
-}
-
 impl LispFmt for Void {
     fn lisp_fmt(&self,
                 _db: &dyn SymDB,
@@ -895,6 +889,8 @@ macro_rules! trivial_trace {
 trivial_trace!(glam::Vec2, glam::Vec3, glam::Vec4,
                glam::Mat2, glam::Mat3, glam::Mat4,
                glam::Quat);
+
+trivial_trace!(Box<dyn subrs::Subr>, String, Void);
 
 impl NkAtom {
     #[inline]

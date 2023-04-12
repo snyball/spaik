@@ -6,7 +6,7 @@ use comfy_table::Table;
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
 use crate::{
-    ast::{Excavator, Visitor, PrinterVisitor},
+    ast::{Excavator, Visitor},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     compile::{Builtin, SourceList},
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
@@ -20,6 +20,7 @@ use crate::{
 };
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
+#[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 
 chasm_def! {

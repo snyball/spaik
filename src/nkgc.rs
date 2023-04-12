@@ -129,11 +129,6 @@ impl<T: Userdata> TryFrom<PV> for ObjRef<*mut T> {
     }
 }
 
-impl Traceable for String {
-    fn trace(&self, _: &mut Vec<*mut NkAtom>) {}
-    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
-}
-
 impl LispFmt for String {
     fn lisp_fmt(&self,
                 _db: &dyn SymDB,
@@ -1814,13 +1809,13 @@ impl Arena {
                         bincode::serialize_into(&mut out, &*x).unwrap(),
                     NkRef::Vector(x) =>
                         bincode::serialize_into(&mut out, &*x).unwrap(),
-                    NkRef::Vec4(x) =>
+                    #[cfg(feature = "math")] NkRef::Vec4(x) =>
                         bincode::serialize_into(&mut out, &*x).unwrap(),
-                    NkRef::Mat2(x) =>
+                    #[cfg(feature = "math")] NkRef::Mat2(x) =>
                         bincode::serialize_into(&mut out, &*x).unwrap(),
-                    NkRef::Mat3(x) =>
+                    #[cfg(feature = "math")] NkRef::Mat3(x) =>
                         bincode::serialize_into(&mut out, &*x).unwrap(),
-                    NkRef::Mat4(x) =>
+                    #[cfg(feature = "math")] NkRef::Mat4(x) =>
                         bincode::serialize_into(&mut out, &*x).unwrap(),
                     NkRef::Continuation(x) =>
                         bincode::serialize_into(&mut out, &*x).unwrap(),

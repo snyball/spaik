@@ -1,17 +1,17 @@
 (define sys/load-path (vec))
 
-(define (<ξ>::defun name args &body body)
+(define (<ξ>-defun name args &body body)
   `(define (,name ,@args) ,@body))
-(set-macro! defun <ξ>::defun)
+(set-macro! defun <ξ>-defun)
 
-(defun <ξ>::defmacro (name args &body body)
+(defun <ξ>-defmacro (name args &body body)
   ((lambda (mac-fn-name)
      `(progn
         (define (,mac-fn-name ,@args)
           ,@body)
         (set-macro! ,name ,mac-fn-name)))
-   (make-symbol (concat '<ξ>:: name))))
-(set-macro! defmacro <ξ>::defmacro)
+   (make-symbol (concat '<ξ>- name))))
+(set-macro! defmacro <ξ>-defmacro)
 
 (defun head (x)
   (car x))
@@ -141,12 +141,11 @@
   (let*/helper pairs body))
 
 (defmacro iter-end? (res)
-  `(= ,res '<ζ>::iter-stop))
+  `(= ,res '<ζ>-iter-stop))
 
 (defmacro dolist (cnd &body body)
   (let ((name (car cnd))
         (init (car (cdr cnd)))
-        (sentinel '<ζ>::iter-stop)
         (it (gensym)))
     `(let ((,name nil)
            (,it (iter ,init)))
@@ -396,8 +395,8 @@
 (defmacro await (expr)
   (let ((k (gensym)))
     `(call/cc (lambda (,k)
-                (<ζ>::send-message ,expr ,k)
+                (<ζ>-send-message ,expr ,k)
                 (throw '<ζ>::yield-await)))))
 
 (defmacro send (expr)
-  `(<ζ>::send-message ,expr))
+  `(<ζ>-send-message ,expr))
