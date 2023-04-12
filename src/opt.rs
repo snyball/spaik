@@ -70,9 +70,10 @@ impl Visitor for Optomat {
                 elem.visit(self)?;
             }
             M::Add(ref mut xs) => {
+                xs.visit(self)?;
                 let mut consts = xs.iter_mut().filter_map(|x| x.atom());
                 let Some((mut s, src)) = consts.next() else {
-                    return xs.visit(self)
+                    return Ok(())
                 };
                 let src = src.clone();
                 for (x, src) in consts {
@@ -84,6 +85,23 @@ impl Visitor for Optomat {
                     *elem = s_elem;
                 } else {
                     xs.push(s_elem);
+                }
+            }
+            M::If(ref mut cond, ref mut ift, ref mut ifn) => {
+                self.visit(cond)?;
+                if let Some((cond, src)) = cond.atom() {
+                    let nil = || Box::new(AST2 { src: src.clone(), kind: M::Atom(PV::Nil) });
+                    if cond.into() {
+                        if let Some(ref mut ift) = ift { ift.visit(self)? }
+                        *elem = *ift.take().unwrap_or_else(nil);
+                    } else {
+                        if let Some(ref mut ifn) = ifn { ifn.visit(self)? }
+                        *elem = *ifn.take().unwrap_or_else(nil);
+                    }
+                } else {
+                    cond.visit(self)?;
+                    if let Some(ref mut ift) = ift { ift.visit(self)? }
+                    if let Some(ref mut ifn) = ifn { ifn.visit(self)? }
                 }
             }
             _ => elem.visit(self)?,

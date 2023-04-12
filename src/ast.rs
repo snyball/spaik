@@ -354,7 +354,7 @@ impl Visitable for AST2 {
 impl Visitable for Vec<AST2> {
     fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()> {
         for x in self.iter_mut() {
-            x.visit(visitor)?;
+            visitor.visit(x)?;
         }
         Ok(())
     }
