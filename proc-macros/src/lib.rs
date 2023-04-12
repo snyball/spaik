@@ -58,7 +58,7 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
                 #anon_namespace::#obj_ident;
         }
 
-        unsafe impl #spaik_root::raw::subrs::Subr for #anon_namespace::#obj_ident {
+        unsafe impl #spaik_root::Subr for #anon_namespace::#obj_ident {
             fn call(&mut self,
                     vm: &mut #spaik_root::proc_macro_deps::R8VM,
                     args: &[#spaik_root::proc_macro_deps::PV])
