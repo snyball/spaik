@@ -988,7 +988,7 @@ unsafe impl Send for R8VM {}
 
 // NOTE: This only applies to calls made with apply_spv, calls internally in the
 // VM bytecode are unbounded.
-const MAX_CLZCALL_ARGS: u16 = 12;
+const MAX_CLZCALL_ARGS: u16 = 32;
 
 #[inline]
 const fn clzcall_pad_dip(nargs: u16) -> usize {
@@ -1009,7 +1009,7 @@ impl R8VM {
             let pos = vm.pmem.len();
             vm.pmem.push(r8c::Op::CLZCALL(i));
             vm.pmem.push(r8c::Op::RET());
-            let sym = vm.mem.symdb.put(format!("<ζ>::clz-entrypoint-{i}"));
+            let sym = vm.mem.symdb.put(format!("<ζ>-λ/{i}"));
             vm.funcs.insert(sym.into(), Func {
                 pos,
                 sz: 2,
