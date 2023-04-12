@@ -635,14 +635,16 @@ impl Drop for Object {
 /// Thread-safe reference-counted smart-pointer. Cheap to clone. Used to refer
 /// to `Userdata` stored on the SPAIK heap.
 ///
-/// Gc<T> survives your VM getting dropped, so you can create a reference to
+/// `Gc<T>` survives your VM getting dropped, so you can create a reference to
 /// something that you intend for a VM to modify, and then keep the reference
 /// after the VM is no longer necessary.
 ///
 /// Remember that you have to actually run the VM occasionally for the GC to
-/// eventually drop these references.
+/// eventually drop these references. If the `Gc<T>` has been dropped by your
+/// Rust code and your SPAIK code the GC still needs to complete a cycle in
+/// order to figure that out.
 ///
-/// In order for Gc<T> to be `Send`/`Sync` it requires that `T` is too, it
+/// In order for `Gc<T>` to be `Send`/`Sync` it requires that `T` is too, it
 /// doesn't do any synchronization magic on `T` itself.
 pub struct Gc<T> where T: Userdata {
     this: *mut RcMem<T>,
@@ -655,7 +657,7 @@ impl<T: Userdata> Gc<T> {
     /// # Why does this take an `Fn` instead of an `FnMut`?
     ///
     /// Because you should not be able to call `with` on a potentially aliased
-    /// Gc<T> inside `with` recursively, then you could have multiple `&mut`
+    /// `Gc<T>` inside `with` recursively, then you could have multiple `&mut`
     /// references to the same data and that is UB in Rust.
     ///
     /// You should use `with` only for simple setter/getter operations on the
