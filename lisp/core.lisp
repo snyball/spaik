@@ -312,8 +312,8 @@
     (break nil)))
 
 (defmacro fmt (w &rest in)
-  (let* ((begin (next (iter "{")))
-         (end (next (iter "}")))
+  (let* ((begin (chr "{"))
+         (end (chr "}"))
          (in-sub false)
          (span (vec))
          (out '(concat)))
@@ -334,7 +334,9 @@
     (when in-sub
       (error 'unclosed-delimiter))
     (set out (cons (join span) out))
-    (reverse out)))
+    (if (= (len out) 2)
+        (car out)
+        (reverse out))))
 
 (defun _println (x)
   (println x))
