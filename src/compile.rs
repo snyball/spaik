@@ -1,9 +1,6 @@
 //! SPAIK Compiler
 
-use crate::nuke::NkSum;
 use crate::nkgc::{PV, SymID, SymIDInt};
-use crate::r8vm::r8c::Op as R8C;
-use crate::chasm::Lbl;
 use crate::error::Source;
 use fnv::FnvHashMap;
 use std::hash::Hash;
@@ -43,12 +40,9 @@ impl Env {
         self.vars.len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    pub fn empty() -> Env {
-        Env::new(vec![])
     }
 
     pub fn none() -> Env {
@@ -85,21 +79,6 @@ impl Env {
             }
         }
         None
-    }
-
-    pub fn iter_statics(&self) -> impl Iterator<Item = (&SymID, &usize)> {
-        self.statics.iter()
-    }
-
-    pub fn as_map(&self) -> FnvHashMap<SymID, BoundVar> {
-        let mut map = FnvHashMap::default();
-        for (&v, &i) in self.iter_statics() {
-            map.insert(v, BoundVar::Env(i as VarIdx));
-        }
-        for (i, &v) in self.vars.iter().enumerate() {
-            map.insert(v, BoundVar::Local(i as VarIdx));
-        }
-        map
     }
 }
 
@@ -290,11 +269,4 @@ builtins! {
     (Epsilon, "")
 }
 
-pub type LblLookup = FnvHashMap<u32, Lbl>;
-
 pub type SourceList = Vec<(usize, Source)>;
-
-pub type Linked = (Vec<R8C>,
-                   LblLookup,
-                   Vec<NkSum>,
-                   SourceList);

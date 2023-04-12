@@ -715,12 +715,6 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
     }
 }
 
-macro_rules! args {
-    ($($arg:expr),*) => {
-        &[$(&$arg as &dyn RefIntoLisp),*]
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};

@@ -1,7 +1,7 @@
 //! ChASM /ˈkæz(ə)m/, an assembler
 
 use crate::nkgc::SymID;
-use std::{collections::HashMap, io::{Read, Write, self}};
+use std::io::{Read, Write, self};
 use std::fmt;
 use crate::error::{ErrorKind, Result};
 use ErrorKind::*;
@@ -258,52 +258,11 @@ pub struct ChASM {
     marks: FnvHashMap<u32, isize>,
 }
 
-type Linked<ASM> = (Vec<ASM>, FnvHashMap<u32, Lbl>);
 pub type LblMap = FnvHashMap<u32, Lbl>;
 
 impl ChASM {
     #[allow(dead_code)]
     pub fn new() -> ChASM { Default::default() }
-
-    /// # Arguments
-    /// - xtrn: Functions that have been defined before this unit,
-    ///         the mapping is:
-    ///         Function symbol -> Position in program memory
-    /// - sz: The total size of program memory
-    pub fn link<T: ASMOp>(self,
-                          xtrn: &HashMap<SymID, isize>,
-                          sz: isize) -> Result<Linked<T>>
-    {
-        let mut hm = FnvHashMap::with_capacity_and_hasher(self.marks.len(),
-                                                          Default::default());
-        for (lbl, tgt) in self.marks.iter() {
-            hm.insert(*tgt as u32, Lbl(*lbl, self.label_names[*lbl as usize]));
-        }
-        let labels = self.marks;
-        Ok((self.ops
-            .into_iter()
-            .enumerate()
-            .map(|(i, op)| -> Result<T> {
-                let link_err = |sym, count| {
-                    ErrorKind::LinkError { dst: format!("{}#{}", sym, count),
-                                           src: i }
-                };
-                let args = op.args
-                             .into_iter()
-                             .map(|arg| match arg {
-                                 Arg::Lbl(Lbl(c, s)) =>
-                                     labels.get(&c)
-                                           .map(|pos| ASMPV::isize(*pos - (i as isize)))
-                                           .ok_or_else(|| link_err(s, c)),
-                                 Arg::ASMPV(pv) => Ok(pv),
-                                 Arg::Func(s) => xtrn.get(&s)
-                                                     .map(|pos| ASMPV::isize(*pos - (i as isize + sz)))
-                                                     .ok_or_else(|| link_err("sym", s.as_int() as u32))
-                             }).collect::<std::result::Result<Vec<ASMPV>, _>>()?;
-                T::new(op.id, &args[..])
-            }).collect::<std::result::Result<_, _>>()?,
-            hm))
-    }
 
     pub fn link_into<T: ASMOp>(self,
                                out: &mut Vec<T>,
@@ -372,6 +331,7 @@ impl ChASM {
         self.ops.len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -405,29 +365,6 @@ mod tests {
             to: "u8",
             val: String::from("260")
         }));
-    }
-
-    #[test]
-    fn assembler() {
-        let mut csm = ChASM::new();
-        use crate::r8vm::r8c::Op as R8C;
-        use crate::r8vm::r8c::OpName::*;
-        use crate::chasm::ChASMOpName;
-        let sym = SymID::from(1);
-        let lbl = csm.label("test");
-        csm.mark(lbl);
-        csm.op(chasm!(VCALL -10, sym));
-        csm.op(chasm!(ADD));
-        csm.op(chasm!(ADD));
-        csm.op(chasm!(ADD));
-        csm.op(chasm!(JMP lbl));
-        let xtrn = HashMap::new();
-        let (code, _) = csm.link::<R8C>(&xtrn, 0).unwrap();
-        assert_eq!(code, vec![R8C::VCALL(-10, 1,),
-                              R8C::ADD(),
-                              R8C::ADD(),
-                              R8C::ADD(),
-                              R8C::JMP(-4,)]);
     }
 
     #[test]

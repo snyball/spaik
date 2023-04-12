@@ -114,12 +114,14 @@ macro_rules! fissile_types {
         }
 
         impl NkRef {
+            #[allow(dead_code)]
             pub fn type_of(&self) -> NkT {
                 match self { $(Self::$t(..) => NkT::$t ),+ }
             }
         }
 
         impl NkMut {
+            #[allow(dead_code)]
             pub fn type_of(&self) -> NkT {
                 match self { $(Self::$t(..) => NkT::$t ),+ }
             }
@@ -158,6 +160,7 @@ macro_rules! fissile_types {
             with_atom_inst!(atom, NkMut, {atom}, $(($t,$path)),+)
         }
 
+        #[allow(dead_code)]
         #[inline]
         pub fn assert_atom_inner_alignment(atom: *const NkAtom) {
             unsafe {
@@ -190,6 +193,7 @@ macro_rules! fissile_types {
             }
         }
 
+        #[allow(dead_code)]
         #[inline]
         pub fn atom_to_str(p: *const NkAtom, db: &dyn SymDB) -> String {
             struct P(*const NkAtom);
@@ -431,10 +435,6 @@ pub unsafe fn drop_ud<T: Userdata>(obj: *mut u8) {
 pub struct ObjPtrMut(pub *mut Object);
 
 impl ObjPtrMut {
-    pub unsafe fn rc(&self) -> u32 {
-        ((*self.0).vt.get_rc)((*self.0).mem)
-    }
-
     pub unsafe fn cast_mut<T: Userdata>(&self) -> Result<*mut T, Error> {
         if TypeId::of::<T>() != (*self.0).type_id {
             let expect_t = type_name::<T>();
@@ -447,18 +447,6 @@ impl ObjPtrMut {
         }
         Ok((*self.0).mem as *mut T)
     }
-
-    pub unsafe fn cast<T: Userdata>(&self) -> Result<*const T, Error> {
-        Ok((*self.0).cast_mut()? as *const T)
-    }
-
-    pub unsafe fn fastcast_mut<T: Userdata>(&mut self) -> *mut T {
-        (*self.0).mem as *mut T
-    }
-
-    pub unsafe fn fastcast<T: Userdata>(&self) -> *const T {
-        (*self.0).mem as *const T
-    }
 }
 
 impl Display for ObjPtrMut {
@@ -470,10 +458,6 @@ impl Display for ObjPtrMut {
 pub struct ObjPtr(pub *const Object);
 
 impl ObjPtr {
-    pub unsafe fn rc(&self) -> u32 {
-        ((*self.0).vt.get_rc)((*self.0).mem)
-    }
-
     pub unsafe fn cast<T: Userdata>(&self) -> Result<*const T, Error> {
         if TypeId::of::<T>() != (*self.0).type_id {
             let expect_t = type_name::<T>();
@@ -485,10 +469,6 @@ impl ObjPtr {
                         .argn(0).bop(Builtin::Nil))
         }
         Ok((*self.0).mem as *mut T)
-    }
-
-    pub unsafe fn fastcast<T: Userdata>(&self) -> *const T {
-        (*self.0).mem as *const T
     }
 }
 
@@ -1097,6 +1077,7 @@ pub unsafe fn malloc<T>(sz: usize) -> *mut T {
     p
 }
 
+#[allow(dead_code)]
 pub unsafe fn free<T>(p: *mut T, sz: usize) {
     dealloc(p as *mut u8, Layout::array::<T>(sz).unwrap())
 }
@@ -1277,6 +1258,7 @@ impl Nuke {
         }
     }
 
+    #[allow(dead_code)]
     pub fn assert_alignment(&self) {
         for atom in self.iter() {
             assert_eq!(atom as usize % align_of::<NkAtom>(), 0);
@@ -1443,10 +1425,6 @@ impl Nuke {
                                    .unwrap(),
         }
     }
-
-    pub fn freeze(&self) -> i32 {
-        todo!()
-    }
 }
 
 impl Drop for Nuke {
@@ -1575,12 +1553,6 @@ impl AtomMeta {
     pub fn set_color(&mut self, color: u8) {
         debug_assert!(color < 4, "Bitfield content out of range");
         self.0 = (self.0 & META_TYPE_MASK) | color;
-    }
-
-    #[inline]
-    pub fn set_typ(&mut self, typ: u8) {
-        debug_assert!(typ < 64, "Type number too large");
-        self.0 = (self.0 & META_COLOR_MASK) | (typ << 2);
     }
 
     #[inline]
