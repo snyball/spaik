@@ -179,7 +179,6 @@ macro_rules! fissile_types {
             with_atom_inst!(atom, NkRef, {atom}, $(($t,$path)),+)
         }
 
-        #[inline]
         pub fn atom_fmt(p: *const NkAtom,
                         db: &dyn SymDB,
                         visited: &mut VisitSet,
@@ -194,7 +193,6 @@ macro_rules! fissile_types {
         }
 
         #[allow(dead_code)]
-        #[inline]
         pub fn atom_to_str(p: *const NkAtom, db: &dyn SymDB) -> String {
             struct P(*const NkAtom);
             impl LispFmt for P {
