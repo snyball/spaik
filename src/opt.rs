@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::mem::take;
+use std::mem::{take, replace};
 
 use fnv::FnvHashSet;
 
@@ -127,6 +127,65 @@ impl Visitor for Optomat {
             M::Eq(ref mut a, ref mut b) => cmp_op!(a eq b .into()),
             M::Eqp(ref mut a, ref mut b) => cmp_op!(a equalp b .into()),
             _ => elem.visit(self)?,
+        }
+        Ok(())
+    }
+}
+
+struct FindLoopBreak<F: FnMut(&mut AST2) -> crate::IResult<()>>(F);
+
+impl<F> Visitor for FindLoopBreak<F>
+    where F: FnMut(&mut AST2) -> crate::IResult<()>
+{
+    fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+        match elem.kind {
+            M::Break(ref mut opt) => if let Some(ref mut x) = opt {
+                (self.0)(x)?;
+            }
+            M::Loop(_) => (),
+            _ => (),
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct TCOptomat {
+    names: Vec<SymID>,
+}
+
+impl Visitor for TCOptomat {
+    fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+        match elem.kind {
+            M::Defun(name, _, ref mut body) => {
+                self.names.push(name);
+                if let Some(e) = body.last_mut() {
+                    self.visit(e)?;
+                }
+                self.names.pop().unwrap();
+            }
+            M::Lambda(_, _) => (),
+            M::If(_, ref mut ift, ref mut ifn) => {
+                if let Some(e) = ift {
+                    self.visit(e)?;
+                }
+                if let Some(e) = ifn {
+                    self.visit(e)?;
+                }
+            }
+            M::Loop(ref mut body_ref) => {
+                let mut body = take(body_ref);
+                let mut visitor = FindLoopBreak(|x| self.visit(x));
+                body.visit(&mut visitor)?;
+                drop(replace(body_ref, body));
+            }
+            M::SymApp(ref mut name, ref mut body)
+                if Some(*name) == self.names.last().cloned() => {
+                *elem = AST2 { src: elem.src.clone(),
+                               kind: M::TailCall(take(body)) }
+            }
+            _ if self.names.is_empty() => elem.visit(self)?,
+            _ => ()
         }
         Ok(())
     }

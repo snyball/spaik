@@ -16,7 +16,7 @@ use crate::{
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
-    stylize::Stylize, chasm::LblMap, opt::Optomat,
+    stylize::Stylize, chasm::LblMap, opt::{Optomat, TCOptomat},
 };
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
@@ -27,17 +27,17 @@ chasm_def! {
     r8c:
 
     // List processing
-    CONS(),
-    APPEND(num: u32),
-    LIST(num: u32),
-    VLIST(),
+    CNS(),
+    APN(num: u32),
+    LST(num: u32),
+    VLT(),
     CAR(),
     CDR(),
     // SETCAR(),
     // SETCDR(),
 
     // Iterators
-    NXIT(var_idx: u16),
+    NXT(var_idx: u16),
 
     // Vectors
     VEC(num: u32),
@@ -56,27 +56,24 @@ chasm_def! {
     JN(dip: i32),
     JZ(dip: i32),
     JNZ(dip: i32),
-    // JSYM(dip: i32, sym: SymIDInt),
-    // JNSYM(dip: i32, sym: SymIDInt),
     CALL(pos: u32, nargs: u16),
     VCALL(func: SymIDInt, nargs: u16),
     APL(),
-    CLZCALL(nargs: u16),
+    ZCALL(nargs: u16),
     RET(),
-    CALLCC(dip: i32),
-    UNWIND(),
+    CCONT(dip: i32),
+    UWND(),
     HCF(),
 
     // Stack operations
-    CONSTREF(idx: u32),
-    INST(idx: u32),
+    INS(idx: u32),
     POP(num: u8),
-    POPA(num_top: u16, num_pop: u16),
+    SLAM(num_top: u16, num_pop: u16),
     SAV(num: u8),
     RST(),
     TOP(delta: u16),
     DUP(),
-    CLZEXP(),
+    ZXP(),
     // Stack variables
     MOV(var_idx: u16),
     STR(var_idx: u16),
@@ -85,19 +82,19 @@ chasm_def! {
     SET(env_idx: u16),
 
     // Value creation
-    PUSH(val: i32),
-    PUSHF(val: u32),
-    ARGSPEC(nargs: u16, nopt: u16, nenv: u16, rest: u8),
+    INT(val: i32),
+    FLT(val: u32),
+    ARGS(nargs: u16, nopt: u16, nenv: u16, rest: u8),
     SYM(id: SymIDInt),
-    CHAR(c: u32),
-    CLZR(delta: i32, nenv: u16),
-    CLZAV(nargs: u16, nenv: u16), // Commit the closure environment
+    CHR(c: u32),
+    CLZ(delta: i32, nenv: u16),
+    ZAV(nargs: u16, nenv: u16), // Commit the closure environment
     BOOL(val: u8),
     NIL(),
 
     // Logic
     EQL(),
-    EQLP(),
+    EQP(),
     GT(),
     GTE(),
     LT(),
@@ -107,8 +104,8 @@ chasm_def! {
     // Math
     INC(var: u16, amount: u16),
     DEC(var: u16, amount: u16),
-    ADDS(dst: u16, src: u16),
-    SUBS(dst: u16, src: u16),
+    ADS(dst: u16, src: u16),
+    SUS(dst: u16, src: u16),
     ADD(),
     SUB(),
     DIV(),
@@ -1007,7 +1004,7 @@ impl R8VM {
 
         for i in 0..=MAX_CLZCALL_ARGS {
             let pos = vm.pmem.len();
-            vm.pmem.push(r8c::Op::CLZCALL(i));
+            vm.pmem.push(r8c::Op::ZCALL(i));
             vm.pmem.push(r8c::Op::RET());
             let sym = vm.mem.symdb.put(format!("<ζ>-λ/{i}"));
             vm.funcs.insert(sym.into(), Func {
@@ -1918,18 +1915,18 @@ impl R8VM {
                         Ok(())
                     }).map_err(|e| e.bop(Builtin::Cdr))?
                 },
-                LIST(n) => {
+                LST(n) => {
                     self.mem.list(n)
                 },
-                VLIST() => {
+                VLT() => {
                     let len = self.mem.pop()?.force_int() as u32;
                     self.mem.list(len);
                 }
-                CONS() => self.mem.cons(),
-                APPEND(n) => self.mem.append(n)?,
+                CNS() => self.mem.cons(),
+                APN(n) => self.mem.append(n)?,
 
                 // Iterators
-                NXIT(var) => {
+                NXT(var) => {
                     let offset = (self.frame as isize) + (var as isize);
                     let it = *self.mem.stack.as_ptr().offset(offset);
                     with_ref_mut!(it, Iter(it) => {
@@ -2013,13 +2010,12 @@ impl R8VM {
 
                 // Value creation
                 NIL() => self.mem.push(PV::Nil),
-                CONSTREF(n) => self.consts[n as usize].push_to(&mut self.mem),
-                INST(idx) => {
+                INS(idx) => {
                     let pv = self.mem.get_env(idx as usize).deep_clone(&mut self.mem);
                     self.mem.push(pv);
                 },
                 BOOL(i) => self.mem.push(PV::Bool(i != 0)),
-                CLZAV(nargs, nenv) => {
+                ZAV(nargs, nenv) => {
                     let start_idx = self.frame + nargs as usize;
                     let end_idx = start_idx + nenv as usize;
                     let lambda = self.mem.stack[self.frame];
@@ -2032,10 +2028,10 @@ impl R8VM {
                         Ok(())
                     })?;
                 }
-                ARGSPEC(_nargs, _nopt, _env, _rest) => {}
-                CLZR(pos, nenv) => {
+                ARGS(_nargs, _nopt, _env, _rest) => {}
+                CLZ(pos, nenv) => {
                     let ipd = self.ip_delta(ip);
-                    let ARGSPEC(nargs, nopt, env, rest) = *self.pmem.get_unchecked(ipd-2) else {
+                    let ARGS(nargs, nopt, env, rest) = *self.pmem.get_unchecked(ipd-2) else {
                         panic!("CLZR without ARGSPEC");
                     };
                     let spec = ArgSpec { nargs, nopt, env, rest: rest == 1 };
@@ -2053,11 +2049,11 @@ impl R8VM {
                 DIV() => op2!(r, div, r?),
                 MUL() => op2!(r, mul, r?),
 
-                ADDS(dst, src) => {
+                ADS(dst, src) => {
                     let o = *self.mem.stack.get_unchecked(self.frame + (src as usize));
                     self.mem.stack.get_unchecked_mut(self.frame + (dst as usize)).add_mut(&o)?;
                 }
-                SUBS(dst, src) => {
+                SUS(dst, src) => {
                     let o = *self.mem.stack.get_unchecked(self.frame + (src as usize));
                     self.mem.stack.get_unchecked_mut(self.frame + (dst as usize)).sub_mut(&o)?;
                 }
@@ -2074,7 +2070,7 @@ impl R8VM {
 
                 // Logic
                 EQL() => op2!(r, eq, r.into()),
-                EQLP() => op2!(r, equalp, r.into()),
+                EQP() => op2!(r, equalp, r.into()),
                 GT() => op2!(r, gt, r?),
                 GTE() => op2!(r, gte, r?),
                 LT() => op2!(r, lt, r?),
@@ -2146,7 +2142,7 @@ impl R8VM {
                     self.mem.stack.truncate(old_frame);
                     self.mem.push(rv);
                 }
-                CLZCALL(nargs) => ip = self.op_clzcall(ip, nargs)?,
+                ZCALL(nargs) => ip = self.op_clzcall(ip, nargs)?,
                 APL() => {
                     let args = self.mem.pop().unwrap();
                     let nargs = with_ref!(args, Cons(_) => {
@@ -2164,7 +2160,7 @@ impl R8VM {
                     };
                     ip = self.op_clzcall(ip, nargs)?;
                 }
-                CALLCC(dip) => {
+                CCONT(dip) => {
                     let dip = self.ip_delta(ip) as isize + dip as isize;
                     let mut stack_dup = self.mem.stack.clone();
                     stack_dup.pop();
@@ -2173,7 +2169,7 @@ impl R8VM {
                     self.mem.push(cnt);
                     ip = self.op_clzcall(ip, 1)?;
                 }
-                UNWIND() => {
+                UWND() => {
                     self.unwind();
                     return Ok(())
                 }
@@ -2189,7 +2185,7 @@ impl R8VM {
                     *(self.mem.stack.as_mut_ptr().offset(offset)) = self.mem.pop()?
                 },
                 POP(n) => self.mem.popn(n as usize),
-                POPA(keep, pop) => {
+                SLAM(keep, pop) => {
                     let keep = keep as usize;
                     let pop = pop as usize;
                     let st = &mut self.mem.stack;
@@ -2199,9 +2195,9 @@ impl R8VM {
                     }
                     st.truncate(top - pop);
                 }
-                PUSH(n) => self.mem.push(PV::Int(n as Int)),
-                PUSHF(n) => self.mem.push(PV::Real(f32::from_bits(n))),
-                CHAR(c) => self.mem.push(PV::Char(char::from_u32_unchecked(c))),
+                INT(n) => self.mem.push(PV::Int(n as Int)),
+                FLT(n) => self.mem.push(PV::Real(f32::from_bits(n))),
+                CHR(c) => self.mem.push(PV::Char(char::from_u32_unchecked(c))),
                 SYM(id) => self.mem.push(PV::Sym(id.into())),
                 SAV(num) => regs.save(&mut self.mem, num)?,
                 RST() => regs.restore(&mut self.mem),
@@ -2210,7 +2206,7 @@ impl R8VM {
                     self.mem.push(PV::Int((top as Int) - (d as Int)));
                 }
                 DUP() => self.mem.dup()?,
-                CLZEXP() => self.mem.clz_expand(self.frame)?,
+                ZXP() => self.mem.clz_expand(self.frame)?,
 
                 // Static/env variables
                 GET(var) => {

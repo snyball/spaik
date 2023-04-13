@@ -84,6 +84,7 @@ pub struct R8Compiler {
     units: Vec<ChASM>,
     srctbl: SourceList,
     pub(crate) estack: Vec<Env>,
+    fnstack: Vec<FnCtx>,
     loops: Vec<LoopCtx>,
     const_offset: usize,
     consts: Vec<PV>,
@@ -94,6 +95,12 @@ pub struct R8Compiler {
     fns: FnvHashMap<SymID, Func>,
     #[allow(dead_code)]
     debug_mode: bool,
+}
+
+#[derive(Debug, Clone)]
+struct FnCtx {
+    start: Lbl,
+    spec: ArgSpec,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -169,6 +176,7 @@ impl R8Compiler {
         let mut cc = R8Compiler {
             const_offset: 0,
             debug_mode: vm.get_debug_mode(),
+            fnstack: Default::default(),
             new_fns: Default::default(),
             estack: Default::default(),
             labels: Default::default(),
@@ -247,10 +255,10 @@ impl R8Compiler {
             }
             if spec.has_body() {
                 self.unit().op(chasm!(TOP spec.nargs + spec.nopt));
-                self.unit().op(chasm!(VLIST));
+                self.unit().op(chasm!(VLT));
             }
             if spec.has_env() {
-                self.unit().op(chasm!(CLZEXP));
+                self.unit().op(chasm!(ZXP));
             }
             self.unit().op(chasm!(RST));
         }
@@ -494,7 +502,7 @@ impl R8Compiler {
         if let Ok(()) = self.asm_get_var(op, &src) { // Call to closure variable
             self.with_env(|env| env.anon())?;
             let args = args.into_iter();
-            self.gen_call_nargs(ret, (r8c::OpName::CLZCALL, &mut [0.into()]),
+            self.gen_call_nargs(ret, (r8c::OpName::ZCALL, &mut [0.into()]),
                                 0, args)?;
             self.env_pop(1).unwrap();
         } else { // Call to symbol (virtual call)
@@ -514,7 +522,7 @@ impl R8Compiler {
         }
         self.compile(true, op)?;
         self.with_env(|env| env.anon())?; // closure
-        self.gen_call_nargs(ret, (r8c::OpName::CLZCALL, &mut [0.into()]),
+        self.gen_call_nargs(ret, (r8c::OpName::ZCALL, &mut [0.into()]),
                             0, args.into_iter())?;
         self.env_pop(1)
     }
@@ -566,13 +574,13 @@ impl R8Compiler {
                         else if *v == dst { (*u, src_u) }
                         else { break 'out };
                     if let BoundVar::Local(src_idx) = self.get_var_idx(src, src_src)? {
-                        self.unit().op(chasm!(ADDS idx, src_idx));
+                        self.unit().op(chasm!(ADS idx, src_idx));
                         return Ok(())
                     }
                 }
                 Some((M2::Sub(M::Var(u), M::Var(v)), (_, src_v))) if *u == dst => {
                     if let BoundVar::Local(src_idx) = self.get_var_idx(*v, src_v)? {
-                        self.unit().op(chasm!(SUBS idx, src_idx));
+                        self.unit().op(chasm!(SUS idx, src_idx));
                         return Ok(())
                     }
                 }
@@ -630,15 +638,15 @@ impl R8Compiler {
         }
         self.compile_seq(true, prog)?;
         if spec.has_env() {
-            self.asm_op(chasm!(CLZAV spec.sum_nargs() + 1, spec.env));
+            self.asm_op(chasm!(ZAV spec.sum_nargs() + 1, spec.env));
         }
         self.leave_fn();
         let pos = self.code.len() + self.code_offset;
         let sz = self.end_unit()?;
         self.unit().op(
-            chasm!(ARGSPEC spec.nargs, spec.nopt, spec.env, spec.rest as u8)
+            chasm!(ARGS spec.nargs, spec.nopt, spec.env, spec.rest as u8)
         );
-        self.unit().op(chasm!(CLZR pos, num));
+        self.unit().op(chasm!(CLZ pos, num));
         self.new_fns.push((Sym::Str(name), spec, args, pos, sz));
         Ok(())
     }
@@ -651,7 +659,7 @@ impl R8Compiler {
         }
         self.compile_seq(ret, prog)?;
         if ret {
-            self.unit().op(chasm!(POPA 1, len));
+            self.unit().op(chasm!(SLAM 1, len));
         } else {
             self.unit().op(chasm!(POP len));
         }
@@ -689,7 +697,7 @@ impl R8Compiler {
         let LoopCtx { end, ret, height, .. } = outer;
         let dist = self.with_env(|env| env.len())? - height;
         let popa = |cc: &mut R8Compiler| if dist > 0 {
-            cc.asm_op(chasm!(POPA 1, dist-1))
+            cc.asm_op(chasm!(SLAM 1, dist-1))
         };
         match arg {
             Some(code) if ret => {
@@ -782,12 +790,12 @@ impl R8Compiler {
             M::Var(var) => {
                 let bound = self.get_var_idx(var, &src)?;
                 match bound {
-                    BoundVar::Local(idx) => self.asm_op(chasm!(NXIT idx)),
+                    BoundVar::Local(idx) => self.asm_op(chasm!(NXT idx)),
                     BoundVar::Env(idx) => {
                         self.asm_op(chasm!(GET idx));
                         let idx = self.with_env(|env| env.anon())?;
-                        self.asm_op(chasm!(NXIT idx));
-                        self.asm_op(chasm!(POPA 1, 1));
+                        self.asm_op(chasm!(NXT idx));
+                        self.asm_op(chasm!(SLAM 1, 1));
                         self.env_pop(1)?;
                     }
                 }
@@ -795,8 +803,8 @@ impl R8Compiler {
             init => {
                 self.compile(true, AST2 { kind: init, src })?;
                 let idx = self.with_env(|env| env.anon())?;
-                self.asm_op(chasm!(NXIT idx));
-                self.asm_op(chasm!(POPA 1, 1));
+                self.asm_op(chasm!(NXT idx));
+                self.asm_op(chasm!(SLAM 1, 1));
                 self.env_pop(1)?;
             }
         };
@@ -866,9 +874,9 @@ impl R8Compiler {
         let op = match pv {
             PV::Bool(true) => chasm!(BOOL 1),
             PV::Bool(false) => chasm!(BOOL 0),
-            PV::Char(c) => chasm!(CHAR c as u32),
-            PV::Int(i) => chasm!(PUSH i),
-            PV::Real(r) => chasm!(PUSHF r.to_bits()),
+            PV::Char(c) => chasm!(CHR c as u32),
+            PV::Int(i) => chasm!(INT i),
+            PV::Real(r) => chasm!(FLT r.to_bits()),
             PV::Sym(s) => chasm!(SYM s),
             PV::Nil => chasm!(NIL),
             pv => {
@@ -877,7 +885,7 @@ impl R8Compiler {
                 if pv.bt_type_of() == Builtin::String {
                     chasm!(GET idx) // Strings are immutable, no need to clone
                 } else {
-                    chasm!(INST idx)
+                    chasm!(INS idx)
                 }
             }
         };
@@ -920,7 +928,7 @@ impl R8Compiler {
             for arg in xs.into_iter() {
                 self.compile(ret, arg)?;
             }
-            if ret { self.unit().op(chasm!(APPEND nargs)); }
+            if ret { self.unit().op(chasm!(APN nargs)); }
             Ok(())
         }
     }
@@ -963,8 +971,8 @@ impl R8Compiler {
                     Some(funk) => {
                         let s = funk.args;
                         let pos = funk.pos;
-                        asm!(ARGSPEC s.nargs, s.nopt, 0, s.rest as u8);
-                        asm!(CLZR pos, 0);
+                        asm!(ARGS s.nargs, s.nopt, 0, s.rest as u8);
+                        asm!(CLZ pos, 0);
                     }
                     _ => return Err(e)
                 }
@@ -999,8 +1007,8 @@ impl R8Compiler {
                 self.new_fns.push((Sym::Id(name), spec, syms, pos, sz));
                 self.fns.insert(name, Func { pos, sz, args: spec });
                 if ret {
-                    asm!(ARGSPEC spec.nargs, spec.nopt, 0, spec.rest as u8);
-                    asm!(CLZR pos, 0);
+                    asm!(ARGS spec.nargs, spec.nopt, 0, spec.rest as u8);
+                    asm!(CLZ pos, 0);
                 }
             },
             M::Let(decls, progn) => {
@@ -1014,7 +1022,7 @@ impl R8Compiler {
             M::Next => self.bt_loop_next(src)?,
             M::Throw(arg) => {
                 self.compile(true, *arg)?;
-                asm!(UNWIND);
+                asm!(UWND);
             },
             M::Not(x) => opcall!(NOT *x),
             M::Gt(x, y) => opcall!(GT *x, *y),
@@ -1022,18 +1030,18 @@ impl R8Compiler {
             M::Lt(x, y) => opcall!(LT *x, *y),
             M::Lte(x, y) => opcall!(LTE *x, *y),
             M::Eq(x, y) => opcall!(EQL *x, *y),
-            M::Eqp(x, y) => opcall!(EQLP *x, *y),
+            M::Eqp(x, y) => opcall!(EQP *x, *y),
             M::Add(args) if ret => self.binop(Builtin::Add, src, chasm!(ADD),
-                                              None, Some(chasm!(PUSH 0)), args)?,
+                                              None, Some(chasm!(INT 0)), args)?,
             M::Add(args) => vopcall!(NIL args),
             M::Sub(args) if ret => self.binop(Builtin::Sub, src, chasm!(SUB),
-                                              Some(chasm!(PUSH 0)), None, args)?,
+                                              Some(chasm!(INT 0)), None, args)?,
             M::Sub(args) => vopcall!(NIL args),
             M::Mul(args) if ret => self.binop(Builtin::Mul, src, chasm!(MUL),
-                                              None, Some(chasm!(PUSH 1)), args)?,
+                                              None, Some(chasm!(INT 1)), args)?,
             M::Mul(args) => vopcall!(NIL args),
             M::Div(args) if ret => self.binop(Builtin::Div, src, chasm!(DIV),
-                                              Some(chasm!(PUSHF 1.0_f32.to_bits())), None, args)?,
+                                              Some(chasm!(FLT 1.0_f32.to_bits())), None, args)?,
             M::Div(args) => vopcall!(NIL args),
             M::And(args) => self.bt_and(ret, args)?,
             M::Or(args) => self.bt_or(ret, args)?,
@@ -1041,8 +1049,8 @@ impl R8Compiler {
             M::NextIter(it) => self.bt_next(ret, *it)?,
             M::Car(x) => opcall!(CAR *x),
             M::Cdr(x) => opcall!(CDR *x),
-            M::Cons(x, y) => opcall!(CONS *x, *y),
-            M::List(xs) => vopcall!(LIST xs),
+            M::Cons(x, y) => opcall!(CNS *x, *y),
+            M::List(xs) => vopcall!(LST xs),
             M::Append(xs) => self.bt_append(ret, xs, src)?,
             M::Vector(xs) => vopcall!(VEC xs),
             M::Push(vec, elem) => self.bt_vpush(ret, *vec, *elem)?,
@@ -1050,11 +1058,12 @@ impl R8Compiler {
             M::Pop(vec) => opcall_mut!(VPOP *vec),
             M::CallCC(funk) => {
                 self.compile(true, *funk)?;
-                asm!(CALLCC 0);
+                asm!(CCONT 0);
                 if !ret { asm!(POP 1) }
             }
             M::Bt1(op, arg) => self.bt1(ret, op, *arg)?,
             M::Bt2(op, a0, a1) => self.bt2(ret, op, *a0, *a1)?,
+            M::TailCall(args) => todo!(),
         }
 
         Ok(())

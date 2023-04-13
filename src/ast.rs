@@ -55,6 +55,7 @@ pub enum M {
     Let(Vec<VarDecl>, Progn),
     Loop(Progn),
     Break(Option<Prog>),
+    TailCall(Progn),
     Next,
     Throw(Prog),
     Var(SymID),
@@ -220,6 +221,7 @@ impl Display for M {
             M::Pop(vec) => write!(f, "(pop {vec})")?,
             M::CallCC(funk) => write!(f, "(call/cc {funk})")?,
             M::Var(var) => write!(f, "{var}")?,
+            M::TailCall(xs) => vop!("tail", xs),
         }
         Ok(())
     }
@@ -346,6 +348,7 @@ impl Visitable for AST2 {
             M::Get(ref mut x, ref mut y) => visit!(x, y),
             M::Pop(ref mut x) => visit!(x),
             M::CallCC(ref mut x) => visit!(x),
+            M::TailCall(ref mut xs) => vvisit!(xs),
         }
         Ok(())
     }
