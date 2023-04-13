@@ -476,7 +476,7 @@ impl<'a> Excavator<'a> {
         where F: FnOnce(Vec<AST2>) -> M
     {
         let args: Result<_> = args.into_iter().map(|a| self.dig(a, src.clone()))
-                                                .collect();
+                                              .collect();
         Ok(AST2 {
             kind: wrap(args?),
             src,
@@ -486,7 +486,7 @@ impl<'a> Excavator<'a> {
     fn wrap_any_args(&self, wrap: fn(Vec<AST2>) -> M, args: PV, src: Source) -> Result<AST2>
     {
         let args: Result<_> = args.into_iter().map(|a| self.dig(a, src.clone()))
-                                                .collect();
+                                              .collect();
         Ok(AST2 {
             kind: wrap(args?),
             src,
