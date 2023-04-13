@@ -163,18 +163,23 @@ macro_rules! chasm_def {
             }
         }
 
+        fn op_arg_err(got: usize, expect: usize, name: &'static str) -> Error {
+            error!(ArgError,
+                   expect: ArgSpec::normal(expect.try_into().unwrap()),
+                   got_num: got.try_into().unwrap()).sop(name)
+        }
+
         impl $crate::chasm::ASMOp for $name::Op {
             fn new(op: $crate::chasm::OpCode, args: &[ASMPV]) ->
                 Result<$name::Op>
             {
                 use std::convert::TryInto;
-                use $crate::error::ErrorKind::*;
+                let len = args.len();
                 match $name::OpName::from_num(op)? {
-                    $($name::OpName::$en => match args {
-                        [$($arg),*] => Ok($name::Op::$en($((*$arg).try_into()?),*)),
-                        _ => Err(SomeError {
-                            msg: format!("Not enough arguments for enum variant: {}", op)
-                        }.into())
+                    $($name::OpName::$en => if let [$($arg),*] = args {
+                        Ok($name::Op::$en($((*$arg).try_into()?),*))
+                    } else {
+                        Err(op_arg_err(len, count_args!($($arg),*), stringify!($en)))
                     }),+
                 }
             }

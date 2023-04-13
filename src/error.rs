@@ -556,6 +556,11 @@ impl Error {
         self
     }
 
+    pub fn sop(mut self, new_op: &'static str) -> Error {
+        self.inner.meta.amend(Meta::Op(OpName::OpStr(new_op)));
+        self
+    }
+
     pub fn argn(mut self, n: u32) -> Error {
         self.inner.meta.amend(Meta::OpArgn(n));
         self
