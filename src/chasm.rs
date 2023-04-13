@@ -28,13 +28,20 @@ macro_rules! chasm_primitives {
             fn from(v: $t) -> ASMPV { ASMPV::$t(v) }
         })+
 
+        fn try_into_err(from: &'static str,
+                        to: &'static str,
+                        val: &dyn std::fmt::Display) -> $crate::error::Error {
+            error!(ConversionError,
+                   from, to, val: format!("{}", val))
+        }
+
         fn try_into_asmpv<T: $(TryFrom<$t> + )+>(pv: ASMPV) -> Result<T> {
             match pv {
                 $(ASMPV::$t(v) => v
                   .try_into()
-                  .map_err(|_| ConversionError { from: stringify!($t),
-                                                 to: std::any::type_name::<T>(),
-                                                 val: format!("{}", v) }.into())),+
+                  .map_err(|_| try_into_err(stringify!($t),
+                                            std::any::type_name::<T>(),
+                                            &v).into())),+
             }
         }
 
@@ -54,7 +61,7 @@ macro_rules! chasm_primitives {
 chasm_primitives![u8, i8,
                   u16, i16,
                   u32, i32,
-                  u64, i64,
+                  // u64, i64,
                   usize, isize];
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
