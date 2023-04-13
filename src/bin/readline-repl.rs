@@ -1,14 +1,6 @@
-use std::process;
-
 use spaik::repl::REPL;
 
 fn main() {
-    let mut repl = match REPL::new(None) {
-        Err(e) => {
-            println!("Error: {}", e);
-            process::exit(1);
-        }
-        Ok(v) => v,
-    };
+    let mut repl = REPL::new(None);
     repl.readline_repl()
 }
