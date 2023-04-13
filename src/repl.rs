@@ -53,15 +53,15 @@ pub struct REPL {
 }
 
 impl REPL {
-    pub fn new(out_override: Option<Box<dyn OutStream>>) -> Result<REPL, Error> {
+    pub fn new(out_override: Option<Box<dyn OutStream>>) -> REPL {
         let mut vm = Spaik::new();
         if let Some(out) = out_override {
             vm.vm.set_stdout(out);
         }
-        Ok(REPL {
+        REPL {
             vm,
             exit_status: None,
-        })
+        }
     }
 
     pub fn eval(&mut self, code: &str) {

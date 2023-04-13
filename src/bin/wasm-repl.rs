@@ -73,7 +73,7 @@ impl io::Write for FnFlushWriter {
 pub fn new_wasm_repl() -> REPL {
     REPL::new(
         Some(Box::new(FnFlushWriter::new(WriteFn(wrap_xtermjs_write_stdout))))
-    ).unwrap()
+    )
 }
 
 lazy_static! {
