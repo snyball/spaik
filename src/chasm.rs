@@ -31,8 +31,7 @@ macro_rules! chasm_primitives {
         fn try_into_err(from: &'static str,
                         to: &'static str,
                         val: &dyn std::fmt::Display) -> $crate::error::Error {
-            error!(ConversionError,
-                   from, to, val: format!("{}", val))
+            error!(ConversionError, from, to, val: format!("{}", val))
         }
 
         fn try_into_asmpv<T: $(TryFrom<$t> + )+>(pv: ASMPV) -> Result<T> {
@@ -62,7 +61,8 @@ chasm_primitives![u8, i8,
                   u16, i16,
                   u32, i32,
                   // u64, i64,
-                  usize, isize];
+                  usize, isize
+];
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Lbl(u32, &'static str);
@@ -77,8 +77,6 @@ impl fmt::Display for Lbl {
 pub enum Arg {
     Lbl(Lbl),
     ASMPV(ASMPV),
-    #[allow(dead_code)]
-    Func(SymID)
 }
 
 impl From<Lbl> for Arg {
@@ -186,7 +184,9 @@ macro_rules! chasm_def {
                     $($name::OpName::$en => if let [$($arg),*] = args {
                         Ok($name::Op::$en($((*$arg).try_into()?),*))
                     } else {
-                        Err(op_arg_err(len, count_args!($($arg),*), stringify!($en)))
+                        Err(op_arg_err(len,
+                                       count_args!($($arg),*),
+                                       stringify!($en)))
                     }),+
                 }
             }
@@ -300,10 +300,9 @@ impl ChASM {
                                  .map(|arg| match arg {
                                      Arg::Lbl(Lbl(c, s)) =>
                                          labels.get(&c)
-                                               .map(|pos| ASMPV::isize(*pos - (i as isize)))
+                                               .map(|pos| ASMPV::i32(*pos as i32 - (i as i32)))
                                                .ok_or_else(|| link_err(s, c)),
-                                     Arg::ASMPV(pv) => Ok(pv),
-                                     Arg::Func(s) => Err(link_err("sym", s.as_int() as u32))
+                                     Arg::ASMPV(pv) => Ok(pv)
                                  }).collect::<std::result::Result<Vec<ASMPV>, _>>()?;
                     T::new(op.id, &args[..])
                 });
