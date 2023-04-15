@@ -12,7 +12,7 @@ use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::mem::{discriminant, replace};
 use std::error;
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display, Write};
 use std::num::TryFromIntError;
 use std::sync::Arc;
 use std::sync::mpsc::SendError;
@@ -348,6 +348,34 @@ impl PartialEq for Error {
     }
 }
 
+pub trait JoinIt {
+    fn join(self, sep: impl AsRef<str>) -> String;
+}
+
+impl<T, K> JoinIt for K where K: Iterator<Item = T>, T: Display {
+    fn join(mut self, sep: impl AsRef<str>) -> String {
+        let mut s = String::new();
+        let Some(p) = self.next() else { return s };
+        write!(s, "{p}").unwrap();
+        for p in self {
+            write!(s, "{}{p}", sep.as_ref()).unwrap();
+        }
+        s
+    }
+}
+
+struct OneOf<'a>(&'a [Builtin]);
+
+impl Display for OneOf<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.len() == 1 {
+            write!(f, "{}", self.0[0])
+        } else {
+            write!(f, "one of {}", self.0.iter().map(|bt| bt.get_str()).join(", "))
+        }
+    }
+}
+
 fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Result {
     use ErrorKind::*;
     let nameof = |sym| db.name(sym);
@@ -369,8 +397,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                    FmtArgnOp { pre: "", post: ", ", db, meta },
                    got)?,
         TypeNError { expect, got } =>
-            write!(f, "Type Error: Expected one of ({}) {}but got {}",
-                   expect.iter().map(|v| nameof(v.sym())).collect::<Vec<_>>().join(", "),
+            write!(f, "Type Error: Expected {} {}but got {}",
+                   OneOf(&expect),
                    FmtArgnOp { pre: "", post: ", ", db, meta },
                    nameof(got.sym()))?,
         EnumError { expect, got } =>
