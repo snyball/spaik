@@ -447,8 +447,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                 write!(f, "{} ", op.name(db))?
             }
             write!(f, "expected ({}) but got ({})",
-                   expect.iter().copied().map(|s| nameof(s.sym())).collect::<Vec<_>>().join(" "),
-                   got.iter().copied().map(|s| nameof(s.sym())).collect::<Vec<_>>().join(" "))?;
+                   expect.iter().map(|s| s.get_str()).join(" "),
+                   got.iter().map(|s| s.get_str()).join(" "))?;
         }
         OutsideContext { op, ctx } =>
             write!(f, "Syntax Error: Operator {} not allowed outside of {} context",
