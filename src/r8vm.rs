@@ -2341,6 +2341,10 @@ impl R8VM {
         Ok(())
     }
 
+    pub fn flush_output(&mut self) {
+        self.stdout.lock().unwrap().flush();
+    }
+
     pub fn set_stdout(&mut self, out: Box<dyn OutStream>) {
         *self.stdout.lock().unwrap() = out;
     }
