@@ -64,8 +64,8 @@ impl REPL {
         }
     }
 
-    pub fn eval(&mut self, code: &str) -> Result<Option<String>, String> {
-        match self.vm.vm.eval(code) {
+    pub fn eval(&mut self, code: impl AsRef<str>) -> Result<Option<String>, String> {
+        match self.vm.vm.eval(code.as_ref()) {
             Ok(PV::Nil) => Ok(None),
             Ok(res) => Ok(Some(res.lisp_to_string(&self.vm.vm))),
             Err(e) => Err(e.to_string(&self.vm.vm)),
