@@ -78,11 +78,6 @@ path = "src/bin/run-lisp-tests.rs"
 name = "scratch"
 path = "src/bin/scratch.rs"
 
-[[bin]]
-name = "wasm-repl"
-path = "src/bin/wasm-repl.rs"
-required-features = ["wasm"]
-
 [[bench]]
 name = "lisp_test"
 harness = false

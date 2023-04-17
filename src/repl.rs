@@ -64,24 +64,11 @@ impl REPL {
         }
     }
 
-    pub fn eval(&mut self, code: &str) {
+    pub fn eval(&mut self, code: &str) -> Result<Option<String>, String> {
         match self.vm.vm.eval(code) {
-            Ok(PV::Nil) => {}
-            Ok(res) => {
-                vmprint!(self.vm.vm, "{}", "=> ".style_ret());
-                vmprintln!(self.vm.vm, "{}", res.lisp_to_string(&self.vm.vm));
-            },
-            Err(e) => {
-                match e.cause().kind() {
-                    ErrorKind::Exit { status } => {
-                        use Builtin::*;
-                        self.exit_status = Some(i32::from(*status == Fail.sym()));
-                    }
-                    _ => {
-                        vmprintln!(self.vm.vm, "{}", e.to_string(&self.vm.vm));
-                    }
-                }
-            },
+            Ok(PV::Nil) => Ok(None),
+            Ok(res) => Ok(Some(res.lisp_to_string(&self.vm.vm))),
+            Err(e) => Err(e.to_string(&self.vm.vm)),
         }
     }
 
