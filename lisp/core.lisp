@@ -257,10 +257,14 @@
     `(defun ,name (x)
        (= (type-of x) ',type))))
 
-(m-map make-tcheck (integer symbol
+(m-map make-tcheck (integer
+                    symbol
                     unsigned-integer
-                    float bool
-                    string cons))
+                    float
+                    bool
+                    string
+                    cons
+                    vec))
 
 (defun keyword? (x)
   (and (symbol? x)
@@ -388,3 +392,9 @@
 
 (defmacro send (expr)
   `(<ζ>-send-message ,expr))
+
+(defun nth (xs i &? alt)
+  (cond
+   ((vec? xs) (if (< i (len xs))
+                  (get xs i)
+                (or alt (get xs i))))))
