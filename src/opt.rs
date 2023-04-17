@@ -4,7 +4,7 @@ use std::mem::{take, replace};
 
 use fnv::FnvHashSet;
 
-use crate::{ast::{AST2, M, Visitor, VarDecl, Visitable}, nkgc::PV, error::Source, SymID};
+use crate::{ast::{AST2, M, Visitor, VarDecl, Visitable}, nkgc::PV, error::Source, SymID, Builtin};
 
 #[derive(Debug, Default)]
 pub struct Optomat {
@@ -19,12 +19,41 @@ impl Optomat {
     }
 }
 
+struct IsModified(SymID);
+
+impl Visitor for IsModified {
+    fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+        match elem.kind {
+            M::Set(ref mut name, _) if *name == self.0 => bail!(None),
+            _ => Ok(())
+        }
+    }
+}
+
 #[derive(Debug)]
 struct LowerConst(SymID, PV);
+
+impl LowerConst {
+    pub fn new(sym: SymID, pv: PV) -> Self {
+        Self(sym, pv)
+    }
+}
 
 impl Visitor for LowerConst {
     fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
         match elem.kind {
+            M::Loop(ref mut body) => {
+                let mut modf = IsModified(self.0);
+                body.visit(&mut modf)?;
+                body.visit(self)?;
+            }
+            M::Bt2(Builtin::LoopWithEpilogue, ref mut bod, ref mut epl) => {
+                let mut modf = IsModified(self.0);
+                modf.visit(bod)?;
+                modf.visit(epl)?;
+                self.visit(bod)?;
+                self.visit(epl)?;
+            }
             M::Set(ref mut name, _) if *name == self.0 => {
                 bail!(None)
             }
