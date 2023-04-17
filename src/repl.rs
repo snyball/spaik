@@ -115,7 +115,11 @@ impl REPL {
             match readline {
                 Ok(line) => {
                     rl.add_history_entry(line.as_str());
-                    self.eval(line.as_str());
+                    match self.eval(line.as_str()) {
+                        Ok(Some(s)) => { vmprintln!(self.vm.vm, "{s}"); },
+                        Err(e) => { vmprintln!(self.vm.vm, "{e}"); },
+                        _ => ()
+                    }
                 },
                 Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
                     self.exit_status = Some(0)
