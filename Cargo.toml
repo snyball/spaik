@@ -29,6 +29,7 @@ math = ["glam"]
 modules = ["bincode"]
 derive = ["spaik-proc-macros"]
 freeze = ["bincode"]
+no-threading = []
 
 [dependencies]
 lazy_static = "1.4"

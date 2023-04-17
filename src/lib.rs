@@ -497,6 +497,7 @@ impl Spaik {
     }
 
     /// Move the VM off-thread and return a `SpaikPlug` handle for IPC.
+    #[cfg(not(feature = "no-threading"))]
     pub fn fork<T, Cmd>(mut self) -> SpaikPlug<T, Cmd>
         where T: DeserializeOwned + Send + Debug + Clone + 'static,
               Cmd: EnumCall + Send + 'static
@@ -744,6 +745,7 @@ mod tests {
 
     use super::*;
 
+    #[cfg(not(feature = "no-threading"))]
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn spaik_fork_send_from_rust_to_lisp() {
@@ -759,6 +761,7 @@ mod tests {
         assert_eq!(init_var, 124);
     }
 
+    #[cfg(not(feature = "no-threading"))]
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn spaik_fork_send_from_lisp_to_rust() {
@@ -970,6 +973,7 @@ mod tests {
         vm.add_load_path("lmao");
     }
 
+    #[cfg(not(feature = "no-threading"))]
     #[cfg(not(target_arch = "wasm32"))]
     #[cfg(feature = "derive")]
     #[test]

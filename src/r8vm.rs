@@ -702,7 +702,14 @@ pub struct Func {
     pub args: ArgSpec,
 }
 
+#[cfg(feature = "no-threading")]
+pub trait OutStream: io::Write + Debug {}
+#[cfg(feature = "no-threading")]
+impl<T> OutStream for T where T: io::Write + Debug {}
+
+#[cfg(not(feature = "no-threading"))]
 pub trait OutStream: io::Write + Debug + Send {}
+#[cfg(not(feature = "no-threading"))]
 impl<T> OutStream for T where T: io::Write + Debug + Send {}
 
 pub trait InStream: io::Read + Debug + Send {}
@@ -975,6 +982,7 @@ impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F);
 impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G);
 impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G, H);
 
+#[cfg(not(feature = "no-threading"))]
 unsafe impl Send for R8VM {}
 
 // NOTE: This only applies to calls made with apply_spv, calls internally in the
