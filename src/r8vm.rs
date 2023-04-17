@@ -702,17 +702,11 @@ pub struct Func {
     pub args: ArgSpec,
 }
 
-impl Func {
-    pub fn adjust(&mut self, pos: usize) {
-        self.pos -= pos;
-    }
-}
+pub trait OutStream: io::Write + Debug + Send {}
+impl<T> OutStream for T where T: io::Write + Debug + Send {}
 
-pub trait OutStream: io::Write + Debug {}
-impl<T> OutStream for T where T: io::Write + Debug {}
-
-pub trait InStream: io::Read + Debug {}
-impl<T> InStream for T where T: io::Read + Debug {}
+pub trait InStream: io::Read + Debug + Send {}
+impl<T> InStream for T where T: io::Read + Debug + Send {}
 
 #[derive(Debug)]
 pub struct R8VM {
