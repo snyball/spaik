@@ -1108,7 +1108,7 @@ impl R8VM {
     pub fn new() -> R8VM {
         let mut vm = R8VM::no_std();
 
-        let src = Some(Cow::Borrowed("<ζ>::core"));
+        let src = Some(Cow::Borrowed("<ζ>-core"));
         let core = include_str!("../lisp/core.lisp");
         vm.read_compile(core, src).fmt_unwrap(&vm);
 
