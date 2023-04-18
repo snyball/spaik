@@ -317,7 +317,12 @@ impl Visitable for AST2 {
             M::Defvar(_, ref mut init) => visit!(init),
             M::Set(_, ref mut init) => visit!(init),
             M::Defun(_, _, ref mut progn) => vvisit!(progn),
-            M::Let(_, ref mut progn) => vvisit!(progn),
+            M::Let(ref mut vars, ref mut progn) => {
+                for sub in vars.iter_mut().map(|VarDecl(_, _, init)| init) {
+                    visitor.visit(sub)?;
+                }
+                vvisit!(progn)
+            },
             M::Loop(ref mut progn) => vvisit!(progn),
             M::Break(Some(ref mut init)) => visit!(init),
             M::Break(None) => (),

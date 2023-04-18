@@ -25,7 +25,7 @@ impl Visitor for IsModified {
     fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
         match elem.kind {
             M::Set(ref mut name, _) if *name == self.0 => bail!(None),
-            _ => Ok(())
+            _ => elem.visit(self)
         }
     }
 }
@@ -54,9 +54,7 @@ impl Visitor for LowerConst {
                 self.visit(bod)?;
                 self.visit(epl)?;
             }
-            M::Set(ref mut name, _) if *name == self.0 => {
-                bail!(None)
-            }
+            M::Set(ref mut name, _) if *name == self.0 => bail!(None),
             M::Var(name) if name == self.0 => *elem = AST2 {
                 kind: self.1.into(),
                 src: elem.src.clone()
@@ -113,12 +111,12 @@ impl Visitor for Optomat {
                 for mut lower in consts {
                     for pt in body.iter_mut() {
                         match lower.visit(pt) {
-                            Ok(_) => (),
+                            Ok(_) => {}
                             Err(e) if e.is_none() => {
                                 self.varmod.insert(lower.0);
                                 dead_vars.remove(&lower.0);
                                 break;
-                            },
+                            }
                             e => return e
                         }
                     }

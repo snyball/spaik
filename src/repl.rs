@@ -103,7 +103,12 @@ impl REPL {
         let mut config_dir = dirs::config_dir().unwrap();
         config_dir.push("spaik");
         self.vm.add_load_path(config_dir.to_str().unwrap());
-        self.vm.load("init").ok();
+        match self.vm.load("init") {
+            Ok(_) => (),
+            Err(e) => {
+                vmprintln!(self.vm.vm, "{}", e);
+            }
+        }
         let mut rl = Editor::<()>::new();
         if rl.load_history(&hist_path).is_err() {
             vmprintln!(self.vm.vm, "{} {}",
