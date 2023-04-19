@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::nuke::GcRc;
 use crate::nuke::memcpy;
 
-struct Sym {
+pub struct Sym {
     rc: GcRc,
     ptr: NonNull<u8>,
     len: usize,

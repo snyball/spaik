@@ -7,8 +7,6 @@ use std::{process, fs};
 use crate::Spaik;
 use crate::r8vm::OutStream;
 use crate::nkgc::PV;
-use crate::compile::Builtin;
-use crate::error::{Error, ErrorKind};
 use crate::fmt::LispFmt;
 use std::path::Path;
 use crate::stylize::Stylize;
@@ -66,7 +64,7 @@ impl REPL {
 
     pub fn eval(&mut self, code: impl AsRef<str>) -> Result<Option<String>, String> {
         let res = self.vm.vm.eval(code.as_ref());
-        self.vm.vm.flush_output();
+        self.vm.vm.flush_output().map_err(|e| e.to_string(&self.vm))?;
         match res {
             Ok(PV::Nil) => Ok(None),
             Ok(res) => Ok(Some(res.lisp_to_string(&self.vm.vm))),

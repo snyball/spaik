@@ -4,7 +4,6 @@ use crate::nkgc::SymID;
 use std::io::{Read, Write, self};
 use std::fmt;
 use crate::error::{ErrorKind, Result};
-use ErrorKind::*;
 use std::convert::{TryInto, TryFrom};
 use fnv::FnvHashMap;
 
@@ -371,7 +370,7 @@ mod tests {
     fn primitive_type_conversions() {
         let pv_big = ASMPV::u32(260);
         let v_big: Result<u8> = pv_big.try_into();
-        assert_eq!(v_big.map_err(|e| e.kind().clone()), Err(ConversionError {
+        assert_eq!(v_big.map_err(|e| e.kind().clone()), Err(ErrorKind::ConversionError {
             from: "u32",
             to: "u8",
             val: String::from("260")

@@ -102,8 +102,8 @@ pub mod proc_macro_deps {
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::Arc;
-use std::sync::mpsc::{Sender, channel, Receiver, TryRecvError, RecvTimeoutError};
-use std::thread::{self, JoinHandle};
+use std::sync::mpsc::{Sender, Receiver, TryRecvError, RecvTimeoutError};
+use std::thread::JoinHandle;
 use std::time::Duration;
 use std::ops::{Deref, DerefMut};
 
@@ -502,6 +502,8 @@ impl Spaik {
         where T: DeserializeOwned + Send + Debug + Clone + 'static,
               Cmd: EnumCall + Send + 'static
     {
+        use std::{sync::mpsc::channel, thread};
+
         if self.vm.has_mut_extrefs() {
             panic!("Cannot fork vm with existing mutable Gc reference");
         }

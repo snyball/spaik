@@ -257,14 +257,6 @@ impl AST2 {
         }
     }
 
-    pub fn is_imm(&self) -> bool {
-        if let AST2 { kind: M::Atom(pv), .. } = self {
-            !matches!(pv, PV::Ref(_))
-        } else {
-            false
-        }
-    }
-
     pub fn type_of(&self) -> Builtin {
         let unknown = Builtin::Unknown;
         match &self.kind {

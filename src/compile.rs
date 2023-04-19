@@ -92,7 +92,7 @@ enum Cond {
 
 macro_rules! builtins {
     ($(($sym:ident, $str:expr)),*) => {
-        #[repr(i32)]
+        #[repr(u8)]
         #[derive(Debug, PartialEq, Eq, Copy, Clone)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub enum Builtin {
@@ -105,7 +105,7 @@ macro_rules! builtins {
             pub fn from_sym(n: SymID) -> Option<Builtin> {
                 let nint = i32::from(n);
                 if (0..count_args!($($sym),*)).contains(&nint) {
-                    Some(unsafe { mem::transmute(n) })
+                    Some(unsafe { mem::transmute(nint as u8) })
                 } else {
                     None
                 }
@@ -117,14 +117,15 @@ macro_rules! builtins {
 
 
             pub fn get_str(&self) -> &'static str {
-                let idx: i32 = unsafe { mem::transmute(*self) };
+                let idx: u8 = unsafe { mem::transmute(*self) };
                 BUILTIN_SYMBOLS[idx as usize]
             }
 
             #[inline]
             pub fn sym(&self) -> SymID {
-                let id: SymIDInt = unsafe { mem::transmute(*self) };
-                id.into()
+                let id: u8 = unsafe { mem::transmute(*self) };
+                let id_int: SymIDInt = id.into();
+                id_int.into()
             }
 
             pub fn to_string(&self) -> String {

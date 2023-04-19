@@ -1063,7 +1063,7 @@ impl R8Compiler {
             }
             M::Bt1(op, arg) => self.bt1(ret, op, *arg)?,
             M::Bt2(op, a0, a1) => self.bt2(ret, op, *a0, *a1)?,
-            M::TailCall(args) => todo!(),
+            M::TailCall(_args) => todo!(),
         }
 
         Ok(())

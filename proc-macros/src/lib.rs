@@ -68,7 +68,7 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
                 use #spaik_root::proc_macro_deps::ArgSpec;
                 use #spaik_root::error::Error;
                 const SPEC: ArgSpec = ArgSpec::normal(#nargs);
-                SPEC.check(Default::default(), args.len() as u16)?;
+                SPEC.check(args.len() as u16)?;
                 #(let #spaik_root::proc_macro_deps::ObjRef(#inputs_it)
                   =
                   args[#inputs_it_idx_1].try_into()

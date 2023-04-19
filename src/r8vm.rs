@@ -16,7 +16,7 @@ use crate::{
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
-    stylize::Stylize, chasm::LblMap, opt::{Optomat, TCOptomat},
+    stylize::Stylize, chasm::LblMap, opt::Optomat,
 };
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
@@ -2342,8 +2342,8 @@ impl R8VM {
         Ok(())
     }
 
-    pub fn flush_output(&mut self) {
-        self.stdout.lock().unwrap().flush();
+    pub fn flush_output(&mut self) -> Result<()> {
+        self.stdout.lock().unwrap().flush().map_err(|e| e.into())
     }
 
     pub fn set_stdout(&mut self, out: Box<dyn OutStream>) {
