@@ -661,8 +661,8 @@ unsafe impl<T> Subr for send_message<T>
                     .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
                     *x,
                     None),
-            _ => ArgSpec::opt(1, 1).check(Builtin::ZSendMessage.sym(),
-                                          args.len() as u16)
+            _ => ArgSpec::opt(1, 1).check(args.len() as u16)
+                                   .map_err(|e| e.bop(Builtin::ZSendMessage))
                                    .map(|_| -> ! { unreachable!() })?
 
         };

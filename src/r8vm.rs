@@ -500,7 +500,8 @@ mod sysfns {
                                   got: x.bt_type_of(),)
                            .bop(Builtin::SymID)
                            .argn(1)),
-                _ => ArgSpec::normal(1).check(Builtin::SymID.sym(), args.len() as u16)
+                _ => ArgSpec::normal(1).check(args.len() as u16)
+                                       .map_err(|e| e.bop(Builtin::SymID))
                                        .map(|_| unreachable!())
             }
         }
@@ -683,14 +684,13 @@ impl ArgSpec {
         ArgSpec::normal(0)
     }
 
-    pub fn check(&self, fn_sym: SymID, nargs: u16) -> Result<()> {
+    pub fn check(&self, nargs: u16) -> Result<()> {
         if self.is_valid_num(nargs) {
             Ok(())
         } else {
             Err(error!(ArgError,
                        expect: *self,
-                       got_num: nargs.into())
-                .op(fn_sym))
+                       got_num: nargs.into()))
         }
     }
 }
@@ -825,7 +825,7 @@ macro_rules! call_with {
 macro_rules! symcall_with {
     ($vm:expr, $func:expr, $nargs:expr, $body:block) => {{
         let func = $vm.funcs.get(&$func.into()).ok_or("No such function")?;
-        func.args.check($func.into(), $nargs.try_into().unwrap())?;
+        func.args.check($nargs.try_into().unwrap()).map_err(|e| e.op($func.into()))?;
 
         let frame = $vm.frame;
 
@@ -1424,7 +1424,8 @@ impl R8VM {
                 return Err(error!(UnexpectedDottedList,).bop(Builtin::Apply))
             }
             let func = self.funcs.get(&m.into()).ok_or("No such function")?;
-            if let Err(e) = func.args.check(m, (n - 1) as u16) {
+            let chk = func.args.check((n - 1) as u16).map_err(|e| e.op(m));
+            if let Err(e) = chk {
                 self.mem.popn(n as usize);
                 return Err(e);
             }
@@ -1490,7 +1491,7 @@ impl R8VM {
                     self.mem.push(arg);
                     nargs += 1;
                 }
-                if let Err(e) = func.args.check(m, nargs) {
+                if let Err(e) = func.args.check(nargs).map_err(|e| e.op(m)) {
                     self.mem.popn(nargs as usize);
                     self.frame = frame;
                     return Err(e);
@@ -1777,7 +1778,7 @@ impl R8VM {
         let lambda_pv = self.mem.stack[idx];
         with_ref_mut!(lambda_pv, Lambda(lambda) => {
             let sym = Builtin::GreekLambda.sym();
-            (*lambda).args.check(sym, nargs)?;
+            (*lambda).args.check(nargs).map_err(|e| e.op(sym))?;
             let has_env = (*lambda).args.has_env();
             if !has_env {
                 self.mem.stack.drain(idx..(idx+1)).for_each(drop); // drain gang
@@ -1816,7 +1817,7 @@ impl R8VM {
             // }
             Ok(self.ret_to(dip))
         }, Continuation(cont) => {
-            ArgSpec::normal(1).check(Builtin::Continuation.sym(), nargs)?;
+            ArgSpec::normal(1).check(nargs).map_err(|e| e.bop(Builtin::Continuation))?;
             let cont_stack = (*cont).take_stack()?;
 
             let pv = self.mem.pop().unwrap();
@@ -2104,7 +2105,7 @@ impl R8VM {
                 VCALL(sym, nargs) => {
                     match self.funcs.get(&sym) {
                         Some(func) => {
-                            func.args.check(sym.into(), nargs)?;
+                            func.args.check(nargs).map_err(|e| e.op(sym.into()))?;
                             let pos = func.pos;
                             // FIXME: This does not pass in miri because of aliasing
                             // (*ip.sub(1)) = CALL(pos as u32, nargs);

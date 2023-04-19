@@ -1089,7 +1089,7 @@ impl R8Compiler {
             *op = match *op {
                 R8C::VCALL(sym, nargs) => match vm.get_func(sym.into()) {
                     Some(funk) => {
-                        funk.args.check(sym.into(), nargs)?;
+                        funk.args.check(nargs).map_err(|e| e.op(sym.into()))?;
                         R8C::CALL(funk.pos.try_into()?, nargs)
                     }
                     None => *op
