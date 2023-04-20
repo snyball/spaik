@@ -2,6 +2,7 @@
 
 use crate::nkgc::{PV, SymID, SymIDInt};
 use crate::error::Source;
+use crate::swym;
 use fnv::FnvHashMap;
 use std::hash::Hash;
 use std::mem;
@@ -95,43 +96,30 @@ macro_rules! builtins {
         #[repr(u8)]
         #[derive(Debug, PartialEq, Eq, Copy, Clone)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
-        pub enum Builtin {
-            $(
-                $sym
-            ),*
-        }
+        pub enum Builtin { $($sym),* }
+
+        const NUM_BUILTINS: usize = count_args!($($sym),*);
+
+        pub const BUILTIN_SYMBOLS: [&'static str; NUM_BUILTINS] = [
+            $($str),*
+        ];
+
+        pub static BUILTIN_SYMS: [swym::Sym; NUM_BUILTINS] = [
+            $(crate::swym::Sym::from_static($str)),*
+        ];
+
+        static BUILTIN_LOOKUP: phf::Map<&'static str, Builtin> = phf::phf_map! {
+            $($str => Builtin::$sym),*
+        };
+
+        static BUILTIN_SYM_LOOKUP: phf::Map<&'static str, &'static swym::Sym> = phf::phf_map! {
+            $($str => &BUILTIN_SYMS[{
+                let idx: u8 = unsafe { mem::transmute(Builtin::$sym) };
+                idx as usize
+            }]),*
+        };
 
         impl Builtin {
-            pub fn from_sym(n: SymID) -> Option<Builtin> {
-                let nint = i32::from(n);
-                if (0..count_args!($($sym),*)).contains(&nint) {
-                    Some(unsafe { mem::transmute(nint as u8) })
-                } else {
-                    None
-                }
-            }
-
-            pub const fn num_builtins() -> usize {
-                count_args!($($sym),*)
-            }
-
-
-            pub fn get_str(&self) -> &'static str {
-                let idx: u8 = unsafe { mem::transmute(*self) };
-                BUILTIN_SYMBOLS[idx as usize]
-            }
-
-            #[inline]
-            pub fn sym(&self) -> SymID {
-                let id: u8 = unsafe { mem::transmute(*self) };
-                let id_int: SymIDInt = id.into();
-                id_int.into()
-            }
-
-            pub fn to_string(&self) -> String {
-                String::from(self.get_str())
-            }
-
             pub fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
                 Some(match s.as_ref() {
                     $($str => Builtin::$sym),*,
@@ -145,10 +133,6 @@ macro_rules! builtins {
                 write!(f, "{}", match self { $(Builtin::$sym => $str),* })
             }
         }
-
-        pub const BUILTIN_SYMBOLS: [&'static str; count_args!($($sym),*)] = [
-            $($str),*
-        ];
     }
 }
 
@@ -250,6 +234,44 @@ builtins! {
     (Mat4, "mat4"),
     (Quat, "quat"),
     (Epsilon, "")
+}
+
+impl Builtin {
+    pub fn from_sym(n: SymID) -> Option<Builtin> {
+        let nint = i32::from(n);
+        if (0..NUM_BUILTINS as i32).contains(&nint) {
+            Some(unsafe { mem::transmute(nint as u8) })
+        } else {
+            None
+        }
+    }
+
+    pub fn get_str(&self) -> &'static str {
+        let idx: u8 = unsafe { mem::transmute(*self) };
+        BUILTIN_SYMBOLS[idx as usize]
+    }
+
+    pub fn sym(&self) -> SymID {
+        let id: u8 = unsafe { mem::transmute(*self) };
+        let id_int: SymIDInt = id.into();
+        id_int.into()
+    }
+
+    pub(crate) fn swym(&self) -> swym::SymID {
+        let id: u8 = unsafe { mem::transmute(*self) };
+        let idx: usize = id.into();
+        let rf: &'static swym::Sym = &BUILTIN_SYMS[idx];
+        swym::SymID::new(rf as *const swym::Sym as *mut swym::Sym)
+    }
+
+    pub(crate) fn swym_from_str<S: AsRef<str>>(s: S) -> swym::SymID {
+        let rf: &'static swym::Sym = BUILTIN_SYM_LOOKUP[s.as_ref()];
+        swym::SymID::new(rf as *const swym::Sym as *mut swym::Sym)
+    }
+
+    pub fn to_string(&self) -> String {
+        String::from(self.get_str())
+    }
 }
 
 pub type SourceList = Vec<(usize, Source)>;

@@ -23,9 +23,9 @@ pub struct Sym {
 }
 
 impl Sym {
-    // NOTE: This is for eventually creating &'static Sym. If you use this to
-    // create Syms on the heap like in SwymDb, you will be leaking the alloc()
-    // because the ref-count is initialized to 2.
+    // This is for creating &'static Sym. If you use this to create Syms on the
+    // heap like in SwymDb, you will be leaking the alloc() because the
+    // ref-count is initialized to u32::MAX.
     //
     // Either allocate all Syms in bulk on a Vec<Sym>, and then free that later,
     // or store the Syms in a static array.
@@ -33,12 +33,15 @@ impl Sym {
         let len = st.len();
         Sym {
             ptr: unsafe { NonNull::new_unchecked(st.as_ptr() as *mut u8) },
-            rc: GcRc::new(AtomicU32::new(2)),
+            rc: GcRc::new(AtomicU32::new(u32::MAX)),
             len,
             sz: len
         }
     }
 }
+
+unsafe impl Send for Sym {}
+unsafe impl Sync for Sym {}
 
 struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
     ptr: *const u8,
@@ -90,6 +93,12 @@ impl AsRef<str> for SymID {
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 pub(crate) struct SymID(*mut Sym);
+
+impl SymID {
+    pub fn new(sym: *mut Sym) -> Self {
+        Self(sym)
+    }
+}
 
 impl Debug for SymID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {

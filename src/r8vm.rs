@@ -1777,8 +1777,7 @@ impl R8VM {
         let idx = self.mem.stack.len() - nargs as usize - 1;
         let lambda_pv = self.mem.stack[idx];
         with_ref_mut!(lambda_pv, Lambda(lambda) => {
-            let sym = Builtin::GreekLambda.sym();
-            (*lambda).args.check(nargs).map_err(|e| e.op(sym))?;
+            (*lambda).args.check(nargs).map_err(|e| e.bop(Builtin::GreekLambda))?;
             let has_env = (*lambda).args.has_env();
             if !has_env {
                 self.mem.stack.drain(idx..(idx+1)).for_each(drop); // drain gang
