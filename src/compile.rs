@@ -1,9 +1,10 @@
 //! SPAIK Compiler
 
-use crate::nkgc::{PV, SymID, SymIDInt};
+use crate::{nkgc::SymID, Sym};
 use crate::error::Source;
 use crate::swym;
 use fnv::FnvHashMap;
+use std::fmt::{Display, self, LowerHex};
 use std::hash::Hash;
 use std::mem;
 #[cfg(feature = "freeze")]
@@ -110,12 +111,6 @@ macro_rules! builtins {
                 idx as usize
             }]),*
         };
-
-        impl std::fmt::Display for Builtin {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                write!(f, "{}", match self { $(Builtin::$sym => $str),* })
-            }
-        }
     }
 }
 
@@ -219,32 +214,53 @@ builtins! {
     (Epsilon, "")
 }
 
+pub trait Hexable {
+    fn fmt_hex(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+}
+
+struct Hex<T>(pub T) where T: LowerHex;
+
+impl<T> Display for Hex<T> where T: LowerHex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#x}", self.0)
+    }
+}
+
+impl<T> fmt::Debug for Hex<T> where T: LowerHex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#x}", self.0)
+    }
+}
+
 impl Builtin {
-    pub fn from_sym(n: SymID) -> Option<Builtin> {
-        let nint = i32::from(n);
-        if (0..NUM_BUILTINS as i32).contains(&nint) {
-            Some(unsafe { mem::transmute(nint as u8) })
-        } else {
-            None
-        }
+    pub fn from_sym(SymID(p): SymID) -> Option<Builtin> {
+        // Check if the pointer `p` is inside the static `BUILTIN_SYMS` array,
+        // get its index, and transmute that into a Builtin.
+        let p = p as usize;
+        let buf = &BUILTIN_SYMS[0] as *const Sym;
+        let start = buf as usize;
+        let end = unsafe { buf.add(NUM_BUILTINS) } as usize;
+        (p >= start && p < end).then(|| unsafe {
+            mem::transmute(((p - start) / mem::size_of::<Sym>()) as u8)
+        })
     }
 
-    pub fn get_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         let idx: u8 = unsafe { mem::transmute(*self) };
         BUILTIN_SYMBOLS[idx as usize]
     }
 
-    pub fn sym(&self) -> SymID {
-        let id: u8 = unsafe { mem::transmute(*self) };
-        let id_int: SymIDInt = id.into();
-        id_int.into()
-    }
-
-    pub(crate) fn swym(&self) -> swym::SymID {
+    pub(crate) fn sym(&self) -> swym::SymID {
         let id: u8 = unsafe { mem::transmute(*self) };
         let idx: usize = id.into();
         let rf: &'static swym::Sym = &BUILTIN_SYMS[idx];
         swym::SymID::new(rf as *const swym::Sym as *mut swym::Sym)
+    }
+
+    pub(crate) fn sym_ref(&self) -> swym::SymRef {
+        let id: u8 = unsafe { mem::transmute(*self) };
+        let idx: usize = id.into();
+        (&BUILTIN_SYMS[idx]).into()
     }
 
     pub(crate) fn swym_from_str<S: AsRef<str>>(s: S) -> swym::SymID {
@@ -253,11 +269,17 @@ impl Builtin {
     }
 
     pub fn to_string(&self) -> String {
-        String::from(self.get_str())
+        String::from(self.as_str())
     }
 
     pub fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
         BUILTIN_LOOKUP.get(s.as_ref()).copied()
+    }
+}
+
+impl std::fmt::Display for Builtin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", self.as_str())
     }
 }
 

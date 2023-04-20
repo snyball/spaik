@@ -64,11 +64,11 @@ impl REPL {
 
     pub fn eval(&mut self, code: impl AsRef<str>) -> Result<Option<String>, String> {
         let res = self.vm.vm.eval(code.as_ref());
-        self.vm.vm.flush_output().map_err(|e| e.to_string(&self.vm))?;
+        self.vm.vm.flush_output().map_err(|e| e.l_to_string())?;
         match res {
             Ok(PV::Nil) => Ok(None),
-            Ok(res) => Ok(Some(res.lisp_to_string(&self.vm.vm))),
-            Err(e) => Err(e.to_string(&self.vm.vm)),
+            Ok(res) => Ok(Some(res.lisp_to_string())),
+            Err(e) => Err(e.l_to_string()),
         }
     }
 

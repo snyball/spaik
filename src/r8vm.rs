@@ -12,12 +12,11 @@ use crate::{
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
     fmt::LispFmt,
     nuke::*,
-    nkgc::{Arena, Cons, SymID, SymIDInt, PV, SPV, self, QuasiMut, Int},
+    nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int},
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
-    sym_db::SymDB, FmtErr, tok::Token, limits, comp::R8Compiler,
-    stylize::Stylize, chasm::LblMap, opt::Optomat,
-};
+    FmtErr, tok::Token, limits, comp::R8Compiler,
+    chasm::LblMap, opt::Optomat, swym::SymRef};
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
 #[cfg(feature = "freeze")]
@@ -57,7 +56,7 @@ chasm_def! {
     JZ(dip: i32),
     JNZ(dip: i32),
     CALL(pos: u32, nargs: u16),
-    VCALL(func: SymIDInt, nargs: u16),
+    VCALL(func: u32, nargs: u16),
     APL(),
     ZCALL(nargs: u16),
     RET(),
@@ -85,7 +84,6 @@ chasm_def! {
     INT(val: i32),
     FLT(val: u32),
     ARGS(nargs: u16, nopt: u16, nenv: u16, rest: u8),
-    SYM(id: SymIDInt),
     CHR(c: u32),
     CLZ(delta: i32, nenv: u16),
     ZAV(nargs: u16, nenv: u16), // Commit the closure environment
@@ -174,10 +172,10 @@ fn tostring(vm: &R8VM, x: PV) -> String {
     match x {
         PV::Ref(y) => match to_fissile_ref(y) {
             NkRef::String(s) => unsafe { (*s).clone() },
-            _ => x.lisp_to_string(&vm.mem),
+            _ => x.lisp_to_string(),
         },
         PV::Char(c) => format!("{c}"),
-        _ => x.lisp_to_string(&vm.mem),
+        _ => x.lisp_to_string(),
     }
 }
 
@@ -267,8 +265,7 @@ mod sysfns {
             }).or_else(|_| -> Success {
                 match val {
                     PV::Char(c) => write!(&mut out, "{c}").unwrap(),
-                    _ => write!(&mut out, "{}", FmtWrap { val: &val,
-                                                          db: vm }).unwrap(),
+                    _ => write!(&mut out, "{}", FmtWrap { val: &val }).unwrap(),
                 }
                 Ok(())
             }).unwrap();
@@ -300,7 +297,7 @@ mod sysfns {
         }
 
         fn string(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-            x.lisp_to_string(&vm.mem)
+            x.lisp_to_string()
              .into_pv(&mut vm.mem)
         }
 
@@ -335,7 +332,7 @@ mod sysfns {
                 [xs, PV::Char(s)] => (xs.make_iter().map_err(emap)?,
                                       Cow::from(s.to_string())),
                 [xs, PV::Sym(s)] => (xs.make_iter().map_err(emap)?,
-                                     Cow::from(vm.sym_name(*s))),
+                                     Cow::from(s.as_ref())),
                 [xs, o] => (xs.make_iter().map_err(emap)?, with_ref!(*o, String(s) => {
                     Ok(Cow::from(&(*s)[..]))
                 }).map_err(|e| e.bop(Builtin::Join).argn(2))?),
@@ -419,7 +416,7 @@ mod sysfns {
         }
 
         fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV> {
-            Ok(PV::Sym(vm.load((*lib).try_into()?)?))
+            Ok(PV::Sym(vm.load((*lib).try_into()?)?.id()))
         }
 
         fn pow(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
@@ -462,7 +459,7 @@ mod sysfns {
             match args {
                 [s @ PV::Sym(_)] => Ok(*s),
                 [r] => with_ref!(*r, String(s) => {
-                    Ok(PV::Sym(vm.mem.symdb.put_ref(&*s)))
+                    Ok(PV::Sym(vm.mem.symdb.put_ref(&*s).id()))
                 }),
                 _ => Err(error!(ArgError,
                                 expect: ArgSpec::normal(1),
@@ -494,7 +491,7 @@ mod sysfns {
     unsafe impl Subr for sym_id {
         fn call(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             match args {
-                [PV::Sym(id)] => Ok(PV::Int((*id).try_into()?)),
+                [PV::Sym(id)] => Ok(PV::Int(id.as_int())),
                 [x] => Err(error!(TypeError,
                                   expect: Builtin::Symbol,
                                   got: x.bt_type_of(),)
@@ -728,8 +725,8 @@ pub struct R8VM {
 
     // Named locations/objects
     breaks: FnvHashMap<usize, r8c::Op>,
-    macros: FnvHashMap<SymIDInt, SymID>,
-    pub(crate) funcs: FnvHashMap<SymIDInt, Func>,
+    macros: FnvHashMap<SymID, SymID>,
+    pub(crate) funcs: FnvHashMap<SymID, Func>,
     func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
     pub(crate) labels: LblMap,
     func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
@@ -843,16 +840,6 @@ macro_rules! symcall_with {
 
         res
     }};
-}
-
-impl SymDB for R8VM {
-    fn name(&self, sym: SymID) -> Cow<str> {
-        (&self.mem.symdb as &dyn SymDB).name(sym)
-    }
-
-    fn put_sym(&mut self, name: &str) -> SymID {
-        self.mem.symdb.put_ref(name)
-    }
 }
 
 pub trait EnumCall {
@@ -1008,15 +995,15 @@ impl R8VM {
             let pos = vm.pmem.len();
             vm.pmem.push(r8c::Op::ZCALL(i));
             vm.pmem.push(r8c::Op::RET());
-            let sym = vm.mem.symdb.put(format!("<ζ>-λ/{i}"));
-            vm.funcs.insert(sym.into(), Func {
+            let sym = vm.mem.symdb.put(format!("<ζ>-λ/{i}")).id();
+            vm.funcs.insert(sym, Func {
                 pos,
                 sz: 2,
                 args: ArgSpec::normal(0)
             });
         }
 
-        vm.funcs.insert(Builtin::HaltFunc.sym().into(), Func {
+        vm.funcs.insert(Builtin::HaltFunc.sym(), Func {
             pos: 0,
             sz: 1,
             args: ArgSpec::none()
@@ -1028,7 +1015,7 @@ impl R8VM {
             };
 
             ($name:expr, $fn:ident) => {
-                let sym = vm.mem.put_sym($name);
+                let sym = vm.mem.symdb.put_ref($name).id();
                 vm.set(sym, (sysfns::$fn).into_subr()).unwrap();
             };
         }
@@ -1110,7 +1097,7 @@ impl R8VM {
 
         let src = Some(Cow::Borrowed("<ζ>-core"));
         let core = include_str!("../lisp/core.lisp");
-        vm.read_compile(core, src).fmt_unwrap(&vm);
+        vm.read_compile(core, src).fmt_unwrap();
 
         vm
     }
@@ -1146,7 +1133,7 @@ impl R8VM {
     }
 
     pub fn add_subr(&mut self, subr: impl Subr) {
-        let name = self.put_sym(subr.name());
+        let name = self.mem.symdb.put_ref(subr.name()).id();
         self.set(name, subr.into_subr())
             .expect("Can't allocate Subr");
     }
@@ -1193,8 +1180,7 @@ impl R8VM {
         self.funcs.get(&name.into())
     }
 
-    pub fn load(&mut self, lib: SymID) -> Result<SymID> {
-        let sym_name = self.sym_name(lib).to_string();
+    pub fn load(&mut self, lib: SymID) -> Result<SymRef> {
         let mut path = String::new();
         let it = self.var(Builtin::SysLoadPath.sym())?
                      .make_iter()
@@ -1204,13 +1190,13 @@ impl R8VM {
                           .map_err(|e| e.argn(i as u32)
                                         .bop(Builtin::SysLoadPath))?);
             path.push('/');
-            path.push_str(&sym_name);
+            path.push_str(lib.as_ref());
             let extd = path.len();
             for ext in &[".sp", ".spk", ".lisp"] {
                 path.push_str(ext);
                 if let Ok(src) = fs::read_to_string(&path) {
                     self.read_compile(&src, Some(Cow::from(path)))?;
-                    return Ok(Builtin::Unknown.sym())
+                    return Ok(Builtin::Unknown.sym_ref())
                 }
                 path.drain(extd..).for_each(drop);
             }
@@ -1280,7 +1266,7 @@ impl R8VM {
             ($($meta:expr),*) => {
                 if !mods.is_empty() {
                     let mods = mods.into_iter()
-                                   .map(|s| self.sym_name(s))
+                                   .map(|s| s.to_string())
                                    .collect::<Vec<_>>()
                                    .join("");
                     return Err(error!(TrailingModifiers, mods)$(.amend($meta))*);
@@ -1385,7 +1371,7 @@ impl R8VM {
                     } else if text == "nil" {
                         PV::Nil
                     } else {
-                        PV::Sym(self.put_sym(text))
+                        PV::Sym(self.mem.symdb.put_ref(text).id())
                     };
 
                     if !close.is_empty() {
@@ -1419,7 +1405,7 @@ impl R8VM {
 
     pub fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV> {
         let op = self.mem.from_top(n as usize);
-        let v = if let Some(m) = op.sym().and_then(|op| self.macros.get(&op.into())).copied() {
+        let v = if let Some(m) = op.sym().and_then(|op| self.macros.get(&op)).copied() {
             if dot {
                 return Err(error!(UnexpectedDottedList,).bop(Builtin::Apply))
             }
@@ -1482,7 +1468,7 @@ impl R8VM {
             }
         } else {
             let mut inds = 0;
-            while let Some(m) = v.op().and_then(|op| self.macros.get(&op.into())).copied() {
+            while let Some(m) = v.op().and_then(|op| self.macros.get(&op)).copied() {
                 let func = self.funcs.get(&m.into()).ok_or("No such function")?;
                 let mut nargs = 0;
                 let frame = self.frame;
@@ -1587,7 +1573,7 @@ impl R8VM {
     }
 
     pub fn set_macro_character(&mut self, macro_sym: SymID, fn_sym: SymID) {
-        let s = self.sym_name(macro_sym).to_string();
+        let s = macro_sym.to_string();
         self.tok_tree.insert(&s);
         self.reader_macros.insert(s, fn_sym);
     }
@@ -1623,14 +1609,8 @@ impl R8VM {
         self.func_arg_syms.insert(name, arg_names);
     }
 
-    pub fn sym_name(&self, sym: SymID) -> &str {
-        self.mem.symdb
-                .name(sym)
-                .expect("Assumed present symbol was not present")
-    }
-
     pub fn sym_id(&mut self, name: &str) -> SymID {
-        self.mem.symdb.put_ref(name)
+        self.mem.symdb.put_ref(name).id()
     }
 
     /**
@@ -1660,7 +1640,7 @@ impl R8VM {
      * - `err` : The error to initialize the Traceback with
      */
     pub fn unwind_traceback(&mut self, mut ip: usize, err: Error) -> Traceback {
-        let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
+        let mut pos_to_fn: Vec<(usize, SymID)> = Vec::new();
         for (name, func) in self.funcs.iter() {
             pos_to_fn.push((func.pos, *name));
         }
@@ -1724,7 +1704,7 @@ impl R8VM {
 
     // FIXME: This function is super slow, unoptimized, and only for debugging
     fn traceframe(&self, ip: usize) -> SymID {
-        let mut pos_to_fn: Vec<(usize, SymIDInt)> = Vec::new();
+        let mut pos_to_fn: Vec<(usize, SymID)> = Vec::new();
         for (name, func) in self.funcs.iter() {
             pos_to_fn.push((func.pos, *name));
         }
@@ -1756,7 +1736,7 @@ impl R8VM {
         let mut xs: Vec<_> = self.trace_counts.iter().collect();
         xs.sort_unstable_by_key(|(_, v)| **v);
         for (k, v) in xs.into_iter() {
-            println!("{} ({v})", self.sym_name(*k));
+            println!("{k} ({v})");
         }
     }
 
@@ -2101,7 +2081,8 @@ impl R8VM {
                     let d = cmp::min((mul as isize) * n, max as isize);
                     ip = ip.offset(d);
                 }
-                VCALL(sym, nargs) => {
+                VCALL(idx, nargs) => {
+                    let sym = self.mem.env[idx as usize].sym().unwrap();
                     match self.funcs.get(&sym) {
                         Some(func) => {
                             func.args.check(nargs).map_err(|e| e.op(sym.into()))?;
@@ -2200,7 +2181,6 @@ impl R8VM {
                 INT(n) => self.mem.push(PV::Int(n as Int)),
                 FLT(n) => self.mem.push(PV::Real(f32::from_bits(n))),
                 CHR(c) => self.mem.push(PV::Char(char::from_u32_unchecked(c))),
-                SYM(id) => self.mem.push(PV::Sym(id.into())),
                 SAV(num) => regs.save(&mut self.mem, num)?,
                 RST() => regs.restore(&mut self.mem),
                 TOP(d) => {
@@ -2250,7 +2230,7 @@ impl R8VM {
         for (idx, val) in self.mem.stack.iter().enumerate().rev() {
             let (idx, frame) = (idx as i64, self.frame as i64);
             write!(stdout, "{}", if idx == frame { " -> " } else { "    " })?;
-            writeln!(stdout, "{}: {}", idx - frame, val.lisp_to_string(&self.mem))?;
+            writeln!(stdout, "{}: {}", idx - frame, val.lisp_to_string())?;
         }
         Ok(())
     }
@@ -2370,61 +2350,7 @@ impl R8VM {
     }
 
     pub fn dump_fn_code(&self, mut name: SymID) -> Result<()> {
-        if let Some(mac_fn) = self.macros.get(&name.into()) {
-            name = *mac_fn;
-        }
-        let func = self.funcs.get(&name.into()).ok_or("No such function")?;
-        let start = func.pos as isize;
-
-        let get_jmp = |op: r8c::Op| {
-            use r8c::Op::*;
-            Some(match op {
-                JMP(d) => d,
-                JT(d) => d,
-                JN(d) => d,
-                JZ(d) => d,
-                JNZ(d) => d,
-                _ => return None,
-            }).map(|v| v as isize)
-        };
-
-        let fmt_special = |pos: isize, op: r8c::Op| {
-            use r8c::Op::*;
-            if let Some(delta) = get_jmp(op) {
-                return Some((op.name().to_lowercase(),
-                             vec![self.labels.get(&((pos + delta) as u32))
-                                  .map(|lbl| format!("{}", lbl))
-                                  .unwrap_or(format!("{}", delta))
-                                  .style_asm_label_ref()
-                                  .to_string()]))
-            }
-            let sym_name = |sym: SymIDInt| self.sym_name(sym.into()).to_string();
-            Some((op.name().to_lowercase(), match op {
-                VCALL(name, args) => vec![sym_name(name), args.to_string()],
-                SYM(sym) => vec![sym_name(sym)],
-                _ => return None
-            }))
-        };
-
-        let mut stdout = self.stdout.lock().unwrap();
-        writeln!(stdout, "{}({}):",
-                 self.sym_name(name).style_asm_fn(),
-                 func.args)?;
-        for i in start..start+(func.sz as isize) {
-            let op = self.pmem[i as usize];
-            if let Some(s) = self.labels.get(&(i as u32)) {
-                writeln!(stdout, "{}:", s.style_asm_label())?;
-            }
-            let (name, args) = fmt_special(i, op).unwrap_or(
-                (op.name().to_lowercase(),
-                 op.args().iter().map(|v| v.to_string()).collect())
-            );
-            writeln!(stdout, "    {} {}",
-                     name.style_asm_op(),
-                     args.join(", "))?;
-        }
-
-        Ok(())
+        todo!()
     }
 
     #[cfg(feature = "extra")]
@@ -2434,8 +2360,7 @@ impl R8VM {
         table.load_preset(TABLE_STYLE);
         table.set_header(vec!["Macro", "Function"]);
         for (&macro_sym, &fn_sym) in self.macros.iter() {
-            table.add_row(vec![self.sym_name(macro_sym.into()),
-                               self.sym_name(fn_sym)]);
+            table.add_row(vec![macro_sym.as_ref(), fn_sym.as_ref()]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
@@ -2451,7 +2376,7 @@ impl R8VM {
         table.load_preset(TABLE_STYLE);
         table.set_header(vec!["Symbol", "ID"]);
         for (id, name) in self.mem.symdb.iter() {
-            table.add_row(vec![name, &id.to_string()]);
+            table.add_row(vec![name, &format!("{:?}", id)]);
         }
 
         let mut stdout = self.stdout.lock().unwrap();
@@ -2467,10 +2392,8 @@ impl R8VM {
         table.load_preset(TABLE_STYLE);
         table.set_header(vec!["Symbol", "Value", "Index"]);
         for (&sym, &idx) in self.globals.iter() {
-            table.add_row(vec![self.sym_name(sym),
-                               &self.mem
-                                    .get_env(idx)
-                                    .lisp_to_string(&self.mem),
+            table.add_row(vec![sym.as_ref(),
+                               &self.mem.get_env(idx).lisp_to_string(),
                                &idx.to_string()]);
         }
 
@@ -2483,7 +2406,7 @@ impl R8VM {
     pub fn get_funcs_with_prefix(&self, prefix: &str) -> Vec<SymID> {
         let mut funcs = Vec::new();
         for (&sym, _) in self.funcs.iter() {
-            if self.sym_name(sym.into()).starts_with(prefix) {
+            if sym.as_ref().starts_with(prefix) {
                 funcs.push(sym.into())
             }
         }
@@ -2501,7 +2424,7 @@ impl R8VM {
         table.load_preset(TABLE_STYLE);
         table.set_header(vec!["Name", "Nargs", "Position"]);
         for (&sym, func) in self.funcs.iter() {
-            table.add_row(vec![self.sym_name(sym.into()),
+            table.add_row(vec![sym.as_ref(),
                                &func.args.to_string(),
                                &func.pos.to_string()]);
         }

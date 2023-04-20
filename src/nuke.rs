@@ -5,7 +5,6 @@ use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::compile::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 use crate::subrs::{IntoLisp, FromLisp, self};
-use crate::sym_db::SymDB;
 use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::io::{Write, Read};
@@ -180,30 +179,28 @@ macro_rules! fissile_types {
         }
 
         pub fn atom_fmt(p: *const NkAtom,
-                        db: &dyn SymDB,
                         visited: &mut VisitSet,
                         f: &mut fmt::Formatter<'_>) -> fmt::Result {
             if visited.get(&p).is_some() {
                 write!(f, "(...)")
             } else {
                 visited.insert(p);
-                with_atom!(p, { (*p).lisp_fmt(db, visited, f) },
+                with_atom!(p, { (*p).lisp_fmt(visited, f) },
                            $(($t,$path)),+)
             }
         }
 
         #[allow(dead_code)]
-        pub fn atom_to_str(p: *const NkAtom, db: &dyn SymDB) -> String {
+        pub fn atom_to_str(p: *const NkAtom) -> String {
             struct P(*const NkAtom);
             impl LispFmt for P {
                 fn lisp_fmt(&self,
-                            db: &dyn SymDB,
                             v: &mut VisitSet,
                             f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    atom_fmt(self.0, db, v, f)
+                    atom_fmt(self.0, v, f)
                 }
             }
-            P(p).lisp_to_string(db)
+            P(p).lisp_to_string()
         }
 
         $(unsafe impl Fissile for $path {
@@ -282,10 +279,9 @@ impl Traceable for Iter {
 
 impl LispFmt for Iter {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(iter {})", FmtWrap { val: &self.root, db })
+        write!(f, "(iter {})", FmtWrap { val: &self.root })
     }
 }
 
@@ -312,7 +308,7 @@ pub struct VTable {
     /// `Drop::drop`
     drop: unsafe fn(*mut u8),
     /// `LispFmt::lisp_fmt`
-    lisp_fmt: unsafe fn(*const u8, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    lisp_fmt: unsafe fn(*const u8, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// Serialize the object
@@ -360,15 +356,15 @@ impl GcRc {
         GcRc(init)
     }
 
-    pub fn inc(&mut self) {
+    pub fn inc(&self) {
         self.0.fetch_add(1, atomic::Ordering::SeqCst);
     }
 
-    pub fn is_dropped(&mut self) -> bool {
+    pub fn is_dropped(&self) -> bool {
         self.0.fetch_sub(1, atomic::Ordering::SeqCst) == 1
     }
 
-    pub fn is_owned(&mut self) -> bool {
+    pub fn is_owned(&self) -> bool {
         self.0.load(atomic::Ordering::SeqCst) == 1
     }
 }
@@ -396,9 +392,9 @@ impl Debug for Object {
 }
 
 impl LispFmt for Object {
-    fn lisp_fmt(&self, db: &dyn SymDB, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn lisp_fmt(&self, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
-            (self.vt.lisp_fmt)(self.mem, db, visited, f)
+            (self.vt.lisp_fmt)(self.mem, visited, f)
         }
     }
 }
@@ -537,7 +533,7 @@ impl Object {
                     },
                     trace: delegate! { trace(gray) },
                     update_ptrs: delegate! { update_ptrs(reloc) },
-                    lisp_fmt: delegate! { lisp_fmt(db, visited, f) },
+                    lisp_fmt: delegate! { lisp_fmt(visited, f) },
                     fmt: delegate! { fmt(f) },
                 })))
             },
@@ -734,7 +730,6 @@ impl Traceable for Continuation {
 
 impl LispFmt for Continuation {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ref stack) = self.stack {
@@ -746,7 +741,7 @@ impl LispFmt for Continuation {
                 let (idx, frame) = (idx as i64, self.frame as i64);
                 write!(f, "{}", if idx == frame { " -> " } else { "    " })?;
                 write!(f, "{}: ", idx - frame)?;
-                val.lisp_fmt(db, visited, f)?;
+                val.lisp_fmt(visited, f)?;
                 writeln!(f)?;
             }
         }
@@ -769,11 +764,10 @@ pub struct Intr {
 
 impl LispFmt for Intr {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", db.name(self.op.sym()))?;
-        self.arg.lisp_fmt(db, visited, f)
+        write!(f, "{}", self.op)?;
+        self.arg.lisp_fmt(visited, f)
     }
 }
 
@@ -793,7 +787,6 @@ pub struct Void;
 
 impl LispFmt for Void {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "void")

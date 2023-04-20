@@ -49,9 +49,7 @@ pub(crate) mod r8vm;
 #[macro_use]
 pub(crate) mod ast;
 pub(crate) mod opt;
-pub(crate) mod sintern;
 pub(crate) mod fmt;
-pub(crate) mod sym_db;
 pub(crate) mod subrs;
 pub(crate) mod compile;
 pub(crate) mod sexpr_parse;
@@ -81,12 +79,14 @@ pub(crate) mod stylize;
 
 #[cfg(feature = "derive")]
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
-pub use nkgc::{SPV, SymID};
+pub use nkgc::SPV;
+pub(crate) use nkgc::SymID;
+pub use swym::Sym;
 pub(crate) use nkgc::ObjRef;
 pub use nuke::Gc;
 pub type Str = Arc<str>;
-pub use sym_db::SymDB;
 pub use nuke::Userdata;
+use swym::SymRef;
 
 /** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)
@@ -96,10 +96,10 @@ pub use nuke::Userdata;
  */
 pub mod proc_macro_deps {
     pub use crate::r8vm::{R8VM, ArgSpec};
-    pub use crate::nkgc::{PV, ObjRef, SymID, Arena, Traceable};
+    pub use crate::nkgc::SymID;
+    pub use crate::nkgc::{PV, ObjRef, Arena, Traceable};
 }
 
-use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, Receiver, TryRecvError, RecvTimeoutError};
@@ -116,14 +116,12 @@ pub use crate::r8vm::{Args, EnumCall};
 pub(crate) use crate::r8vm::ArgSpec;
 use crate::nkgc::PV;
 pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, IntoSubr};
-pub use crate::error::Error as IError;
-pub use crate::error::Result as IResult;
-
-pub type Result<T> = std::result::Result<T, Error>;
+pub use crate::error::Error;
+pub use crate::error::Result;
 
 /// The easiest way to get started with SPAIK is `use spaik::prelude::*`
 pub mod prelude {
-    pub use super::{SymDB, SymID, Subr, IntoLisp, FromLisp,
+    pub use super::{Sym, Subr, IntoLisp, FromLisp,
                     Ignore, IntoSubr, SpaikPlug, Spaik, Gc};
     #[cfg(feature = "derive")]
     pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
@@ -143,14 +141,13 @@ trivial_trace!(ExampleObject);
 impl Userdata for ExampleObject {}
 impl fmt::LispFmt for ExampleObject {
     fn lisp_fmt(&self,
-                _db: &dyn sym_db::SymDB,
                 _visited: &mut fmt::VisitSet,
                 f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "(ExampleObject :x {} :y {}", self.x, self.y)
     }
 }
 impl IntoLisp for ExampleObject {
-    fn into_pv(self, mem: &mut proc_macro_deps::Arena) -> std::result::Result<PV, IError> {
+    fn into_pv(self, mem: &mut proc_macro_deps::Arena) -> Result<PV> {
         Ok(mem.put_pv(nuke::Object::new(self)))
     }
 }
@@ -160,59 +157,26 @@ type AnyResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub trait FmtErr<T> where T: Sized {
     /// Format an internal VM runtime error as a string, by replacing symbol IDs
     /// with their strings.
-    fn fmterr(self, db: &dyn SymDB) -> AnyResult<T>;
+    fn fmterr(self) -> AnyResult<T>;
 
     /// Like `Result::unwrap` but first runs `FmtErr::fmterr` on the error.
-    fn fmt_unwrap(self, db: &dyn SymDB) -> T;
+    fn fmt_unwrap(self) -> T;
 }
 
-impl<T> FmtErr<T> for std::result::Result<T, IError> {
+impl<T> FmtErr<T> for Result<T> {
     #[inline]
-    fn fmterr(self, db: &dyn SymDB) -> AnyResult<T> {
+    fn fmterr(self) -> AnyResult<T> {
         match self {
             Ok(x) => Ok(x),
-            Err(e) => Err(e.to_string(db).into())
+            Err(e) => Err(e.l_to_string().into())
         }
     }
 
     #[inline]
-    fn fmt_unwrap(self, db: &dyn SymDB) -> T {
-        self.fmterr(db).unwrap()
+    fn fmt_unwrap(self) -> T {
+        self.fmterr().unwrap()
     }
 }
-
-/// Formatted error message
-pub struct Error {
-    source: Box<IError>,
-    message: String,
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl Debug for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl Error {
-    fn from_source(src: IError, db: &dyn SymDB) -> Error {
-        Error {
-            message: src.to_string(db),
-            source: Box::new(src),
-        }
-    }
-
-    pub fn src(&self) -> IError {
-        (*self.source).clone()
-    }
-}
-
-impl std::error::Error for Error {}
 
 /// A SPAIK Context, this is the main way to use SPAIK
 pub struct Spaik {
@@ -225,7 +189,7 @@ pub trait AsSym {
 
 impl AsSym for &str {
     fn as_sym(&self, vm: &mut R8VM) -> SymID {
-        vm.mem.put_sym(self)
+        vm.mem.symdb.put_ref(self).id()
     }
 }
 
@@ -268,11 +232,9 @@ impl Spaik {
     {
         let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
-                         .ok_or(error!(UndefinedVariable, var: name))
-                         .map_err(|e| Error::from_source(e, self))?;
+                         .ok_or(error!(UndefinedVariable, var: name))?;
         self.vm.mem.get_env(idx)
                    .from_lisp(&mut self.vm.mem)
-                   .map_err(|e| Error::from_source(e, self))
     }
 
     /// Get a reference to a user-defined object type stored in the vm.
@@ -346,11 +308,9 @@ impl Spaik {
     {
         let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
-                         .ok_or(error!(UndefinedVariable, var: name))
-                         .map_err(|e| Error::from_source(e, self))?;
+                         .ok_or(error!(UndefinedVariable, var: name))?;
         let ObjRef(x): ObjRef<*mut T> = self.vm.mem.get_env(idx)
-                                                   .try_into()
-                                                   .map_err(|e| Error::from_source(e, self))?;
+                                                   .try_into()?;
         Ok(x)
     }
 
@@ -365,7 +325,6 @@ impl Spaik {
     {
         self.vm.eval(expr.as_ref())
                .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
-               .map_err(|e| Error::from_source(e, self))
     }
 
     /// Run an expression and ignore the result (unless there was an error.)
@@ -390,9 +349,9 @@ impl Spaik {
     /// - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
     ///           `<name>` as either a string or symbol
     #[inline]
-    pub fn load(&mut self, lib: impl AsSym) -> Result<SymID> {
+    pub fn load(&mut self, lib: impl AsSym) -> Result<SymRef> {
         let lib = lib.as_sym(&mut self.vm);
-        self.vm.load(lib).map_err(|e| Error::from_source(e, self))
+        self.vm.load(lib)
     }
 
     /// Load a SPAIK library from a string, this is useful both for embedding code
@@ -406,7 +365,7 @@ impl Spaik {
     /// - `lib` : Library symbol name, i.e the argument to `(load ...)`
     /// - `code` : The source-code contents inside `src_path`
     #[inline]
-    pub fn load_with<S>(&mut self, _src_path: S, _lib: SymID, _code: S) -> Result<SymID>
+    pub fn load_with<S>(&mut self, _src_path: S, _lib: Sym, _code: S) -> Result<Sym>
         where S: AsRef<str>
     {
         todo!()
@@ -421,7 +380,6 @@ impl Spaik {
     {
         self.vm.call_by_enum(enm)
                .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
-               .map_err(|e| Error::from_source(e, self))
     }
 
     /// Call a function by-enum and ignore the result
@@ -443,7 +401,6 @@ impl Spaik {
         let sym = sym.as_sym(&mut self.vm);
         self.vm.call(sym, args)
                .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
-               .map_err(|e| Error::from_source(e, self))
     }
 
     /// Call a function by-name an args and ignore the result.
@@ -476,7 +433,6 @@ impl Spaik {
         } else {
             PV::Nil.from_lisp(&mut self.vm.mem)
         }
-        .map_err(|e| Error::from_source(e, self))
     }
 
     /// Add to load path, this influences where `Spaik::load` will search for
@@ -487,13 +443,12 @@ impl Spaik {
     /// Panics if the `sys/load-path` variable is not defined, or is not a
     /// vector.
     pub fn add_load_path(&mut self, path: impl AsRef<str>) {
-        let p = self.vm.var(Builtin::SysLoadPath.sym())
-                       .fmt_unwrap(&self.vm);
+        let p = self.vm.var(Builtin::SysLoadPath.sym()).unwrap();
         let s = self.vm.mem.put_pv(path.as_ref().to_string());
         with_ref_mut!(p, Vector(v) => {
             (*v).push(s);
             Ok(())
-        }).fmt_unwrap(&self.vm);
+        }).unwrap();
     }
 
     /// Move the VM off-thread and return a `SpaikPlug` handle for IPC.
@@ -520,7 +475,7 @@ impl Spaik {
                     Event::Promise { res, cont } => {
                         let res = self.vm.apply_spv(cont, res);
                         if let Err(e) = res {
-                            log::error!("{}", e.to_string(&self.vm));
+                            log::error!("{}", e.l_to_string());
                         }
                     }
                     Event::Event { name, args } => {
@@ -530,7 +485,7 @@ impl Spaik {
                             Ok(r)
                         });
                         if let Err(e) = res {
-                            log::error!("{}", e.to_string(&self.vm));
+                            log::error!("{}", e.l_to_string());
                         }
                     }
                     Event::Command(cmd) => if let Err(e) = self.cmd(cmd) {
@@ -554,24 +509,12 @@ impl Default for Spaik {
     }
 }
 
-impl SymDB for Spaik {
-    #[inline]
-    fn name(&self, sym: SymID) -> std::borrow::Cow<str> {
-        Cow::Borrowed(self.vm.mem.symdb.name(sym).unwrap())
-    }
-
-    #[inline]
-    fn put_sym(&mut self, name: &str) -> SymID {
-        self.vm.mem.symdb.put_sym(name)
-    }
-}
-
 impl EnumCall for () {
     fn name(&self, _mem: &mut nkgc::Arena) -> SymID {
         unimplemented!()
     }
 
-    fn pushargs(self, _args: &[SymID], _mem: &mut nkgc::Arena) -> std::result::Result<(), IError> {
+    fn pushargs(self, _args: &[SymID], _mem: &mut nkgc::Arena) -> Result<()> {
         unimplemented!()
     }
 }
@@ -607,11 +550,11 @@ impl<T> DerefMut for Promise<T> {
 
 // #[cfg(feature = "serde")]
 impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
-    fn from_lisp(self, mem: &mut nkgc::Arena) -> std::result::Result<Promise<T>, IError> {
+    fn from_lisp(self, mem: &mut nkgc::Arena) -> Result<Promise<T>> {
         with_ref!(self, Cons(p) => {
             let msg = (*p).car;
             let cont = (*p).cdr;
-            let msg = deserialize::from_pv(msg, mem)?;
+            let msg = deserialize::from_pv(msg, &mem.symdb)?;
             if cont.type_of() != Builtin::Continuation.sym() {
                 return err!(TypeError,
                             expect: Builtin::Continuation,
@@ -653,13 +596,13 @@ struct send_message<T>
 unsafe impl<T> Subr for send_message<T>
     where T: DeserializeOwned + Clone + Send + 'static + Debug + Sized
 {
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> std::result::Result<PV, IError> {
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
         let (msg, r, cont) = match args {
-            [x, y] => (deserialize::from_pv(*x, &vm.mem)
+            [x, y] => (deserialize::from_pv(*x, &vm.mem.symdb)
                        .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
                        *x,
                        Some(vm.mem.make_extref(*y))),
-            [x] => (deserialize::from_pv(*x, &vm.mem)
+            [x] => (deserialize::from_pv(*x, &vm.mem.symdb)
                     .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
                     *x,
                     None),
@@ -898,7 +841,7 @@ mod tests {
         assert_eq!(dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
                                         y: dst_obj.y + src_obj.y });
         let expr = "(obj-y wrong-obj)";
-        let e = match vm.exec(expr).map_err(|e| e.src().kind().clone()) {
+        let e = match vm.exec(expr).map_err(|e| e.kind().clone()) {
             Ok(_) => panic!("Expression should fail: {expr}"),
             Err(ErrorKind::Traceback { tb }, ..) => tb.err.kind().clone(),
             Err(e) => panic!("Unexpected error for {expr}: {e:?}"),

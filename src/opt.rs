@@ -22,7 +22,7 @@ impl Optomat {
 struct IsModified(SymID);
 
 impl Visitor for IsModified {
-    fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+    fn visit(&mut self, elem: &mut AST2) -> crate::Result<()> {
         match elem.kind {
             M::Set(ref mut name, _) if *name == self.0 => bail!(None),
             _ => elem.visit(self)
@@ -40,7 +40,7 @@ impl LowerConst {
 }
 
 impl Visitor for LowerConst {
-    fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+    fn visit(&mut self, elem: &mut AST2) -> crate::Result<()> {
         match elem.kind {
             M::Loop(ref mut body) => {
                 let mut modf = IsModified(self.0);
@@ -66,7 +66,7 @@ impl Visitor for LowerConst {
 }
 
 impl Visitor for Optomat {
-    fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+    fn visit(&mut self, elem: &mut AST2) -> crate::Result<()> {
         macro_rules! cmp_op {
             ($a:ident $m:ident $b:ident $($q:tt)*) => {
                 match ($a.atom(), $b.atom()) {
@@ -159,12 +159,12 @@ impl Visitor for Optomat {
     }
 }
 
-struct FindLoopBreak<F: FnMut(&mut AST2) -> crate::IResult<()>>(F);
+struct FindLoopBreak<F: FnMut(&mut AST2) -> crate::Result<()>>(F);
 
 impl<F> Visitor for FindLoopBreak<F>
-    where F: FnMut(&mut AST2) -> crate::IResult<()>
+    where F: FnMut(&mut AST2) -> crate::Result<()>
 {
-    fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+    fn visit(&mut self, elem: &mut AST2) -> crate::Result<()> {
         match elem.kind {
             M::Break(ref mut opt) => if let Some(ref mut x) = opt {
                 (self.0)(x)?;
@@ -182,7 +182,7 @@ pub struct TCOptomat {
 }
 
 impl Visitor for TCOptomat {
-    fn visit(&mut self, elem: &mut AST2) -> crate::IResult<()> {
+    fn visit(&mut self, elem: &mut AST2) -> crate::Result<()> {
         match elem.kind {
             M::Defun(name, _, ref mut body) => {
                 self.names.push(name);

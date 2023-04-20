@@ -72,10 +72,10 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let mut vm = R8VM::new();
     let tests_path = "./tests";
     let test = vm.sym_id("test");
-    vm.eval(r#"(push sys/load-path "./lisp")"#).fmt_unwrap(&vm);
+    vm.eval(r#"(push sys/load-path "./lisp")"#).fmt_unwrap();
 
     if let Err(e) = vm.load(test) {
-        vmprintln!(vm, "{}", e.to_string(&vm));
+        vmprintln!(vm, "{}", e.l_to_string());
         return Err(e.into());
     }
 
@@ -86,7 +86,7 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
             Ok(_) => (),
             Err(e) => {
                 vmprintln!(vm, "Error when loading {}", path.display());
-                let s = e.to_string(&vm);
+                let s = e.l_to_string();
                 vmprintln!(vm, "{}", s);
                 return Err(s.into());
             },
@@ -100,10 +100,10 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let mut err_results = vec![];
 
     for func in test_fns.iter() {
-        let name = vm.sym_name(*func)
-                     .chars()
-                     .skip(test_fn_prefix.len())
-                     .collect::<String>();
+        let name = func.as_ref()
+                       .chars()
+                       .skip(test_fn_prefix.len())
+                       .collect::<String>();
         vmprintln!(vm, "starting test {} ...", name.style_info());
         match vm.call_spv(*func, ()) {
             Ok(res) => match TestResult::new(res, &mut vm) {
@@ -135,7 +135,7 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                 vmprintln!(vm, "test {} [{}]",
                            name.style_error(),
                            "✘".style_error());
-                for line in e.to_string(&vm).lines() {
+                for line in e.l_to_string().lines() {
                     vmprintln!(vm, "     {}", line);
                 }
                 err_results.push(TestError::RuntimeError { origin: e })

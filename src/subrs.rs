@@ -5,7 +5,6 @@ use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::{nuke::*, SymID};
 use crate::fmt::{LispFmt, VisitSet};
-use crate::sym_db::SymDB;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 
@@ -239,7 +238,6 @@ impl fmt::Debug for Box<dyn Subr> {
 
 impl LispFmt for Box<dyn Subr> {
     fn lisp_fmt(&self,
-                _: &dyn SymDB,
                 _: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(subr {})", self.name())

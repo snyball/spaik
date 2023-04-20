@@ -7,7 +7,7 @@ use std::{cmp, fmt, iter};
 use std::hash::{Hash, self, BuildHasher};
 use std::{ptr::NonNull, mem, ptr};
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use fnv::FnvHashSet;
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub struct Sym {
 impl Sym {
     // This is for creating &'static Sym. If you use this to create Syms on the
     // heap like in SwymDb, you will be leaking the alloc() because the
-    // ref-count is initialized to u32::MAX.
+    // ref-count is initialized to 2.
     //
     // Either allocate all Syms in bulk on a Vec<Sym>, and then free that later,
     // or store the Syms in a static array.
@@ -33,7 +33,7 @@ impl Sym {
         let len = st.len();
         Sym {
             ptr: unsafe { NonNull::new_unchecked(st.as_ptr() as *mut u8) },
-            rc: GcRc::new(AtomicU32::new(u32::MAX)),
+            rc: GcRc::new(AtomicU32::new(2000000)),
             len,
             sz: len
         }
@@ -48,7 +48,15 @@ struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
     len: usize,
 }
 
+#[derive(Hash)]
 pub struct SymRef(*mut Sym);
+
+impl From<&'static Sym> for SymRef {
+    fn from(value: &'static Sym) -> Self {
+        value.rc.inc();
+        Self(value as *const Sym as *mut Sym)
+    }
+}
 
 impl SymRef {
     /// This is only intended for R8VM-internal use, where we need the syms to
@@ -58,6 +66,12 @@ impl SymRef {
         let p = self.0;
         drop(self);
         SymID(p)
+    }
+}
+
+impl Display for SymRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_ref())
     }
 }
 
@@ -92,11 +106,15 @@ impl AsRef<str> for SymID {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
-pub(crate) struct SymID(*mut Sym);
+pub struct SymID(pub(crate) *mut Sym);
 
 impl SymID {
     pub fn new(sym: *mut Sym) -> Self {
         Self(sym)
+    }
+
+    pub fn as_int(&self) -> isize {
+        self.0 as isize
     }
 }
 
@@ -350,12 +368,21 @@ impl SwymDb {
         }
     }
 
+    pub fn put_static(&mut self, sym: &'static Sym) {
+        let key = SymKeyRef(SymRef(sym as *const Sym as *mut Sym));
+        self.map.insert(key);
+    }
+
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (*const Sym, &str)> {
+        self.map.iter().map(|key| (key.0.0 as *const Sym, key.0.as_ref()))
     }
 }
 

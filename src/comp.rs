@@ -509,8 +509,9 @@ impl R8Compiler {
                                 0, args)?;
             self.env_pop(1).unwrap();
         } else { // Call to symbol (virtual call)
+            let idx = self.new_const(PV::Sym(op));
             self.gen_call_nargs(ret, (r8c::OpName::VCALL,
-                                      &mut [op.into(), 0.into()]),
+                                      &mut [idx.into(), 0.into()]),
                                 1, args.into_iter())?;
         }
         Ok(())
@@ -874,6 +875,12 @@ impl R8Compiler {
         Ok(())
     }
 
+    pub fn new_const(&mut self, pv: PV) -> usize {
+        let idx = self.const_offset + self.consts.len();
+        self.consts.push(pv);
+        idx
+    }
+
     fn atom(&mut self, pv: PV) -> Result<()> {
         let op = match pv {
             PV::Bool(true) => chasm!(BOOL 1),
@@ -881,11 +888,9 @@ impl R8Compiler {
             PV::Char(c) => chasm!(CHR c as u32),
             PV::Int(i) => chasm!(INT i),
             PV::Real(r) => chasm!(FLT r.to_bits()),
-            PV::Sym(s) => chasm!(SYM s),
             PV::Nil => chasm!(NIL),
             pv => {
-                let idx = self.const_offset + self.consts.len();
-                self.consts.push(pv);
+                let idx = self.new_const(pv);
                 if pv.bt_type_of() == Builtin::String {
                     chasm!(GET idx) // Strings are immutable, no need to clone
                 } else {
@@ -995,8 +1000,7 @@ impl R8Compiler {
                 let num = DEFVAR_COUNT.fetch_add(1, Ordering::SeqCst);
                 let name = format!("<δ>-{num}");
                 self.new_fns.push((Sym::Str(name), spec, vec![], pos, sz));
-                let idx = self.const_offset + self.consts.len();
-                self.consts.push(PV::Nil);
+                let idx = self.new_const(PV::Nil);
                 self.new_envs.push((sym, idx, pos));
                 self.env.insert(sym, idx);
                 if ret {
@@ -1089,26 +1093,29 @@ impl R8Compiler {
     }
 
     pub fn take(&mut self, vm: &mut R8VM) -> Result<()> {
+        vm.mem.env.append(&mut self.consts);
         for op in self.code.iter_mut() {
             *op = match *op {
-                R8C::VCALL(sym, nargs) => match vm.get_func(sym.into()) {
-                    Some(funk) => {
-                        funk.args.check(nargs).map_err(|e| e.op(sym.into()))?;
-                        R8C::CALL(funk.pos.try_into()?, nargs)
+                R8C::VCALL(idx, nargs) => {
+                    let sym = vm.mem.get_env(idx as usize).sym().unwrap();
+                    match vm.get_func(sym) {
+                        Some(funk) => {
+                            funk.args.check(nargs).map_err(|e| e.op(sym))?;
+                            R8C::CALL(funk.pos.try_into()?, nargs)
+                        }
+                        None => *op
                     }
-                    None => *op
                 },
                 op => op
             };
         }
         vm.pmem.append(&mut self.code);
-        vm.mem.env.append(&mut self.consts);
         vm.srctbl.append(&mut self.srctbl);
         vm.labels.extend(self.labels.drain());
         for (name, spec, names, pos, sz) in self.new_fns.drain(..) {
             let name = match name {
                 Sym::Id(id) => id,
-                Sym::Str(s) => vm.mem.symdb.put(s),
+                Sym::Str(s) => vm.mem.symdb.put(s).id(),
             };
             vm.defun(name, spec, names, pos, sz);
         }

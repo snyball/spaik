@@ -1,6 +1,5 @@
-use crate::nkgc::SymID;
+use crate::{nkgc::SymID, swym::SwymDb};
 use crate::chasm::ASMOp;
-use crate::sintern::SIntern;
 use crate::nuke::NkSum;
 use serde::{Serialize, Deserialize};
 
@@ -70,7 +69,7 @@ pub struct LispModule {
 
 impl LispModule {
     pub fn new<ASM>(pmem_in: &[ASM],
-                    symtbl_in: &SIntern<SymID>,
+                    symtbl_in: &SwymDb,
                     iconsts: &[NkSum],
                     imports: Vec<Import>,
                     exports: Vec<Export>) -> LispModule
@@ -81,8 +80,10 @@ impl LispModule {
             op.write(&mut pmem).unwrap();
         }
         let mut symtbl = vec![];
+        #[allow(unused_variables)]
         for (sym, name) in symtbl_in.iter() {
-            symtbl.push(SymEntry { name: name.to_string(), sym });
+            #[allow(unreachable_code)]
+            symtbl.push(todo!("symbol entry for modules"));
         }
         let mut consts = vec![];
         consts.extend(iconsts.iter().map(|c| match c {

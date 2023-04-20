@@ -1,12 +1,9 @@
 use std::fmt;
 
-use crate::{fmt::{LispFmt, VisitSet}, SymDB};
-
-
+use crate::fmt::{LispFmt, VisitSet};
 
 impl LispFmt for glam::Vec2 {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(vec2 {} {})", self.x, self.y)
@@ -15,7 +12,6 @@ impl LispFmt for glam::Vec2 {
 
 impl LispFmt for glam::Vec3 {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(vec3 {} {} {})", self.x, self.y, self.z)
@@ -24,7 +20,6 @@ impl LispFmt for glam::Vec3 {
 
 impl LispFmt for glam::Vec4 {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(vec4 {} {} {} {})", self.x, self.y, self.z, self.w)
@@ -33,7 +28,6 @@ impl LispFmt for glam::Vec4 {
 
 impl LispFmt for glam::Mat2 {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let col0 = self.col(0);
@@ -44,7 +38,6 @@ impl LispFmt for glam::Mat2 {
 
 impl LispFmt for glam::Mat3 {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let col0 = self.col(0);
@@ -58,7 +51,6 @@ impl LispFmt for glam::Mat3 {
 }
 impl LispFmt for glam::Mat4 {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let col0 = self.col(0);
@@ -75,7 +67,6 @@ impl LispFmt for glam::Mat4 {
 
 impl LispFmt for glam::Quat {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(quat {} {} {} {})", self.x, self.y, self.z, self.w)

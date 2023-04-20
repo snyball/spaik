@@ -185,7 +185,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
                 static strs: &'static [&'static str; #num_idents] = &[#(#idents_str),*];
                 #(let mut #idents_lhs = Some(#idents_rhs));*;
                 for arg in args {
-                    let sym = &*mem.name(*arg);
+                    let sym = arg.as_ref();
                     let pv = match strs.iter().copied().position(|x| x == sym) {
                         #(Some(#count) => #idents
                                           .take()
@@ -217,7 +217,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
             fn name(&self, mem: &mut #root::proc_macro_deps::Arena) -> #root::proc_macro_deps::SymID {
                 use #root::IntoLisp;
                 match self {
-                    #(Self::#variant_2 #query_nil => mem.put_sym(#variant_name_s)),*
+                    #(Self::#variant_2 #query_nil => mem.symdb.put_ref(#variant_name_s).id()),*
                 }
             }
         }
@@ -249,7 +249,6 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
 
         impl #root::fmt::LispFmt for #name {
             fn lisp_fmt(&self,
-                        _db: &dyn #root::sym_db::SymDB,
                         _visited: &mut #root::fmt::VisitSet,
                         f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "({}", stringify!(#name))?;

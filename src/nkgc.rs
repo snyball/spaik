@@ -1,13 +1,12 @@
 //! The Nuclear Garbage Collector
 
-use crate::compile::{Builtin, BUILTIN_SYMBOLS};
+use crate::compile::{Builtin, BUILTIN_SYMS};
 use crate::r8vm::{RuntimeError, ArgSpec, R8VM};
 use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::subrs::FromLisp;
-use crate::sym_db::SymDB;
-use crate::sintern::SIntern;
+use crate::swym::SwymDb;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -131,59 +130,20 @@ impl<T: Userdata> TryFrom<PV> for ObjRef<*mut T> {
 
 impl LispFmt for String {
     fn lisp_fmt(&self,
-                _db: &dyn SymDB,
                 _visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-pub type SymIDInt = i32;
+pub type SymIDInt = isize;
 
 /// Symbol ID
-#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
-pub struct SymID {
-    id: SymIDInt,
-}
-
-impl SymID {
-    pub fn as_int(self) -> SymIDInt {
-        self.id
-    }
-}
-
-impl fmt::Debug for SymID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SymID({})", self.id)
-    }
-}
-
-impl From<SymID> for SymIDInt {
-    fn from(v: SymID) -> SymIDInt {
-        v.id
-    }
-}
-
-impl From<SymID> for Int {
-    #[allow(clippy::cast_lossless)]
-    fn from(v: SymID) -> Int {
-        v.id as Int
-    }
-}
-
-from_many! {
-    SymID |v| {
-        usize => { SymID { id: v as SymIDInt } },
-        i64 => { SymID { id: v as SymIDInt } },
-        u64 => { SymID { id: v as SymIDInt } },
-        i32 => { SymID { id: v as SymIDInt } },
-        u32 => { SymID { id: v as SymIDInt } }
-    }
-}
+pub use crate::swym::SymID;
 
 impl fmt::Display for SymID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "#{}", self.id)
+        write!(f, "{}", self.as_ref())
     }
 }
 
@@ -265,23 +225,22 @@ impl TryFrom<PV> for f64 {
     }
 }
 
-impl TryFrom<PV> for SymID {
-    type Error = crate::error::Error;
+impl From<bool> for PV {
+    fn from(value: bool) -> Self {
+        PV::Bool(value)
+    }
+}
 
+impl TryFrom<PV> for SymID {
+    type Error = Error;
     fn try_from(value: PV) -> Result<Self, Self::Error> {
-        if let PV::Sym(v) = value {
-            Ok(v)
+        if let PV::Sym(sid) = value {
+            Ok(sid)
         } else {
             err!(TypeError,
                  expect: Builtin::Symbol,
                  got: value.bt_type_of())
         }
-    }
-}
-
-impl From<bool> for PV {
-    fn from(value: bool) -> Self {
-        PV::Bool(value)
     }
 }
 
@@ -858,19 +817,18 @@ impl Hash for PV {
 
 impl LispFmt for PV {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             PV::Nil => write!(f, "nil"),
             PV::Bool(true) => write!(f, "true"),
             PV::Bool(false) => write!(f, "false"),
-            PV::Int(n) => write!(f, "{}", n),
-            PV::UInt(n) => write!(f, "{}u", n),
-            PV::Real(a) => write!(f, "{}", a),
-            PV::Sym(id) => write!(f, "{}", db.name(id)),
-            PV::Char(c) => write!(f, "(char {})", c),
-            PV::Ref(p) => atom_fmt(p, db, visited, f)
+            PV::Int(n) => write!(f, "{n}"),
+            PV::UInt(n) => write!(f, "{n}u"),
+            PV::Real(a) => write!(f, "{a}"),
+            PV::Sym(id) => write!(f, "{id}"),
+            PV::Char(c) => write!(f, "(char {c})"),
+            PV::Ref(p) => atom_fmt(p, visited, f)
         }
     }
 }
@@ -923,11 +881,10 @@ impl Traceable for Cons {
 
 impl LispFmt for Cons {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pv = NkAtom::make_ref(self as *const Cons as *mut Cons);
-        ConsIter { item: pv }.lisp_fmt(db, visited, f)
+        ConsIter { item: pv }.lisp_fmt(visited, f)
     }
 }
 
@@ -1020,14 +977,13 @@ pub enum ConsItem {
 
 impl LispFmt for ConsItem {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let x = match self {
             ConsItem::Car(x) => { write!(f, "Car(")?; x },
             ConsItem::Cdr(x) => { write!(f, "Cdr(")?; x },
         };
-        x.lisp_fmt(db, visited, f)?;
+        x.lisp_fmt(visited, f)?;
         write!(f, ")")
     }
 }
@@ -1140,7 +1096,7 @@ pub struct Stream {
 }
 
 impl LispFmt for Stream {
-    fn lisp_fmt(&self, _: &dyn SymDB, _: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn lisp_fmt(&self, _: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(stream {})", self.name)
     }
 }
@@ -1195,11 +1151,10 @@ impl Traceable for Lambda {
 
 impl LispFmt for Lambda {
     fn lisp_fmt(&self,
-                db: &dyn SymDB,
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(λ '(")?;
-        self.locals.iter().lisp_fmt(db, visited, f)?;
+        self.locals.iter().lisp_fmt(visited, f)?;
         write!(f, ") @")?;
         write!(f, "{})", self.pos)
     }
@@ -1220,7 +1175,7 @@ pub struct Arena {
     nuke: Nuke,
     tags: FnvHashMap<*mut NkAtom, Source>,
     pub(crate) stack: Vec<PV>,
-    pub(crate) symdb: SIntern<SymID>,
+    pub(crate) symdb: SwymDb,
     pub(crate) conts: Vec<Vec<PV>>,
     pub(crate) env: Vec<PV>,
     gray: Vec<*mut NkAtom>,
@@ -1271,17 +1226,6 @@ impl Default for Arena {
     }
 }
 
-// Delegate SymDB trait to Arena::symdb
-impl SymDB for Arena {
-    fn name(&self, sym: SymID) -> Cow<str> {
-        (&self.symdb as &dyn SymDB).name(sym)
-    }
-
-    fn put_sym(&mut self, name: &str) -> SymID {
-        self.symdb.put_ref(name)
-    }
-}
-
 impl Arena {
     pub fn new(memsz: usize) -> Arena {
         let (rx, tx) = channel();
@@ -1300,8 +1244,8 @@ impl Arena {
             conts: Vec::new(),
             extref_id_cnt: 0,
         };
-        for &blt in BUILTIN_SYMBOLS.iter() {
-            ar.symdb.put(String::from(blt));
+        for blt in BUILTIN_SYMS.iter() {
+            ar.symdb.put_static(blt);
         }
         ar
     }
@@ -1317,7 +1261,6 @@ impl Arena {
         self.env.shrink_to_fit();
         self.extref.shrink_to_fit();
         self.tags.shrink_to_fit();
-        self.symdb.shrink_to_fit();
     }
 
     pub fn dup(&mut self) -> Result<(), Error> {
@@ -1345,7 +1288,7 @@ impl Arena {
     pub fn dump_stack(&self) {
         println!("stack:");
         for (i, val) in self.stack.iter().enumerate().rev() {
-            println!("  {}: {}", i, val.lisp_to_string(self));
+            println!("  {}: {}", i, val.lisp_to_string());
         }
     }
 
@@ -1865,7 +1808,7 @@ impl SPV {
 
     pub fn to_string(&self, ar: &R8VM) -> String {
         let pv = self.pv(ar);
-        pv.lisp_to_string(ar)
+        pv.lisp_to_string()
     }
 
     pub fn bt_op(&self, ar: &R8VM) -> Option<Builtin> {

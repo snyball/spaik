@@ -7,7 +7,6 @@ use crate::perr::ParseErr;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use crate::nkgc::SymID;
 use crate::fmt::LispFmt;
-use crate::sym_db::{SymDB, SYM_DB};
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::mem::{discriminant, replace};
@@ -62,12 +61,18 @@ pub enum OpName {
 }
 
 impl OpName {
-    fn name<'a>(&self, db: &'a dyn SymDB) -> Cow<'a, str> {
+    fn name(&self) -> &str {
         match self {
-            OpName::OpStr(s) => Cow::Borrowed(s),
-            OpName::OpSym(s) => db.name(*s),
-            OpName::OpBt(s) => db.name(s.sym()),
+            OpName::OpStr(s) => s,
+            OpName::OpSym(s) => s.as_ref(),
+            OpName::OpBt(s) => s.as_str(),
         }
+    }
+}
+
+impl Display for OpName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 
@@ -155,26 +160,25 @@ impl MetaSet {
     }
 }
 
-pub struct FmtArgnOp<'a, 'b> {
+pub struct FmtArgnOp<'a> {
     pre: &'static str,
     post: &'static str,
     meta: &'a MetaSet,
-    db: &'b dyn SymDB,
 }
 
-impl fmt::Display for FmtArgnOp<'_, '_> {
+impl fmt::Display for FmtArgnOp<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(op) = self.meta.op() {
             write!(f, "{}", self.pre)?;
             if let Some(argn) = self.meta.op_argn() {
-                write!(f, "for argument {argn} of ({} ...)", op.name(self.db))?;
+                write!(f, "for argument {argn} of ({op} ...)")?;
             } else {
-                write!(f, "in {}", op.name(self.db))?;
+                write!(f, "in {op}")?;
             }
             write!(f, "{}", self.post)?;
         } else if let Some(var) = self.meta.var_name() {
             write!(f, "{}for special variable `{}'{}",
-                   self.pre, var.name(self.db), self.post)?;
+                   self.pre, var, self.post)?;
         }
         Ok(())
     }
@@ -371,14 +375,13 @@ impl Display for OneOf<'_> {
         if self.0.len() == 1 {
             write!(f, "{}", self.0[0])
         } else {
-            write!(f, "one of {}", self.0.iter().map(|bt| bt.get_str()).join(", "))
+            write!(f, "one of {}", self.0.iter().map(|bt| bt.as_str()).join(", "))
         }
     }
 }
 
-fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Result {
+fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     use ErrorKind::*;
-    let nameof = |sym| db.name(sym);
 
     fn plurs(num: impl Integer) -> &'static str {
         if num.is_one() {""} else {"s"}
@@ -388,34 +391,34 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
     match err.kind() {
         TypeError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
-                   nameof(expect.sym()),
-                   FmtArgnOp { pre: "", post: ", ", db, meta },
-                   nameof(got.sym()))?,
+                   expect.as_str(),
+                   FmtArgnOp { pre: "", post: ", ", meta },
+                   got.as_str())?,
         STypeError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
                    expect,
-                   FmtArgnOp { pre: "", post: ", ", db, meta },
+                   FmtArgnOp { pre: "", post: ", ", meta },
                    got)?,
         TypeNError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
                    OneOf(&expect),
-                   FmtArgnOp { pre: "", post: ", ", db, meta },
-                   nameof(got.sym()))?,
+                   FmtArgnOp { pre: "", post: ", ", meta },
+                   got.as_str())?,
         EnumError { expect, got } =>
             write!(f, "Type Error: Expected {:?} {}but got {}",
-                   expect.iter().copied().map(nameof).collect::<Vec<_>>(),
-                   FmtArgnOp { pre: "", post: ", ", db, meta },
-                   nameof(*got))?,
+                   expect.iter().copied().collect::<Vec<_>>(),
+                   FmtArgnOp { pre: "", post: ", ", meta },
+                   *got)?,
         UnexpectedDottedList => {
             write!(f, "Type Error: Unexpected dotted list")?;
             if let Some(op) = meta.op() {
-                write!(f, " given to {}", op.name(db))?
+                write!(f, " given to {}", op.name())?
             }
         }
         ArgError { expect, got_num } => {
             write!(f, "Argument Error: ")?;
             if let Some(op) = meta.op() {
-                write!(f, "{} ", op.name(db))?
+                write!(f, "{} ", op.name())?
             }
             match expect {
                 ArgSpec { nargs, nopt: 0, rest: false, .. } =>
@@ -432,62 +435,59 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
         IfaceNotImplemented { got } => {
             write!(f, "Operation Not Supported: (")?;
             if let Some(op) = meta.op() {
-                write!(f, "{}", op.name(db))?;
+                write!(f, "{}", op.name())?;
             } else {
                 write!(f, "?")?;
             }
             for arg in got.iter() {
-                write!(f, " {}", nameof(*arg))?;
+                write!(f, " {arg}")?;
             }
             write!(f, ")")?;
         }
         ArgTypeError {  expect, got } => {
             write!(f, "Argument Error: ")?;
             if let Some(op) = meta.op() {
-                write!(f, "{} ", op.name(db))?
+                write!(f, "{} ", op.name())?
             }
             write!(f, "expected ({}) but got ({})",
-                   expect.iter().map(|s| s.get_str()).join(" "),
-                   got.iter().map(|s| s.get_str()).join(" "))?;
+                   expect.iter().map(|s| s.as_str()).join(" "),
+                   got.iter().map(|s| s.as_str()).join(" "))?;
         }
         OutsideContext { op, ctx } =>
-            write!(f, "Syntax Error: Operator {} not allowed outside of {} context",
-                   nameof(op.sym()), nameof(ctx.sym()))?,
+            write!(f, "Syntax Error: Operator {op} not allowed outside of {ctx} context")?,
         SyntaxErrorMsg { msg } =>
-            write!(f, "Syntax Error: {}", msg)?,
+            write!(f, "Syntax Error: {msg}")?,
         ConversionError { from, to, val } =>
-            write!(f, "Conversion Error: Could not convert the {} value `{}' into {}",
-                    from, val, to)?,
+            write!(f, "Conversion Error: Could not convert the {from} value `{val}' into {to}")?,
         NotEnough { expect, got } => {
             write!(f, "Stack Error: ")?;
             if let Some(op) = meta.op() {
-                write!(f, "Operation `{}' ", op.name(db))?
+                write!(f, "Operation `{}' ", op.name())?
             }
-            write!(f, "expected {} stack element{}, but got {}",
-                   expect, plurs(*got), got)?;
+            let s = plurs(*got);
+            write!(f, "expected {expect} stack element{s}, but got {got}")?;
         }
         SomeError { msg } => write!(f, "Error: {}", msg)?,
         UndefinedFunction { name } =>
-            write!(f, "Undefined Function: Virtual call to undefined function {}",
-                   nameof(*name))?,
+            write!(f, "Undefined Function: Virtual call to undefined function {name}")?,
         UndefinedVariable { var } =>
-            write!(f, "Undefined Variable: {}", nameof(*var))?,
+            write!(f, "Undefined Variable: {var}")?,
         Unsupported { op } =>
             write!(f, "Unsupported operation: {}", op)?,
         ModuleLoadError { lib } =>
-            write!(f, "Module Error: Unable to load module {}", nameof(*lib))?,
+            write!(f, "Module Error: Unable to load module {lib}")?,
         ModuleNotFound { lib } =>
-            write!(f, "Module Not Found: Could not find {}, check sys/load-path", nameof(*lib))?,
+            write!(f, "Module Not Found: Could not find {lib}, check sys/load-path")?,
         ErrorKind::Traceback { tb } => {
             writeln!(f, "Traceback:")?;
             for TraceFrame { src, func, args } in tb.frames.iter() {
-                write!(f, "  - ({}", nameof(*func))?;
+                write!(f, "  - ({func}")?;
                 let mut it = args.iter().peekable();
                 if it.peek().is_some() {
                     write!(f, " ")?;
                 }
                 while let Some(arg) = it.next() {
-                    write!(f, "{}", arg.lisp_to_string(db))?;
+                    write!(f, "{}", arg.lisp_to_string())?;
                     if it.peek().is_some() {
                         write!(f, " ")?;
                     }
@@ -495,38 +495,37 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>, db: &dyn SymDB) -> fmt::Re
                 write!(f, ")")?;
                 writeln!(f, " {}", src)?;
             }
-            return fmt_error(&tb.err, f, db)
+            return fmt_error(&tb.err, f)
         },
         ErrorKind::IndexError { idx } =>
-            write!(f, "Index Error: No such index {}", idx)?,
+            write!(f, "Index Error: No such index {idx}")?,
         ErrorKind::Exit { status } =>
-            write!(f, "Exit: {}", nameof(*status))?,
+            write!(f, "Exit: {status}")?,
         ErrorKind::IOError { kind } => {
             let err: std::io::Error = (*kind).into();
             write!(f, "IOError: {}", err)?;
         }
         CharSpecError { spec } =>
-            write!(f, "Invalid char spec `{}', use exactly one character in the symbol",
-                   nameof(*spec))?,
+            write!(f, "Invalid char spec `{spec}', use exactly one character in the symbol")?,
         LibError { name } =>
-            write!(f, "Error: {}", nameof(*name))?,
+            write!(f, "Error: {name}")?,
         TrailingDelimiter { close } =>
-            write!(f, "Trailing Delimiter: Found trailing `{}' in input", close)?,
+            write!(f, "Trailing Delimiter: Found trailing `{close}' in input")?,
         UnclosedDelimiter { open } =>
-            write!(f, "Unclosed Delimiter: Found `{}' which was not closed in input", open)?,
+            write!(f, "Unclosed Delimiter: Found `{open}' which was not closed in input")?,
         TrailingModifiers { mods } =>
-            write!(f, "Trailing Modifiers: Unexpected end of input at: {}", mods)?,
+            write!(f, "Trailing Modifiers: Unexpected end of input at: {mods}")?,
         MacroexpandRecursionLimit { lim } =>
-            write!(f, "Macro Recursion Error: Macro expansion was recursive beyond {} levels", lim)?,
+            write!(f, "Macro Recursion Error: Macro expansion was recursive beyond {lim} levels")?,
         None => write!(f, "")?,
         SendError { obj_dbg } =>
             write!(f, "Send Error: {obj_dbg}")?,
         LinkError { dst, src: _ } =>
             write!(f, "Link Error: Symbol not found {dst}")?,
         MissingFeature { flag } =>
-            write!(f, "Missing Feature: The {} feature was not enabled for this version of SPAIK", flag)?,
+            write!(f, "Missing Feature: The {flag} feature was not enabled for this version of SPAIK")?,
         SyntaxError(kind) =>
-            write!(f, "Syntax Error: {}", kind)?,
+            write!(f, "Syntax Error: {kind}")?,
         IDError { id } =>
             write!(f, "ID Error: id number {id} was out of range for enum")?,
     }
@@ -604,26 +603,21 @@ impl Error {
     }
 
     /**
-    ** Get a string representation of the Error object.
-    **
-    ** # Arguments
-    **
-    ** - `mem` : If provided, this is used to retrieve symbol strings.
-    */
-    pub fn to_string(&self, db: &dyn SymDB) -> String {
+     * Get a string representation of the Error object.
+     */
+    pub fn l_to_string(&self) -> String {
         format!("{}", {
-            struct PVFmtWrap<'a, 'b> {
+            struct PVFmtWrap<'b> {
                 val: &'b Error,
-                db: &'a dyn SymDB
             }
 
-            impl fmt::Display for PVFmtWrap<'_, '_> {
+            impl fmt::Display for PVFmtWrap<'_> {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    fmt_error(self.val, f, self.db)
+                    fmt_error(self.val, f)
                 }
             }
 
-            PVFmtWrap { val: self, db }
+            PVFmtWrap { val: self }
         })
     }
 }
@@ -642,7 +636,7 @@ impl serde::de::Error for Error {
 
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_error(&Error::new(self.clone()), f, &SYM_DB)
+        fmt_error(&Error::new(self.clone()), f)
     }
 }
 
@@ -663,7 +657,7 @@ impl fmt::Display for Source {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_error(self, f, &SYM_DB)
+        fmt_error(self, f)
     }
 }
 

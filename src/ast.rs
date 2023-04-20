@@ -845,12 +845,9 @@ impl<'a> Excavator<'a> {
                 },
                 _ => Ok(AST2 { src, kind: v.into() })
             }
-            PV::Sym(n) if self.mem.symdb.name(n)
-                                        .map(|n| n.starts_with(':'))
-                                        .unwrap_or_default() ||
-                          n == Builtin::Nil.sym() => {
-                             Ok(AST2 { src, kind: v.into() })
-                          }
+            PV::Sym(n) if n.as_ref().starts_with(':') || n == Builtin::Nil.sym() => {
+                Ok(AST2 { src, kind: v.into() })
+            }
             PV::Sym(var) => Ok(AST2 { src, kind: M::Var(var) }),
             _ => Ok(AST2 { src, kind: v.into() })
         }
