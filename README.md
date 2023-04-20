@@ -9,6 +9,9 @@ This README contains many shorts snippets showing how SPAIK is used, while you
 can find complete examples in the [examples](examples) directory, and the more
 detailed API docs can be found at [docs.rs](https://docs.rs/spaik/0.2.2/spaik/).
 
+[You can also try SPAIK directly in your
+browser!](https://snyball.github.io/spaik-site/)
+
 ### Basic usage
 
 For basic usage, all you need are the `eval` and `exec` methods (`exec` is just
