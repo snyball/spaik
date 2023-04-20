@@ -83,14 +83,6 @@ impl Env {
     }
 }
 
-#[allow(unused)]
-enum Cond {
-    EqZero(SymID),
-    NeqZero(SymID),
-    When(PV),
-    Unless(PV),
-}
-
 macro_rules! builtins {
     ($(($sym:ident, $str:expr)),*) => {
         #[repr(u8)]
@@ -118,15 +110,6 @@ macro_rules! builtins {
                 idx as usize
             }]),*
         };
-
-        impl Builtin {
-            pub fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
-                Some(match s.as_ref() {
-                    $($str => Builtin::$sym),*,
-                    _ => return None
-                })
-            }
-        }
 
         impl std::fmt::Display for Builtin {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -271,6 +254,10 @@ impl Builtin {
 
     pub fn to_string(&self) -> String {
         String::from(self.get_str())
+    }
+
+    pub fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
+        BUILTIN_LOOKUP.get(s.as_ref()).copied()
     }
 }
 
