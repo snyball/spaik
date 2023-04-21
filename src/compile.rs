@@ -211,6 +211,10 @@ builtins! {
     (Mat3, "mat3"),
     (Mat4, "mat4"),
     (Quat, "quat"),
+    // NOTE: The zero-length string ε, *must* be a static builtin. Static
+    // symbols (e.g builtins) all have `sz: 0`, regardless of length. This
+    // system for telling static and dynamically allocated strings apart fails
+    // if ɛ can be created during runtime.
     (Epsilon, "")
 }
 

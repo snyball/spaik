@@ -2,6 +2,7 @@
 
 use core::slice;
 use std::collections::{HashSet, hash_set};
+use std::mem::ManuallyDrop;
 use std::sync::atomic::AtomicU32;
 use std::{cmp, fmt, iter};
 use std::hash::{Hash, self, BuildHasher};
@@ -33,9 +34,9 @@ impl Sym {
         let len = st.len();
         Sym {
             ptr: unsafe { NonNull::new_unchecked(st.as_ptr() as *mut u8) },
-            rc: GcRc::new(AtomicU32::new(2000000)),
+            rc: GcRc::new(AtomicU32::new(2)),
             len,
-            sz: len
+            sz: 0
         }
     }
 }
@@ -261,6 +262,9 @@ impl Drop for SymRef {
                 mem::align_of::<Sym>(),
             );
             if (*self.0).rc.is_dropped() {
+                if (*self.0).sz == 0 {
+                    panic!("Nothing to drop!");
+                }
                 drop(String::from_raw_parts((*self.0).ptr.as_ptr(),
                                             (*self.0).len,
                                             (*self.0).sz));
@@ -285,22 +289,12 @@ impl<H> Into<HashSet<String, H>> for SwymDb
     where HashSet<String, H>: Default,
           H: BuildHasher
 {
-    fn into(self) -> HashSet<String, H> {
+    fn into(mut self) -> HashSet<String, H> {
         let mut hm: HashSet<String, H> = Default::default();
-        for r in self.into_iter() {
-            hm.insert(r.into());
+        for r in self.map.drain() {
+            hm.insert(r.into_inner().into());
         }
         hm
-    }
-}
-
-impl IntoIterator for SwymDb {
-    type Item = SymRef;
-    type IntoIter = iter::Map<hash_set::IntoIter<SymKeyRef>,
-                              fn(SymKeyRef) -> SymRef>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.map.into_iter().map(|s| s.into_inner())
     }
 }
 
@@ -325,6 +319,7 @@ impl SwymDb {
                                             s.capacity()));
                 v.clone_inner()
             } else {
+                debug_assert_ne!(s.capacity(), 0);
                 let layout = Layout::for_value(&sym);
                 let p = alloc(layout) as *mut Sym;
                 if p.is_null() {
@@ -383,6 +378,17 @@ impl SwymDb {
 
     pub fn iter(&self) -> impl Iterator<Item = (*const Sym, &str)> {
         self.map.iter().map(|key| (key.0.0 as *const Sym, key.0.as_ref()))
+    }
+}
+
+impl Drop for SwymDb {
+    fn drop(&mut self) {
+        for key in self.map.drain() {
+            // Ignore statically allocated symbols
+            if unsafe { (*key.0.0).sz } == 0 {
+                mem::forget(key);
+            }
+        }
     }
 }
 

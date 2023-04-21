@@ -217,7 +217,8 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
             fn name(&self, mem: &mut #root::proc_macro_deps::Arena) -> #root::proc_macro_deps::SymID {
                 use #root::IntoLisp;
                 match self {
-                    #(Self::#variant_2 #query_nil => mem.symdb.put_ref(#variant_name_s).id()),*
+                    #(Self::#variant_2 #query_nil =>
+                      mem.symdb.put_ref(#variant_name_s).id()),*
                 }
             }
         }
