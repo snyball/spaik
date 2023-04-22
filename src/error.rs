@@ -3,7 +3,6 @@
 use num_traits::PrimInt as Integer;
 
 use crate::Builtin;
-use crate::perr::ParseErr;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use crate::nkgc::SymID;
 use crate::fmt::LispFmt;
@@ -242,6 +241,8 @@ pub enum ErrorKind {
     TrailingDelimiter { close: &'static str },
     UnclosedDelimiter { open: &'static str },
     TrailingModifiers { mods: String },
+    TrailingEscape,
+    NoSuchEscapeChar { chr: char },
     UnterminatedString,
     MacroexpandRecursionLimit { lim: usize },
     SyntaxError(SyntaxErrorKind),
@@ -531,6 +532,10 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "ID Error: id number {id} was out of range for enum")?,
         UnterminatedString =>
             write!(f, "Syntax Error: Unterminated string")?,
+        TrailingEscape =>
+            write!(f, "Syntax Error: Trailing escape character")?,
+        NoSuchEscapeChar { chr } =>
+            write!(f, "Syntax Error: No such escape character {chr:?}")?,
     }
 
     if let Some(src) = meta.src() {
@@ -689,14 +694,6 @@ impl From<TryFromIntError> for Error {
 impl From<std::convert::Infallible> for Error {
     fn from(_: std::convert::Infallible) -> Self {
         unreachable!();
-    }
-}
-
-impl From<ParseErr> for Error {
-    fn from(perr: ParseErr) -> Self {
-        Error::new(
-            ErrorKind::SyntaxErrorMsg { msg: perr.msg },
-        ).amend(Meta::Source(LineCol { line: perr.line, col: perr.col }))
     }
 }
 

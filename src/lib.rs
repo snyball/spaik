@@ -39,8 +39,6 @@ pub mod error;
 #[macro_use]
 pub(crate) mod utils;
 #[macro_use]
-pub(crate) mod perr;
-#[macro_use]
 pub(crate) mod chasm;
 #[macro_use]
 pub(crate) mod nkgc;

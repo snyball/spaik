@@ -1,15 +1,16 @@
 //! String parser
 
-use crate::perr::*;
-use crate::tok::*;
+use crate::Error;
+use crate::error::ErrorKind;
+use crate::Result;
+use crate::tok::Token;
 
-pub fn string_parse(tok: &Token) -> PResult<String> {
+pub fn string_parse(tok: &Token) -> Result<String> {
     let mut out = String::new();
     let mut it = tok.text.chars();
     while let Some(c) = it.next() {
         if c == '\\' {
-            let c = it.next().ok_or(
-                mperr!(tok, "Trailing escape character not allowed."))?;
+            let c = it.next().ok_or(Error::new(ErrorKind::TrailingEscape))?;
             match c {
                 '"' => out.push('"'),
                 'n' => out.push('\n'),
@@ -25,7 +26,7 @@ pub fn string_parse(tok: &Token) -> PResult<String> {
                 'F' => out.push('🔥'),
                 '🐙' => out.push_str("Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn"),
                 '🚀' => out.push_str("ＳＥＥ　ＹＯＵ　ＳＰＡＣＥ　ＣＯＷＢＯＹ . . ."),
-                _ => { out.push('\\'); out.push(c); }
+                _ => bail!(NoSuchEscapeChar { chr: c })
             }
         } else {
             out.push(c);
