@@ -1,4 +1,4 @@
-//! SPAIK Compiler
+//! Builtin Symbols
 
 use crate::{nkgc::SymID, Sym};
 use crate::swym;
