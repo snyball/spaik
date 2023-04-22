@@ -50,6 +50,7 @@ pub(crate) mod r8vm;
 pub(crate) mod ast;
 pub(crate) mod opt;
 pub(crate) mod fmt;
+pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod compile;
 pub(crate) mod sexpr_parse;

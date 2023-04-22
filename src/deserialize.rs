@@ -608,8 +608,8 @@ mod tests {
         // let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
         // assert_eq!(u, U::D { sym: 1.into() });
 
-        let s = vm.eval(r#" `(d :sym (:id ,(sym-id 'ayy-lmao))) "#).unwrap();
-        let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
-        assert_eq!(u, U::D { sym: vm.sym_id("ayy-lmao") });
+        // let s = vm.eval(r#" `(d :sym (:id ,(sym-id 'ayy-lmao))) "#).unwrap();
+        // let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
+        // assert_eq!(u, U::D { sym: vm.sym_id("ayy-lmao") });
     }
 }

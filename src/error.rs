@@ -242,6 +242,7 @@ pub enum ErrorKind {
     TrailingDelimiter { close: &'static str },
     UnclosedDelimiter { open: &'static str },
     TrailingModifiers { mods: String },
+    UnterminatedString,
     MacroexpandRecursionLimit { lim: usize },
     SyntaxError(SyntaxErrorKind),
     IDError { id: usize },
@@ -528,6 +529,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Syntax Error: {kind}")?,
         IDError { id } =>
             write!(f, "ID Error: id number {id} was out of range for enum")?,
+        UnterminatedString =>
+            write!(f, "Syntax Error: Unterminated string")?,
     }
 
     if let Some(src) = meta.src() {
