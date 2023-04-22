@@ -16,7 +16,7 @@ use crate::{
     sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     FmtErr, tok::Token, limits, comp::R8Compiler,
-    chasm::LblMap, opt::Optomat, swym::SymRef};
+    chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
 #[cfg(feature = "freeze")]
@@ -720,7 +720,7 @@ pub struct R8VM {
     pub mem: Arena,
     pub(crate) globals: FnvHashMap<SymID, usize>,
     pub(crate) trace_counts: FnvHashMap<SymID, usize>,
-    tok_tree: Fragment,
+    tok_tree: tokit::Fragment,
     reader_macros: FnvHashMap<String, SymID>,
 
     // Named locations/objects
@@ -746,7 +746,7 @@ impl Default for R8VM {
         R8VM {
             pmem: Default::default(),
             reader_macros: Default::default(),
-            tok_tree: standard_lisp_tok_tree(),
+            tok_tree: tokit::standard_lisp_tok_tree(),
             consts: Default::default(),
             catch: Default::default(),
             mem: Default::default(),
@@ -1233,7 +1233,8 @@ impl R8VM {
     }
 
     pub fn read_compile(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV> {
-        let toks = tokenize(sexpr, &self.tok_tree)?;
+        let tok_tree = self.tok_tree.clone();
+        let mut tokit = tokit::Toker::new(sexpr, &tok_tree);
         let mut mods: Vec<SymID> = vec![];
         let mut close = vec![];
         let mut pmods = vec![];
@@ -1273,7 +1274,6 @@ impl R8VM {
                 }
             };
         }
-        let mut tokit = toks.into_iter().peekable();
         let mut modfn_pos = 0;
         while let Some(tok) = tokit.next() {
             let Token { line, col, text } = tok;
@@ -1395,6 +1395,9 @@ impl R8VM {
         if !close.is_empty() {
             bail!(UnclosedDelimiter { open: "(" })
         }
+        tokit.check_error().map_err(|e| if let Some(file) = file {
+            e.amend(Meta::SourceFile(file))
+        } else { e })?;
         assert_no_trailing!();
         if modfn_pos != 0 {
             Ok(call_with!(self, modfn_pos, 0, {}))
@@ -1532,9 +1535,8 @@ impl R8VM {
                 let PV::Ref(p) = v else { unreachable!() };
                 let cns = unsafe { fastcast_mut::<Cons>(p) };
                 unsafe {
-                    let dst = if dot { addr_of_mut!((*cns).cdr) }
-                              else   { addr_of_mut!((*cns).car) };
-                    *dst = match ncar {
+                    *(if dot { addr_of_mut!((*cns).cdr) }
+                      else   { addr_of_mut!((*cns).car) }) = match ncar {
                         Ok(x) => x,
                         Err(e) => {
                             self.mem.pop().unwrap();

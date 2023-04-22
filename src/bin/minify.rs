@@ -11,6 +11,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Some(_) = argv.next() else { usage() };
     let Some(arg) = argv.next() else { usage() };
     let code = fs::read_to_string(arg)?;
-    minify(&code, &mut stdout().lock())?;
+    spaik::tokit_minify(&code, &mut stdout().lock())?;
     Ok(())
 }
