@@ -1,88 +1,11 @@
 //! SPAIK Compiler
 
 use crate::{nkgc::SymID, Sym};
-use crate::error::Source;
 use crate::swym;
-use fnv::FnvHashMap;
 use std::fmt::{Display, self, LowerHex};
-use std::hash::Hash;
 use std::mem;
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
-
-type VarIdx = u32;
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum BoundVar {
-    Local(VarIdx),
-    Env(VarIdx),
-}
-
-#[derive(Default, Debug)]
-pub struct Env {
-    vars: Vec<SymID>,
-    statics: FnvHashMap<SymID, usize>,
-}
-
-// FIXME: Statics and locals need to be merged somehow, right
-//        now a local (let) always takes precedence over a static
-//        variable (intr::define-static)
-impl Env {
-    pub fn new(args: Vec<SymID>) -> Env {
-        let mut env = Env {
-            vars: args,
-            statics: FnvHashMap::default()
-        };
-        env.defvar(Builtin::IP.sym());
-        env.defvar(Builtin::Frame.sym());
-        env
-    }
-
-    pub fn len(&self) -> usize {
-        self.vars.len()
-    }
-
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn none() -> Env {
-        Env { vars: vec![], statics: FnvHashMap::default() }
-    }
-
-    pub fn defvar(&mut self, var: SymID) {
-        self.vars.push(var);
-    }
-
-    pub fn anon(&mut self) -> usize {
-        let pos = self.vars.len();
-        self.vars.push(Builtin::Epsilon.sym());
-        pos
-    }
-
-    pub fn defenv(&mut self, var: SymID, env_idx: usize) {
-        self.statics.insert(var, env_idx);
-    }
-
-    pub fn pop(&mut self, n: usize) {
-        let new_top = self.vars.len() - n;
-        self.vars.truncate(new_top);
-    }
-
-    pub fn get_env_idx(&self, var: SymID) -> Option<usize> {
-        self.statics.get(&var).copied()
-    }
-
-    pub fn get_idx(&self, var: SymID) -> Option<VarIdx> {
-        for (i, &v) in self.vars.iter().enumerate().rev() {
-            if var == v {
-                return Some(i as VarIdx);
-            }
-        }
-        None
-    }
-}
 
 macro_rules! builtins {
     ($(($sym:ident, $str:expr)),*) => {
@@ -286,5 +209,3 @@ impl std::fmt::Display for Builtin {
         write!(f, "{}", self.as_str())
     }
 }
-
-pub type SourceList = Vec<(usize, Source)>;

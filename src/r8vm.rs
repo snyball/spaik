@@ -8,7 +8,8 @@ use crate::module::{LispModule, Export, ExportKind};
 use crate::{
     ast::{Excavator, Visitor},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
-    compile::{Builtin, SourceList},
+    compile::Builtin,
+    comp::SourceList,
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
     fmt::LispFmt,
     nuke::*,
