@@ -1873,8 +1873,8 @@ impl R8VM {
         // }
         let mut run = || loop {
             // let op = *ip;
-            let ipd = self.ip_delta(ip);
-            let op = *self.pmem.get_unchecked(ipd);
+            // let ipd = self.ip_delta(ip);
+            // let op = *self.pmem.get_unchecked(ipd);
 
             // if self.debug_mode {
             //     match op {
@@ -1888,7 +1888,7 @@ impl R8VM {
             //     println!("  {}", op);
             // }
 
-            // let op = *ip;
+            let op = *ip;
             ip = ip.offset(1);
             match op {
                 // List processing

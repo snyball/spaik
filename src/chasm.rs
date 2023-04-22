@@ -75,9 +75,7 @@ macro_rules! chasm_primitives {
 chasm_primitives![u8, i8,
                   u16, i16,
                   u32, i32,
-                  // u64, i64,
-                  usize, isize
-];
+                  usize, isize];
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Lbl(u32, &'static str);
