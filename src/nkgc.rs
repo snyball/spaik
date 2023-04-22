@@ -6,7 +6,7 @@ use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::subrs::FromLisp;
-use crate::swym::SwymDb;
+use crate::swym::{SwymDb, SymRef};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -1248,6 +1248,14 @@ impl Arena {
             ar.symdb.put_static(blt);
         }
         ar
+    }
+
+    pub fn put_sym(&mut self, s: &str) -> SymRef {
+        self.symdb.put_ref(s)
+    }
+
+    pub fn put_sym_id(&mut self, s: &str) -> SymID {
+        self.symdb.put_ref(s).id()
     }
 
     pub fn print_state(&self) {
