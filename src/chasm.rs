@@ -53,7 +53,7 @@ macro_rules! chasm_primitives {
                     // n.try_into()?`.
                     $(ASMPV::$t(ref mut v) => { let k = *v;
                                                 *v = n.try_into()?;
-                                                *v = k + *v; }),+
+                                                *v += k; }),+
                 }
                 Ok(())
             }
