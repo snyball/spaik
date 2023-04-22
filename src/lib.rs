@@ -53,9 +53,8 @@ pub(crate) mod fmt;
 pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod compile;
-pub(crate) mod sexpr_parse;
-pub use sexpr_parse::minify;
-pub use tokit::minify as tokit_minify;
+pub(crate) mod string_parse;
+pub use tokit::minify;
 pub(crate) mod tok;
 #[macro_use]
 pub(crate) mod nuke;

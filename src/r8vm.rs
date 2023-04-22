@@ -13,7 +13,7 @@ use crate::{
     fmt::LispFmt,
     nuke::*,
     nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int},
-    sexpr_parse::{sexpr_modifier_bt, string_parse},
+    string_parse::string_parse,
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     FmtErr, tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
@@ -975,6 +975,16 @@ unsafe impl Send for R8VM {}
 // NOTE: This only applies to calls made with apply_spv, calls internally in the
 // VM bytecode are unbounded.
 const MAX_CLZCALL_ARGS: u16 = 32;
+
+fn sexpr_modifier_bt(tok: &str) -> Option<Builtin> {
+    Some(match tok {
+        "'" => Builtin::Quote,
+        "`" => Builtin::Quasi,
+        "," => Builtin::Unquote,
+        ",@" => Builtin::USplice,
+        _ => return None,
+    })
+}
 
 #[inline]
 const fn clzcall_pad_dip(nargs: u16) -> usize {
