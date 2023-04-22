@@ -166,9 +166,7 @@ impl<F> Visitor for FindLoopBreak<F>
 {
     fn visit(&mut self, elem: &mut AST2) -> crate::Result<()> {
         match elem.kind {
-            M::Break(ref mut opt) => if let Some(ref mut x) = opt {
-                (self.0)(x)?;
-            }
+            M::Break(Some(ref mut x)) => (self.0)(x)?,
             M::Loop(_) => (),
             _ => (),
         }
