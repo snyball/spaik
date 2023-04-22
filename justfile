@@ -1,6 +1,6 @@
 set positional-arguments
 
-export MIRIFLAGS := "-Zmiri-disable-isolation"
+export MIRIFLAGS := "-Zmiri-disable-isolation -Zmiri-tree-borrows"
 export CARGO_TARGET_WASM32_WASI_RUNNER := "tools/wasmtime.sh"
 export WASMTIME_BACKTRACE_DETAILS := "1"
 
