@@ -1,4 +1,3 @@
-use crate::FmtErr;
 use crate::r8vm::R8VM;
 use crate::SPV;
 use crate::Builtin;
@@ -72,10 +71,10 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let mut vm = R8VM::new();
     let tests_path = "./tests";
     let test = vm.sym_id("test");
-    vm.eval(r#"(push sys/load-path "./lisp")"#).fmt_unwrap();
+    vm.eval(r#"(push sys/load-path "./lisp")"#).unwrap();
 
     if let Err(e) = vm.load(test) {
-        vmprintln!(vm, "{}", e.l_to_string());
+        vmprintln!(vm, "{e}");
         return Err(e.into());
     }
 
@@ -86,9 +85,8 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
             Ok(_) => (),
             Err(e) => {
                 vmprintln!(vm, "Error when loading {}", path.display());
-                let s = e.l_to_string();
-                vmprintln!(vm, "{}", s);
-                return Err(s.into());
+                vmprintln!(vm, "{e}");
+                return Err(e.to_string().into());
             },
         }
     }
@@ -135,7 +133,7 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                 vmprintln!(vm, "test {} [{}]",
                            name.style_error(),
                            "✘".style_error());
-                for line in e.l_to_string().lines() {
+                for line in e.to_string().lines() {
                     vmprintln!(vm, "     {}", line);
                 }
                 err_results.push(TestError::RuntimeError { origin: e })

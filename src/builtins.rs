@@ -27,13 +27,6 @@ macro_rules! builtins {
         static BUILTIN_LOOKUP: phf::Map<&'static str, Builtin> = phf::phf_map! {
             $($str => Builtin::$sym),*
         };
-
-        static BUILTIN_SYM_LOOKUP: phf::Map<&'static str, &'static swym::Sym> = phf::phf_map! {
-            $($str => &BUILTIN_SYMS[{
-                let idx: u8 = unsafe { mem::transmute(Builtin::$sym) };
-                idx as usize
-            }]),*
-        };
     }
 }
 
@@ -189,11 +182,6 @@ impl Builtin {
         let id: u8 = unsafe { mem::transmute(*self) };
         let idx: usize = id.into();
         (&BUILTIN_SYMS[idx]).into()
-    }
-
-    pub(crate) fn swym_from_str<S: AsRef<str>>(s: S) -> swym::SymID {
-        let rf: &'static swym::Sym = BUILTIN_SYM_LOOKUP[s.as_ref()];
-        swym::SymID::new(rf as *const swym::Sym as *mut swym::Sym)
     }
 
     pub fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {

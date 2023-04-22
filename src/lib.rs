@@ -152,32 +152,6 @@ impl IntoLisp for ExampleObject {
     }
 }
 
-type AnyResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-pub trait FmtErr<T> where T: Sized {
-    /// Format an internal VM runtime error as a string, by replacing symbol IDs
-    /// with their strings.
-    fn fmterr(self) -> AnyResult<T>;
-
-    /// Like `Result::unwrap` but first runs `FmtErr::fmterr` on the error.
-    fn fmt_unwrap(self) -> T;
-}
-
-impl<T> FmtErr<T> for Result<T> {
-    #[inline]
-    fn fmterr(self) -> AnyResult<T> {
-        match self {
-            Ok(x) => Ok(x),
-            Err(e) => Err(e.l_to_string().into())
-        }
-    }
-
-    #[inline]
-    fn fmt_unwrap(self) -> T {
-        self.fmterr().unwrap()
-    }
-}
-
 /// A SPAIK Context, this is the main way to use SPAIK
 pub struct Spaik {
     vm: R8VM
@@ -475,7 +449,7 @@ impl Spaik {
                     Event::Promise { res, cont } => {
                         let res = self.vm.apply_spv(cont, res);
                         if let Err(e) = res {
-                            log::error!("{}", e.l_to_string());
+                            log::error!("{e}");
                         }
                     }
                     Event::Event { name, args } => {
@@ -485,7 +459,7 @@ impl Spaik {
                             Ok(r)
                         });
                         if let Err(e) = res {
-                            log::error!("{}", e.l_to_string());
+                            log::error!("{e}");
                         }
                     }
                     Event::Command(cmd) => if let Err(e) = self.cmd(cmd) {

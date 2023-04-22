@@ -607,25 +607,6 @@ impl Error {
             _ => self
         }
     }
-
-    /**
-     * Get a string representation of the Error object.
-     */
-    pub fn l_to_string(&self) -> String {
-        format!("{}", {
-            struct PVFmtWrap<'b> {
-                val: &'b Error,
-            }
-
-            impl fmt::Display for PVFmtWrap<'_> {
-                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    fmt_error(self.val, f)
-                }
-            }
-
-            PVFmtWrap { val: self }
-        })
-    }
 }
 
 impl serde::ser::Error for Error {

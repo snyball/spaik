@@ -16,7 +16,7 @@ use crate::{
     nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int},
     string_parse::string_parse,
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
-    FmtErr, tok::Token, limits, comp::R8Compiler,
+    tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
@@ -1109,7 +1109,7 @@ impl R8VM {
 
         let src = Some(Cow::Borrowed("<ζ>-core"));
         let core = include_str!("../lisp/core.lisp");
-        vm.read_compile(core, src).fmt_unwrap();
+        vm.read_compile(core, src).unwrap();
 
         vm
     }

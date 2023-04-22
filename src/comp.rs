@@ -161,7 +161,6 @@ pub struct R8Compiler {
     units: Vec<ChASM<R8C>>,
     srctbl: SourceList,
     estack: Vec<Env>,
-    fnstack: Vec<FnCtx>,
     loops: Vec<LoopCtx>,
     const_offset: usize,
     consts: Vec<PV>,
@@ -172,12 +171,6 @@ pub struct R8Compiler {
     fns: FnvHashMap<SymID, Func>,
     #[allow(dead_code)]
     debug_mode: bool,
-}
-
-#[derive(Debug, Clone)]
-struct FnCtx {
-    start: Lbl,
-    spec: ArgSpec,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -256,7 +249,6 @@ impl R8Compiler {
         let mut cc = R8Compiler {
             const_offset: 0,
             debug_mode: vm.get_debug_mode(),
-            fnstack: Default::default(),
             new_fns: Default::default(),
             estack: Default::default(),
             labels: Default::default(),
