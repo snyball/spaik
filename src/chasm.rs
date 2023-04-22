@@ -1,5 +1,6 @@
 //! ChASM /ˈkæz(ə)m/, an assembler
 
+use crate::Builtin;
 use crate::nkgc::SymID;
 use std::io::{Read, Write, self};
 use std::fmt::{self, Display};
@@ -43,14 +44,20 @@ macro_rules! chasm_primitives {
             }
         }
 
-        // impl ASMPV {
-        //     pub fn add_mut(&mut self, n: isize) -> Result<()> {
-        //         match self {
-        //             $(ASMPV::$t(ref mut v) => *v += n.try_into()?),+
-        //         }
-        //         Ok(())
-        //     }
-        // }
+        impl ASMPV {
+            pub fn add_mut(&mut self, n: isize) -> Result<()> {
+                match self {
+                    // This is written in a really strange way to aid
+                    // type-inference. Rust seems to not be able to figure out
+                    // either `*v += n.try_into()?` or `*v = *v +
+                    // n.try_into()?`.
+                    $(ASMPV::$t(ref mut v) => { let k = *v;
+                                                *v = n.try_into()?;
+                                                *v = k + *v; }),+
+                }
+                Ok(())
+            }
+        }
 
         $(impl From<$t> for Arg {
             fn from(v: $t) -> Arg { Arg::ASMPV(ASMPV::$t(v)) }
@@ -85,6 +92,16 @@ impl fmt::Display for Lbl {
 pub enum Arg {
     Lbl(Lbl),
     ASMPV(ASMPV),
+}
+
+impl Arg {
+    pub fn add_mut(&mut self, v: isize) -> Result<()> {
+        match self {
+            Self::Lbl(_) => bail!(TypeError { expect: Builtin::Number,
+                                              got: Builtin::Label }),
+            Self::ASMPV(pv) => pv.add_mut(v)
+        }
+    }
 }
 
 impl From<Lbl> for Arg {

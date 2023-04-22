@@ -733,16 +733,15 @@ impl R8Compiler {
         Ok(())
     }
 
-    // fn popa(&mut self, num: usize) {
-    //     match self.unit().last_mut() {
-    //         Some(ChOp { id: r8c::OpName::POPA, ref mut args }) => {
-    //             args[1] += num;
-    //         },
-    //         _ => {
-    //             todo!()
-    //         }
-    //     }
-    // }
+    fn popa(&mut self, num: usize) {
+        match self.unit().last_mut() {
+            Some(ChOp { id: r8c::OpName::POPA, ref mut args }) => {
+                args[1].add_mut(num as isize)
+                       .expect("Invalid popa instruction");
+            },
+            _ => { self.unit().op(chasm!(POPA 1, num)); },
+        }
+    }
 
     fn bt_let(&mut self, ret: bool, decls: Vec<VarDecl>, prog: Progn) -> Result<()> {
         let len = decls.len();
@@ -752,7 +751,7 @@ impl R8Compiler {
         }
         self.compile_seq(ret, prog)?;
         if ret {
-            self.unit().op(chasm!(POPA 1, len));
+            self.popa(len);
         } else {
             self.unit().op(chasm!(POP len));
         }
@@ -790,7 +789,7 @@ impl R8Compiler {
         let LoopCtx { end, ret, height, .. } = outer;
         let dist = self.with_env(|env| env.len())? - height;
         let popa = |cc: &mut R8Compiler| if dist > 0 {
-            cc.asm_op(chasm!(POPA 1, dist-1))
+            cc.popa(dist-1);
         };
         match arg {
             Some(code) if ret => {
@@ -888,7 +887,7 @@ impl R8Compiler {
                         self.asm_op(chasm!(GET idx));
                         let idx = self.with_env(|env| env.anon())?;
                         self.asm_op(chasm!(NXT idx));
-                        self.asm_op(chasm!(POPA 1, 1));
+                        self.popa(1);
                         self.env_pop(1)?;
                     }
                 }
@@ -897,7 +896,7 @@ impl R8Compiler {
                 self.compile(true, AST2 { kind: init, src })?;
                 let idx = self.with_env(|env| env.anon())?;
                 self.asm_op(chasm!(NXT idx));
-                self.asm_op(chasm!(POPA 1, 1));
+                self.popa(1);
                 self.env_pop(1)?;
             }
         };

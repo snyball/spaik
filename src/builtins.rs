@@ -107,6 +107,7 @@ builtins! {
     (KwOk, ":ok"),
     (Fail, "fail"),
     (Symbol, "symbol"),
+    (Label, "label"),
     (Char, "char"),
     (CallCC, "call/cc"),
     (Integer, "integer"),
