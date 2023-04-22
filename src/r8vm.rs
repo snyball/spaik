@@ -22,6 +22,7 @@ use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
+use crate::stylize::Stylize;
 
 chasm_def! {
     r8c:
@@ -169,7 +170,7 @@ impl RuntimeError {
     }
 }
 
-fn tostring(vm: &R8VM, x: PV) -> String {
+fn tostring(x: PV) -> String {
     match x {
         PV::Ref(y) => match to_fissile_ref(y) {
             NkRef::String(s) => unsafe { (*s).clone() },
@@ -249,7 +250,7 @@ mod sysfns {
     use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success};
     use super::{R8VM, tostring, ArgSpec};
 
-    fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String
+    fn join_str<IT, S>(args: IT, sep: S) -> String
         where IT: Iterator<Item = PV>, S: AsRef<str>
     {
         let mut out = String::new();
@@ -276,7 +277,7 @@ mod sysfns {
 
     std_subrs! {
         fn println(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-            let s = tostring(vm, *x);
+            let s = tostring(*x);
             vm.println(&s)?;
             Ok(*x)
         }
@@ -292,7 +293,7 @@ mod sysfns {
         }
 
         fn print(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-            let s = tostring(vm, *x);
+            let s = tostring(*x);
             vm.print(&s)?;
             Ok(*x)
         }
@@ -307,12 +308,12 @@ mod sysfns {
         }
 
         fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-            vm.read(&tostring(vm, *x))?;
+            vm.read(&tostring(*x))?;
             vm.mem.pop()
         }
 
         fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
-            join_str(vm, args.iter().copied(), "").into_pv(&mut vm.mem)
+            join_str(args.iter().copied(), "").into_pv(&mut vm.mem)
         }
 
         fn error(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
@@ -343,7 +344,7 @@ mod sysfns {
                                        got_num: args.len() as u32)
                                 .bop(Builtin::Join))
             };
-            join_str(vm, it, sep).into_pv(&mut vm.mem)
+            join_str(it, sep).into_pv(&mut vm.mem)
         }
 
         fn iter(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
@@ -435,7 +436,7 @@ mod sysfns {
         }
 
         fn dump_code_to(&mut self, vm: &mut R8VM, args: (to)) -> Result<PV> {
-            let to = tostring(vm, *to);
+            let to = tostring(*to);
             let mut out = BufWriter::new(fs::File::create(to)?);
             vm.dump_code_to(&mut out)?;
             Ok(PV::Nil)
@@ -448,7 +449,7 @@ mod sysfns {
         }
 
         fn panic(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-            panic!("{}", tostring(vm, *x))
+            panic!("{}", tostring(*x))
         }
     }
 
@@ -2359,7 +2360,61 @@ impl R8VM {
     }
 
     pub fn dump_fn_code(&self, mut name: SymID) -> Result<()> {
-        todo!()
+        if let Some(mac_fn) = self.macros.get(&name.into()) {
+            name = *mac_fn;
+        }
+        let func = self.funcs.get(&name.into()).ok_or("No such function")?;
+        let start = func.pos as isize;
+
+        let get_jmp = |op: r8c::Op| {
+            use r8c::Op::*;
+            Some(match op {
+                JMP(d) => d,
+                JT(d) => d,
+                JN(d) => d,
+                JZ(d) => d,
+                JNZ(d) => d,
+                _ => return None,
+            }).map(|v| v as isize)
+        };
+
+        let fmt_special = |pos: isize, op: r8c::Op| {
+            use r8c::Op::*;
+            if let Some(delta) = get_jmp(op) {
+                return Some((op.name().to_lowercase(),
+                             vec![self.labels.get(&((pos + delta) as u32))
+                                  .map(|lbl| format!("{}", lbl))
+                                  .unwrap_or(format!("{}", delta))
+                                  .style_asm_label_ref()
+                                  .to_string()]))
+            }
+            Some((op.name().to_lowercase(), match op {
+                VCALL(idx, args) => vec![self.mem.get_env(idx as usize).to_string(),
+                                         args.to_string()],
+                INS(idx) => vec![self.mem.get_env(idx as usize).to_string()],
+                _ => return None
+            }))
+        };
+
+        let mut stdout = self.stdout.lock().unwrap();
+        writeln!(stdout, "{}({}):",
+                 name.as_ref().style_asm_fn(),
+                 func.args)?;
+        for i in start..start+(func.sz as isize) {
+            let op = self.pmem[i as usize];
+            if let Some(s) = self.labels.get(&(i as u32)) {
+                writeln!(stdout, "{}:", s.style_asm_label())?;
+            }
+            let (name, args) = fmt_special(i, op).unwrap_or(
+                (op.name().to_lowercase(),
+                 op.args().iter().map(|v| v.to_string()).collect())
+            );
+            writeln!(stdout, "    {} {}",
+                     name.style_asm_op(),
+                     args.join(", "))?;
+        }
+
+        Ok(())
     }
 
     #[cfg(feature = "extra")]

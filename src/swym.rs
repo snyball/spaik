@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 
 use core::slice;
-use std::collections::{HashSet, hash_set};
-use std::mem::ManuallyDrop;
+use std::collections::HashSet;
 use std::sync::atomic::AtomicU32;
-use std::{cmp, fmt, iter};
+use std::{cmp, fmt};
 use std::hash::{Hash, self, BuildHasher};
 use std::{ptr::NonNull, mem, ptr};
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};

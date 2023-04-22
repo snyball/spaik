@@ -5,7 +5,7 @@ macro_rules! def_styles {
     ($($name:ident $init:block)*) => {
         #[cfg(feature = "extra")]
         pub trait Stylize: OwoColorize {
-            $(fn $name<'q>(&'q self) -> Styled<&'q Self>;)*
+            $(fn $name(&self) -> Styled<&Self>;)*
         }
         #[cfg(feature = "extra")]
         impl<T> Stylize for T where T: OwoColorize {
@@ -14,7 +14,7 @@ macro_rules! def_styles {
 
         #[cfg(not(feature = "extra"))]
         pub trait Stylize {
-            $(fn $name<'q>(&'q self) -> &'q Self;)*
+            $(fn $name(&self) -> &Self;)*
         }
         #[cfg(not(feature = "extra"))]
         impl<T> Stylize for T {
