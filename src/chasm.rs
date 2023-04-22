@@ -2,7 +2,7 @@
 
 use crate::nkgc::SymID;
 use std::io::{Read, Write, self};
-use std::fmt;
+use std::fmt::{self, Display};
 use crate::error::{ErrorKind, Result};
 use std::convert::{TryInto, TryFrom};
 use fnv::FnvHashMap;
@@ -42,6 +42,15 @@ macro_rules! chasm_primitives {
                                             &v).into())),+
             }
         }
+
+        // impl ASMPV {
+        //     pub fn add_mut(&mut self, n: isize) -> Result<()> {
+        //         match self {
+        //             $(ASMPV::$t(ref mut v) => *v += n.try_into()?),+
+        //         }
+        //         Ok(())
+        //     }
+        // }
 
         $(impl From<$t> for Arg {
             fn from(v: $t) -> Arg { Arg::ASMPV(ASMPV::$t(v)) }
@@ -86,18 +95,18 @@ impl From<SymID> for Arg {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChOp {
-    id: OpCode,
-    args: Vec<Arg>,
+pub struct ChOp<T: ChASMOpName> {
+    pub id: T,
+    pub args: Vec<Arg>,
 }
 
-impl ChOp {
-    pub fn new(id: OpCode, args: Vec<Arg>) -> ChOp {
+impl<T: ChASMOpName> ChOp<T> {
+    pub fn new(id: T, args: Vec<Arg>) -> ChOp<T> {
         ChOp { id, args }
     }
 }
 
-impl fmt::Display for ChOp {
+impl<T: ChASMOpName + Display> Display for ChOp<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let args = self.args
                        .iter()
@@ -109,7 +118,9 @@ impl fmt::Display for ChOp {
 }
 
 pub trait ASMOp {
-    fn new(op: OpCode, args: &[ASMPV]) -> Result<Self>
+    type OpName: ChASMOpName;
+
+    fn new(op: Self::OpName, args: &[ASMPV]) -> Result<Self>
         where Self: std::marker::Sized;
     fn name(&self) -> &'static str;
     fn args(&self) -> Vec<ASMPV>;
@@ -140,6 +151,7 @@ macro_rules! chasm_def {
                 $($en($($targ),*)),+
             }
 
+            #[repr(u8)]
             #[derive(Debug, Clone, Copy, PartialEq, Eq)]
             pub enum OpName {
                 $($en),+
@@ -174,12 +186,12 @@ macro_rules! chasm_def {
         }
 
         impl $crate::chasm::ASMOp for $name::Op {
-            fn new(op: $crate::chasm::OpCode, args: &[ASMPV]) ->
-                Result<$name::Op>
-            {
+            type OpName = $name::OpName;
+
+            fn new(op: Self::OpName, args: &[ASMPV]) -> Result<$name::Op> {
                 use std::convert::TryInto;
                 let len = args.len();
-                match $name::OpName::from_num(op)? {
+                match op {
                     $($name::OpName::$en => if let [$($arg),*] = args {
                         Ok($name::Op::$en($((*$arg).try_into()?),*))
                     } else {
@@ -262,23 +274,35 @@ macro_rules! chasm_def {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ChASM {
-    ops: Vec<ChOp>,
+#[derive(Debug, Clone)]
+pub struct ChASM<T: ASMOp> {
+    ops: Vec<ChOp<T::OpName>>,
     label_names: Vec<&'static str>,
     marks: FnvHashMap<u32, isize>,
 }
 
+impl<T: ASMOp> Default for ChASM<T> {
+    fn default() -> Self {
+        Self {
+            ops: Default::default(),
+            label_names: Default::default(),
+            marks: Default::default()
+        }
+    }
+}
+
 pub type LblMap = FnvHashMap<u32, Lbl>;
 
-impl ChASM {
+impl<T: ASMOp> ChASM<T> {
     #[allow(dead_code)]
-    pub fn new() -> ChASM { Default::default() }
+    pub fn new() -> ChASM<T> {
+        Default::default()
+    }
 
-    pub fn link_into<T: ASMOp>(self,
-                               out: &mut Vec<T>,
-                               sz: usize,
-                               hm_out: &mut LblMap) -> Result<usize>
+    pub fn link_into(self,
+                     out: &mut Vec<T>,
+                     sz: usize,
+                     hm_out: &mut LblMap) -> Result<usize>
     {
         for (lbl, tgt) in self.marks.iter() {
             hm_out.insert((*tgt + sz as isize) as u32,
@@ -313,11 +337,11 @@ impl ChASM {
         Ok(len)
     }
 
-    pub fn add<T: ChASMOpName>(&mut self, op: T, args: &[Arg]) {
-        self.ops.push(ChOp::new(op.id(), Vec::from(args)))
+    pub fn add(&mut self, op: T::OpName, args: &[Arg]) {
+        self.ops.push(ChOp::new(op, Vec::from(args)))
     }
 
-    pub fn op(&mut self, op: ChOp) -> usize {
+    pub fn op(&mut self, op: ChOp<T::OpName>) -> usize {
         let len = self.ops.len();
         self.ops.push(op);
         len
@@ -345,11 +369,15 @@ impl ChASM {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    pub fn last_mut(&mut self) -> Option<&mut ChOp<T::OpName>> {
+        self.ops.last_mut()
+    }
 }
 
 macro_rules! chasm {
     ($op:ident $($arg:expr),*) => {
-        ChOp::new($op.id(), vec![$($arg.into()),*])
+        ChOp::new($op, vec![$($arg.into()),*])
     };
 }
 
@@ -363,7 +391,7 @@ mod tests {
     fn read_read_op() {
         use crate::r8vm::r8c::Op as R8C;
         use crate::r8vm::r8c::OpName::*;
-        assert_eq!(R8C::new(JMP.id(), &[123i32.into()]), Ok(R8C::JMP(123)))
+        assert_eq!(R8C::new(JMP, &[123i32.into()]), Ok(R8C::JMP(123)))
     }
 
     #[test]

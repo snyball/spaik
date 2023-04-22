@@ -8,7 +8,7 @@ use fnv::{FnvHashSet, FnvHashMap};
 
 use crate::nkgc::{PV, SymID, Int};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
-use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
+use crate::chasm::{ChOp, ChASM, Lbl, self};
 use crate::error::Source;
 use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor, Visitable};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
@@ -158,7 +158,7 @@ pub enum Sym {
 pub struct R8Compiler {
     labels: LblMap,
     code: Vec<R8C>,
-    units: Vec<ChASM>,
+    units: Vec<ChASM<R8C>>,
     srctbl: SourceList,
     estack: Vec<Env>,
     fnstack: Vec<FnCtx>,
@@ -283,7 +283,7 @@ impl R8Compiler {
         cc
     }
 
-    pub fn unit(&mut self) -> &mut ChASM {
+    pub fn unit(&mut self) -> &mut ChASM<R8C> {
         self.units.last_mut().expect("No unit to save asm to")
     }
 
@@ -357,7 +357,7 @@ impl R8Compiler {
     }
 
     #[inline]
-    fn asm_op(&mut self, op: ChOp) {
+    fn asm_op(&mut self, op: ChOp<r8c::OpName>) {
         self.unit().op(op);
     }
 
@@ -733,6 +733,17 @@ impl R8Compiler {
         Ok(())
     }
 
+    // fn popa(&mut self, num: usize) {
+    //     match self.unit().last_mut() {
+    //         Some(ChOp { id: r8c::OpName::POPA, ref mut args }) => {
+    //             args[1] += num;
+    //         },
+    //         _ => {
+    //             todo!()
+    //         }
+    //     }
+    // }
+
     fn bt_let(&mut self, ret: bool, decls: Vec<VarDecl>, prog: Progn) -> Result<()> {
         let len = decls.len();
         for VarDecl(name, _src, val) in decls.into_iter() {
@@ -741,7 +752,7 @@ impl R8Compiler {
         }
         self.compile_seq(ret, prog)?;
         if ret {
-            self.unit().op(chasm!(SLAM 1, len));
+            self.unit().op(chasm!(POPA 1, len));
         } else {
             self.unit().op(chasm!(POP len));
         }
@@ -779,7 +790,7 @@ impl R8Compiler {
         let LoopCtx { end, ret, height, .. } = outer;
         let dist = self.with_env(|env| env.len())? - height;
         let popa = |cc: &mut R8Compiler| if dist > 0 {
-            cc.asm_op(chasm!(SLAM 1, dist-1))
+            cc.asm_op(chasm!(POPA 1, dist-1))
         };
         match arg {
             Some(code) if ret => {
@@ -818,9 +829,9 @@ impl R8Compiler {
     fn binop(&mut self,
              op: Builtin,
              src: Source,
-             bop: ChOp,
-             one_arg_pre: Option<ChOp>,
-             default: Option<ChOp>,
+             bop: ChOp<r8c::OpName>,
+             one_arg_pre: Option<ChOp<r8c::OpName>>,
+             default: Option<ChOp<r8c::OpName>>,
              args: impl IntoIterator<Item = AST2>) -> Result<()> {
         let mut it = args.into_iter().peekable();
         if let Some(fst) = it.next() {
@@ -877,7 +888,7 @@ impl R8Compiler {
                         self.asm_op(chasm!(GET idx));
                         let idx = self.with_env(|env| env.anon())?;
                         self.asm_op(chasm!(NXT idx));
-                        self.asm_op(chasm!(SLAM 1, 1));
+                        self.asm_op(chasm!(POPA 1, 1));
                         self.env_pop(1)?;
                     }
                 }
@@ -886,7 +897,7 @@ impl R8Compiler {
                 self.compile(true, AST2 { kind: init, src })?;
                 let idx = self.with_env(|env| env.anon())?;
                 self.asm_op(chasm!(NXT idx));
-                self.asm_op(chasm!(SLAM 1, 1));
+                self.asm_op(chasm!(POPA 1, 1));
                 self.env_pop(1)?;
             }
         };

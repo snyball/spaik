@@ -69,7 +69,7 @@ chasm_def! {
     // Stack operations
     INS(idx: u32),
     POP(num: u8),
-    SLAM(num_top: u16, num_pop: u16),
+    POPA(num_top: u16, num_pop: u16),
     SAV(num: u8),
     RST(),
     TOP(delta: u16),
@@ -2177,7 +2177,7 @@ impl R8VM {
                     *(self.mem.stack.as_mut_ptr().offset(offset)) = self.mem.pop()?
                 },
                 POP(n) => self.mem.popn(n as usize),
-                SLAM(keep, pop) => {
+                POPA(keep, pop) => {
                     let keep = keep as usize;
                     let pop = pop as usize;
                     let st = &mut self.mem.stack;
