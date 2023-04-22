@@ -136,8 +136,6 @@ impl LispFmt for String {
     }
 }
 
-pub type SymIDInt = isize;
-
 /// Symbol ID
 pub use crate::swym::SymID;
 
@@ -715,7 +713,7 @@ impl PV {
                     (NkRef::PV(u), NkRef::PV(v)) => (*u).equalp(&*v),
                     (NkRef::Vector(u), NkRef::Vector(v)) =>
                         (*u).len() == (*v).len() &&
-                        (*u).iter().zip((*v).iter()).all(|(u, v)| u.equalp(&*v)),
+                        (*u).iter().zip((*v).iter()).all(|(u, v)| u.equalp(v)),
                     _ => u == *v,
                 },
                 _ => *self == *other

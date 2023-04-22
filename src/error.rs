@@ -403,14 +403,12 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                    got)?,
         TypeNError { expect, got } =>
             write!(f, "Type Error: Expected {} {}but got {}",
-                   OneOf(&expect),
+                   OneOf(expect),
                    FmtArgnOp { pre: "", post: ", ", meta },
                    got.as_str())?,
         EnumError { expect, got } =>
             write!(f, "Type Error: Expected {:?} {}but got {}",
-                   expect.iter().copied().collect::<Vec<_>>(),
-                   FmtArgnOp { pre: "", post: ", ", meta },
-                   *got)?,
+                   expect, FmtArgnOp { pre: "", post: ", ", meta }, *got)?,
         UnexpectedDottedList => {
             write!(f, "Type Error: Unexpected dotted list")?;
             if let Some(op) = meta.op() {

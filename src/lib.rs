@@ -28,6 +28,7 @@
 // FIXME: Write documentation for the unsafe functions.
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
+#![allow(clippy::option_map_unit_fn)]
 
 #[macro_use]
 extern crate lazy_static;

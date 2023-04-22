@@ -1185,7 +1185,7 @@ impl R8VM {
     }
 
     pub fn get_func(&self, name: SymID) -> Option<&Func> {
-        self.funcs.get(&name.into())
+        self.funcs.get(&name)
     }
 
     pub fn load(&mut self, lib: SymID) -> Result<SymRef> {
@@ -1420,7 +1420,7 @@ impl R8VM {
             if dot {
                 return Err(error!(UnexpectedDottedList,).bop(Builtin::Apply))
             }
-            let func = self.funcs.get(&m.into()).ok_or("No such function")?;
+            let func = self.funcs.get(&m).ok_or("No such function")?;
             let chk = func.args.check((n - 1) as u16).map_err(|e| e.op(m));
             if let Err(e) = chk {
                 self.mem.popn(n as usize);
@@ -1480,7 +1480,7 @@ impl R8VM {
         } else {
             let mut inds = 0;
             while let Some(m) = v.op().and_then(|op| self.macros.get(&op)).copied() {
-                let func = self.funcs.get(&m.into()).ok_or("No such function")?;
+                let func = self.funcs.get(&m).ok_or("No such function")?;
                 let mut nargs = 0;
                 let frame = self.frame;
                 self.frame = self.mem.stack.len();
@@ -1561,8 +1561,7 @@ impl R8VM {
                     }
                 }
             }
-            let pv = self.mem.pop();
-            pv
+            self.mem.pop()
         }
     }
 
@@ -1579,7 +1578,7 @@ impl R8VM {
     }
 
     pub fn set_macro(&mut self, macro_sym: SymID, fn_sym: SymID) {
-        self.macros.insert(macro_sym.into(), fn_sym);
+        self.macros.insert(macro_sym, fn_sym);
     }
 
     pub fn set_macro_character(&mut self, macro_sym: SymID, fn_sym: SymID) {
@@ -1602,7 +1601,7 @@ impl R8VM {
                  pos: usize,
                  sz: usize)
     {
-        match self.funcs.entry(name.into()) {
+        match self.funcs.entry(name) {
             Entry::Occupied(mut e) => {
                 let ppos = e.get().pos as u32;
                 use r8c::Op::*;
@@ -1672,7 +1671,7 @@ impl R8VM {
                            .expect("Unable to find function by binary search");
 
             let (nenv, nargs) = if func.pos + func.sz < ip {
-                name = Builtin::Unknown.sym().into();
+                name = Builtin::Unknown.sym();
                 (0, 0)
             } else {
                 let spec = func.args;
@@ -1684,7 +1683,7 @@ impl R8VM {
             let args = self.mem.stack.drain(frame..frame+nargs).collect();
             let src = self.get_source(ip);
             frames.push(TraceFrame { args,
-                                     func: name.into(),
+                                     func: name,
                                      src });
 
             self.mem.stack.drain(frame..frame+nenv).for_each(drop);
@@ -1727,7 +1726,7 @@ impl R8VM {
             }].1
         };
 
-        get_name(ip).into()
+        get_name(ip)
     }
 
     #[allow(dead_code)] // Used for internal debugging/profiling
@@ -1792,7 +1791,7 @@ impl R8VM {
             //};
             // FIXME: Avoid having to always clone
             let top = self.mem.stack.len();
-            let args: Vec<_> = (&self.mem.stack[top - nargs as usize..]).into_iter().copied().collect();
+            let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
 
             let dip = self.ip_delta(ip);
             // if self.debug_mode { println!("<subr>::{}:", (*subr).name()) }
@@ -2087,7 +2086,7 @@ impl R8VM {
                     ip = ip.offset(d as isize - 1);
                 }
                 JV(mul, max) => {
-                    let n = self.mem.pop()?.force_int() as isize;
+                    let n = self.mem.pop()?.force_int();
                     let d = cmp::min((mul as isize) * n, max as isize);
                     ip = ip.offset(d);
                 }
@@ -2095,7 +2094,7 @@ impl R8VM {
                     let sym = self.mem.env[idx as usize].sym().unwrap();
                     match self.funcs.get(&sym) {
                         Some(func) => {
-                            func.args.check(nargs).map_err(|e| e.op(sym.into()))?;
+                            func.args.check(nargs).map_err(|e| e.op(sym))?;
                             let pos = func.pos;
                             // FIXME: This does not pass in miri because of aliasing
                             // (*ip.sub(1)) = CALL(pos as u32, nargs);
@@ -2103,7 +2102,7 @@ impl R8VM {
                             self.frame = self.mem.stack.len() - 2 - (nargs as usize);
                             ip = self.ret_to(pos);
                         },
-                        None => if let Some(idx) = self.get_env_global(sym.into()) {
+                        None => if let Some(idx) = self.get_env_global(sym) {
                             let var = self.mem.get_env(idx);
                             let sidx = self.mem.stack.len() - nargs as usize;
                             // FIXME: This can be made less clunky by modifying
@@ -2112,7 +2111,7 @@ impl R8VM {
                             ip = self.op_clzcall(ip, nargs)?;
                         } else {
                             return Err(ErrorKind::UndefinedFunction {
-                                name: sym.into()
+                                name: sym
                             }.into())
                         }
                     };
@@ -2344,10 +2343,10 @@ impl R8VM {
     }
 
     pub fn dump_all_fns(&self) -> Result<()> {
-        let mut funks = self.funcs.iter().map(|(k, v)| ((*k).into(), v.pos)).collect::<Vec<_>>();
+        let mut funks = self.funcs.iter().map(|(k, v)| (k, v.pos)).collect::<Vec<_>>();
         funks.sort_by_key(|(_, v)| *v);
         for funk in funks.into_iter().map(|(u, _)| u) {
-            self.dump_fn_code(funk)?
+            self.dump_fn_code(*funk)?
         }
         Ok(())
     }
@@ -2360,10 +2359,10 @@ impl R8VM {
     }
 
     pub fn dump_fn_code(&self, mut name: SymID) -> Result<()> {
-        if let Some(mac_fn) = self.macros.get(&name.into()) {
+        if let Some(mac_fn) = self.macros.get(&name) {
             name = *mac_fn;
         }
-        let func = self.funcs.get(&name.into()).ok_or("No such function")?;
+        let func = self.funcs.get(&name).ok_or("No such function")?;
         let start = func.pos as isize;
 
         let get_jmp = |op: r8c::Op| {
@@ -2471,7 +2470,7 @@ impl R8VM {
         let mut funcs = Vec::new();
         for (&sym, _) in self.funcs.iter() {
             if sym.as_ref().starts_with(prefix) {
-                funcs.push(sym.into())
+                funcs.push(sym)
             }
         }
         funcs
@@ -2508,7 +2507,7 @@ impl R8VM {
         let mut exports = Vec::new();
         exports.extend(self.funcs.iter()
                        .map(|(&name, f)| Export::new(ExportKind::Func,
-                                                     name.into(),
+                                                     name,
                                                      f.pos.try_into().unwrap())));
         LispModule::new(&self.pmem, &self.mem.symdb, &self.consts, vec![], exports)
     }

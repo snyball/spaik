@@ -48,8 +48,13 @@ struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
     len: usize,
 }
 
-#[derive(Hash)]
 pub struct SymRef(*mut Sym);
+
+impl Hash for SymRef {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
 
 impl From<&'static Sym> for SymRef {
     fn from(value: &'static Sym) -> Self {
@@ -75,11 +80,11 @@ impl Display for SymRef {
     }
 }
 
-impl Into<String> for SymRef {
-    fn into(self) -> String {
+impl From<SymRef> for String {
+    fn from(v: SymRef) -> Self {
         unsafe {
-            let p = self.0;
-            mem::forget(self);
+            let p = v.0;
+            mem::forget(v);
             take_inner_string(p)
         }
     }
@@ -282,13 +287,13 @@ impl Debug for SwymDb {
     }
 }
 
-impl<H> Into<HashSet<String, H>> for SwymDb
+impl<H> From<SwymDb> for HashSet<String, H>
     where HashSet<String, H>: Default,
           H: BuildHasher
 {
-    fn into(mut self) -> HashSet<String, H> {
+    fn from(mut v: SwymDb) -> HashSet<String, H> {
         let mut hm: HashSet<String, H> = Default::default();
-        for r in self.map.drain() {
+        for r in v.map.drain() {
             hm.insert(r.into_inner().into());
         }
         hm

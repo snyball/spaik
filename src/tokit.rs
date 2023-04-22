@@ -390,9 +390,9 @@ impl<'a> Toker<'a, '_> {
     }
 }
 
-impl Into<LineCol> for LineTracker {
-    fn into(self) -> LineCol {
-        LineCol { line: self.line, col: self.col }
+impl From<LineTracker> for LineCol {
+    fn from(LineTracker { line, col }: LineTracker) -> Self {
+        LineCol { line, col }
     }
 }
 

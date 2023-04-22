@@ -270,7 +270,7 @@ impl R8Compiler {
             fns: {
                 let mut map: FnvHashMap<SymID, Func> = Default::default();
                 for (sym, funk) in vm.funcs.iter() {
-                    map.insert((*sym).into(), *funk);
+                    map.insert(*sym, *funk);
                 }
                 map
             },
