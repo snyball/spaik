@@ -13,7 +13,7 @@ use crate::{
     fmt::LispFmt,
     nuke::*,
     nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int},
-    sexpr_parse::{sexpr_modifier_bt, string_parse, tokenize, Fragment, standard_lisp_tok_tree},
+    sexpr_parse::{sexpr_modifier_bt, string_parse},
     subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
     FmtErr, tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
@@ -1392,12 +1392,12 @@ impl R8VM {
                 }
             }
         }
-        if !close.is_empty() {
-            bail!(UnclosedDelimiter { open: "(" })
-        }
         tokit.check_error().map_err(|e| if let Some(file) = file {
             e.amend(Meta::SourceFile(file))
         } else { e })?;
+        if !close.is_empty() {
+            bail!(UnclosedDelimiter { open: "(" })
+        }
         assert_no_trailing!();
         if modfn_pos != 0 {
             Ok(call_with!(self, modfn_pos, 0, {}))
