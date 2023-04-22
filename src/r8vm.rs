@@ -1149,10 +1149,6 @@ impl R8VM {
             .expect("Can't allocate Subr");
     }
 
-    pub fn set_subr(&mut self, _name: SymID, _obj: Box<dyn Subr>) {
-        todo!()
-    }
-
     pub fn set_debug_mode(&mut self, debug_mode: bool) {
         self.debug_mode = debug_mode;
     }
@@ -2320,7 +2316,7 @@ impl R8VM {
     pub fn println_fmt(&mut self, args: fmt::Arguments) -> Result<()> {
         let mut out = self.stdout.lock().unwrap();
         out.write_fmt(args)?;
-        out.write(b"\n")?;
+        out.write_all(b"\n")?;
         Ok(())
     }
 
