@@ -195,10 +195,6 @@ impl Builtin {
         swym::SymID::new(rf as *const swym::Sym as *mut swym::Sym)
     }
 
-    pub fn to_string(&self) -> String {
-        String::from(self.as_str())
-    }
-
     pub fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
         BUILTIN_LOOKUP.get(s.as_ref()).copied()
     }
