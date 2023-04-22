@@ -6,7 +6,7 @@ use serde::de::{
     VariantAccess, Visitor,
 };
 
-use crate::compile::Builtin;
+use crate::builtins::Builtin;
 use crate::error::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -8,7 +8,7 @@ use crate::module::{LispModule, Export, ExportKind};
 use crate::{
     ast::{Excavator, Visitor},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
-    compile::Builtin,
+    builtins::Builtin,
     comp::SourceList,
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
     fmt::LispFmt,
@@ -246,7 +246,7 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, borrow::Cow, io::BufWriter, fs};
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, compile::Builtin, utils::Success};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(vm: &R8VM, args: IT, sep: S) -> String

@@ -10,7 +10,7 @@ use crate::error::*;
 use crate::nuke::NkRef;
 use crate::nuke::to_fissile_ref;
 use crate::r8vm::ArgSpec;
-use crate::compile::Builtin;
+use crate::builtins::Builtin;
 use crate::nuke::cast_err;
 use std::fmt;
 use std::fmt::Display;

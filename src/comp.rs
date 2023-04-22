@@ -12,7 +12,7 @@ use crate::chasm::{ChOp, ChASM, ChASMOpName, Lbl, self};
 use crate::error::Source;
 use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor, Visitable};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
-use crate::compile::*;
+use crate::builtins::*;
 use crate::error::Result;
 
 static LAMBDA_COUNT: AtomicUsize = AtomicUsize::new(0);

@@ -1,6 +1,6 @@
 //! The Nuclear Garbage Collector
 
-use crate::compile::{Builtin, BUILTIN_SYMS};
+use crate::builtins::{Builtin, BUILTIN_SYMS};
 use crate::r8vm::{RuntimeError, ArgSpec, R8VM};
 use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source};

@@ -52,7 +52,7 @@ pub(crate) mod opt;
 pub(crate) mod fmt;
 pub(crate) mod tokit;
 pub(crate) mod subrs;
-pub(crate) mod compile;
+pub(crate) mod builtins;
 pub(crate) mod string_parse;
 pub use tokit::minify;
 pub(crate) mod tok;
@@ -110,7 +110,7 @@ use std::ops::{Deref, DerefMut};
 
 use serde::de::DeserializeOwned;
 
-pub use crate::compile::Builtin;
+pub use crate::builtins::Builtin;
 pub use crate::nuke::Fissile;
 use crate::r8vm::R8VM;
 pub use crate::r8vm::{Args, EnumCall};

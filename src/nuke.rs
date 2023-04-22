@@ -2,7 +2,7 @@
 
 use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
-use crate::compile::Builtin;
+use crate::builtins::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 use crate::subrs::{IntoLisp, FromLisp, self};
 use core::slice;
