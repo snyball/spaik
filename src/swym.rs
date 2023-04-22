@@ -262,9 +262,7 @@ impl Drop for SymRef {
                 mem::align_of::<Sym>(),
             );
             if (*self.0).rc.is_dropped() {
-                if (*self.0).sz == 0 {
-                    panic!("Nothing to drop!");
-                }
+                debug_assert_ne!((*self.0).sz, 0);
                 drop(String::from_raw_parts((*self.0).ptr.as_ptr(),
                                             (*self.0).len,
                                             (*self.0).sz));
