@@ -19,7 +19,7 @@ use crate::{
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::hash_map::{Entry, self}, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
+use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -724,7 +724,6 @@ pub struct R8VM {
     pub(crate) trace_counts: FnvHashMap<SymID, usize>,
     tok_tree: tokit::Fragment,
     reader_macros: FnvHashMap<String, SymID>,
-    unlinked_fns: FnvHashMap<SymID, Vec<usize>>,
 
     // Named locations/objects
     breaks: FnvHashMap<usize, r8c::Op>,
@@ -759,7 +758,6 @@ impl Default for R8VM {
             funcs: Default::default(),
             func_labels: Default::default(),
             func_arg_syms: Default::default(),
-            unlinked_fns: Default::default(),
             stdout: Mutex::new(Box::new(io::stdout())),
             stdin: Mutex::new(Box::new(io::stdin())),
             labels: Default::default(),

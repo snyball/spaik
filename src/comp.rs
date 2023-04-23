@@ -295,13 +295,6 @@ impl R8Compiler {
         cc
     }
 
-    pub fn add_unlinked(&mut self, name: SymID, pos: usize) {
-        match self.unlinked_fns.entry(name) {
-            hash_map::Entry::Occupied(mut e) => e.get_mut().push(pos),
-            hash_map::Entry::Vacant(e) => {e.insert(vec![pos]);}
-        }
-    }
-
     pub fn unit(&mut self) -> &mut ChASM<R8C> {
         self.units.last_mut().expect("No unit to save asm to")
     }
