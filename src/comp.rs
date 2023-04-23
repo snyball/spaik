@@ -1,7 +1,7 @@
 //! SPAIK v2 Compiler
 
 use std::collections::hash_map;
-use std::iter;
+use std::{iter, mem};
 use std::sync::atomic::{Ordering, AtomicUsize};
 
 use chasm::LblMap;
@@ -252,6 +252,14 @@ impl ClzScoper<'_, '_> {
         }
         Ok(scoper.lowered)
     }
+}
+
+fn add_unlinked(ufns: &mut FnvHashMap<SymID, Vec<usize>>, name: SymID, pos: usize) {
+    match ufns.entry(name) {
+        hash_map::Entry::Occupied(mut e) => e.get_mut().push(pos),
+        hash_map::Entry::Vacant(e) => {e.insert(vec![pos]);}
+    }
+
 }
 
 impl R8Compiler {
@@ -1203,6 +1211,7 @@ impl R8Compiler {
 
     pub fn take(&mut self, vm: &mut R8VM) -> Result<()> {
         vm.mem.env.append(&mut self.consts);
+        let mut ufn = mem::take(&mut self.unlinked_fns);
         for (i, op) in self.code.iter_mut().enumerate() {
             *op = match *op {
                 R8C::VCALL(idx, nargs) => {
@@ -1213,8 +1222,7 @@ impl R8Compiler {
                             R8C::CALL(funk.pos.try_into()?, nargs)
                         }
                         None => {
-                            println!("unlinked: {sym}");
-                            // self.add_unlinked(sym, self.code_offset + i);
+                            add_unlinked(&mut ufn, sym, self.code_offset + i);
                             *op
                         }
                     }
@@ -1222,6 +1230,7 @@ impl R8Compiler {
                 op => op
             };
         }
+        self.unlinked_fns = ufn;
         vm.pmem.append(&mut self.code);
         vm.srctbl.append(&mut self.srctbl);
         vm.labels.extend(self.labels.drain());
