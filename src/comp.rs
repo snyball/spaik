@@ -362,6 +362,7 @@ impl R8Compiler {
     fn leave_fn(&mut self) {
         self.unit().op(chasm!(RET));
         self.estack.pop();
+        self.fn_ctxs.pop();
     }
 
     fn with_env<T>(&mut self, f: impl Fn(&mut Env) -> T) -> Result<T> {
