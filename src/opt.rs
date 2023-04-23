@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::mem::{take, replace};
 
 use fnv::FnvHashSet;
@@ -8,8 +6,6 @@ use crate::{ast::{AST2, M, Visitor, VarDecl, Visitable}, nkgc::PV, error::Source
 
 #[derive(Debug, Default)]
 pub struct Optomat {
-    changed: bool,
-    force: bool,
     varmod: FnvHashSet<SymID>,
 }
 
@@ -32,12 +28,6 @@ impl Visitor for IsModified {
 
 #[derive(Debug)]
 struct LowerConst(SymID, PV);
-
-impl LowerConst {
-    pub fn new(sym: SymID, pv: PV) -> Self {
-        Self(sym, pv)
-    }
-}
 
 impl Visitor for LowerConst {
     fn visit(&mut self, elem: &mut AST2) -> crate::Result<()> {
@@ -230,13 +220,6 @@ impl AST2 {
                 PV::Ref(_) => None,
                 pv => Some((pv, &self.src))
             }
-            _ => None,
-        }
-    }
-
-    fn bool(&self) -> Option<bool> {
-        match self.kind {
-            M::Atom(atom) => Some(atom.into()),
             _ => None,
         }
     }

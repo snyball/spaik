@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use core::slice;
 use std::collections::HashSet;
 use std::sync::atomic::AtomicU32;
@@ -42,11 +40,6 @@ impl Sym {
 
 unsafe impl Send for Sym {}
 unsafe impl Sync for Sym {}
-
-struct /* Hiiiiiighwaaaay tooo theee */ DangerZone {
-    ptr: *const u8,
-    len: usize,
-}
 
 pub struct SymRef(*mut Sym);
 
@@ -179,10 +172,6 @@ impl SymKeyRef {
 
     pub fn clone_inner(&self) -> SymRef {
         self.0.clone()
-    }
-
-    pub fn disarm(self) {
-        mem::forget(self);
     }
 }
 

@@ -23,11 +23,7 @@
 //! let res: f32 = vm.eval(r#"(sqrt (+ 1 2))"#).unwrap();
 //! ```
 
-#![allow(clippy::trivial_regex)]
 #![allow(clippy::upper_case_acronyms)]
-// FIXME: Write documentation for the unsafe functions.
-#![allow(clippy::missing_safety_doc)]
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
 #![allow(clippy::option_map_unit_fn)]
 
 #[macro_use]
