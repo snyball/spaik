@@ -1,5 +1,6 @@
 //! SPAIK v2 Compiler
 
+use std::collections::hash_map;
 use std::iter;
 use std::sync::atomic::{Ordering, AtomicUsize};
 
@@ -8,7 +9,7 @@ use fnv::{FnvHashSet, FnvHashMap};
 
 use crate::nkgc::{PV, SymID, Int};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
-use crate::chasm::{ChOp, ChASM, Lbl, self};
+use crate::chasm::{ChOp, ChASM, Lbl, self, Arg};
 use crate::error::Source;
 use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor, Visitable};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
@@ -80,6 +81,7 @@ pub enum BoundVar {
 
 #[derive(Default, Debug)]
 struct Env {
+    name: Option<SymID>,
     vars: Vec<SymID>,
     statics: FnvHashMap<SymID, usize>,
 }
@@ -88,8 +90,9 @@ struct Env {
 //        now a local (let) always takes precedence over a static
 //        variable (intr::define-static)
 impl Env {
-    pub fn new(args: Vec<SymID>) -> Env {
+    pub fn new(name: Option<SymID>, args: Vec<SymID>) -> Env {
         let mut env = Env {
+            name,
             vars: args,
             statics: FnvHashMap::default()
         };
@@ -107,8 +110,8 @@ impl Env {
         self.len() == 0
     }
 
-    pub fn none() -> Env {
-        Env { vars: vec![], statics: FnvHashMap::default() }
+    pub fn none(name: Option<SymID>) -> Env {
+        Env { vars: vec![], statics: FnvHashMap::default(), name }
     }
 
     pub fn defvar(&mut self, var: SymID) {
@@ -162,6 +165,7 @@ pub struct R8Compiler {
     srctbl: SourceList,
     estack: Vec<Env>,
     loops: Vec<LoopCtx>,
+    fn_ctxs: Vec<FnCtx>,
     const_offset: usize,
     consts: Vec<PV>,
     code_offset: usize,
@@ -169,8 +173,14 @@ pub struct R8Compiler {
     new_envs: Vec<(SymID, usize, usize)>,
     env: FnvHashMap<SymID, usize>,
     fns: FnvHashMap<SymID, Func>,
+    unlinked_fns: FnvHashMap<SymID, Vec<usize>>,
     #[allow(dead_code)]
     debug_mode: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FnCtx {
+    start: Lbl,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -233,7 +243,7 @@ impl ClzScoper<'_, '_> {
                          body: impl Iterator<Item = &'a mut AST2>) -> Result<VarSet> {
         let mut scoper = ClzScoper {
             lowered: FnvHashSet::default(),
-            env: Env::new(args),
+            env: Env::new(None, args),
             fns,
             outside,
         };
@@ -249,6 +259,7 @@ impl R8Compiler {
         let mut cc = R8Compiler {
             const_offset: 0,
             debug_mode: vm.get_debug_mode(),
+            fn_ctxs: Default::default(),
             new_fns: Default::default(),
             estack: Default::default(),
             labels: Default::default(),
@@ -259,6 +270,7 @@ impl R8Compiler {
             units: Default::default(),
             new_envs: Default::default(),
             env: vm.globals.clone(),
+            unlinked_fns: Default::default(),
             fns: {
                 let mut map: FnvHashMap<SymID, Func> = Default::default();
                 for (sym, funk) in vm.funcs.iter() {
@@ -270,9 +282,16 @@ impl R8Compiler {
         };
         cc.begin_unit();
         let none: Option<SymID> = None;
-        cc.enter_fn(none.into_iter(), ArgSpec::none());
+        cc.enter_fn(None, none.into_iter(), ArgSpec::none());
         cc.set_offsets(vm);
         cc
+    }
+
+    pub fn add_unlinked(&mut self, name: SymID, pos: usize) {
+        match self.unlinked_fns.entry(name) {
+            hash_map::Entry::Occupied(mut e) => e.get_mut().push(pos),
+            hash_map::Entry::Vacant(e) => {e.insert(vec![pos]);}
+        }
     }
 
     pub fn unit(&mut self) -> &mut ChASM<R8C> {
@@ -304,9 +323,10 @@ impl R8Compiler {
     }
 
     pub fn enter_fn(&mut self,
+                    name: Option<SymID>,
                     args: impl Iterator<Item = SymID>,
                     spec: ArgSpec) {
-        let mut env = Env::none();
+        let mut env = Env::none(name);
         if spec.has_env() {
             env.defvar(Builtin::LambdaObject.sym());
         }
@@ -316,6 +336,9 @@ impl R8Compiler {
         env.defvar(Builtin::IP.sym());
         env.defvar(Builtin::Frame.sym());
         self.estack.push(env);
+        let start = self.unit().label("fn-begin");
+        self.unit().mark(start);
+        self.fn_ctxs.push(FnCtx { start });
         if spec.is_special() {
             self.unit().op(chasm!(SAV 2));
             if spec.has_opt() {
@@ -577,6 +600,11 @@ impl R8Compiler {
             self.gen_call_nargs(ret, (r8c::OpName::ZCALL, &mut [0.into()]),
                                 0, args)?;
             self.env_pop(1).unwrap();
+        } else if self.with_env(|e| e.name)?.map(|s| op == s).unwrap_or_default() {
+            let start = self.fn_ctxs.last().unwrap().start;
+            self.gen_call_nargs(ret, (r8c::OpName::CALL,
+                                      &mut [Arg::AbsLbl(start), 0.into()]),
+                                1, args.into_iter())?;
         } else { // Call to symbol (virtual call)
             let idx = self.new_const(PV::Sym(op));
             self.gen_call_nargs(ret, (r8c::OpName::VCALL,
@@ -669,11 +697,12 @@ impl R8Compiler {
     }
 
     fn lambda(&mut self,
+              name: Option<SymID>,
               spec: ArgSpec,
               names: Vec<(SymID, Source)>,
               prog: impl IntoIterator<Item = AST2>) -> Result<(usize, usize)> {
         self.begin_unit();
-        self.enter_fn(names.into_iter().map(|(s,_)| s), spec);
+        self.enter_fn(name, names.into_iter().map(|(s,_)| s), spec);
         self.compile_seq(true, prog)?;
         self.leave_fn();
         let pos = self.code.len() + self.code_offset;
@@ -704,7 +733,7 @@ impl R8Compiler {
         }
         spec.env = num;
         self.begin_unit();
-        self.enter_fn(args.iter().copied(), spec);
+        self.enter_fn(None, args.iter().copied(), spec);
         for (var, bound) in lowered.iter() {
             if let BoundVar::Env(idx) = bound {
                 self.with_env(|env| env.defenv(*var, *idx as usize))?;
@@ -1075,7 +1104,7 @@ impl R8Compiler {
                 self.bt_lambda(spec, names, progn, src)?,
             M::Defvar(sym, init) => {
                 let spec = ArgSpec::none();
-                let (pos, sz) = self.lambda(spec, vec![], Some(*init))?;
+                let (pos, sz) = self.lambda(None, spec, vec![], Some(*init))?;
                 let num = DEFVAR_COUNT.fetch_add(1, Ordering::SeqCst);
                 let name = format!("<δ>-{num}");
                 self.new_fns.push((Sym::Str(name), spec, vec![], pos, sz));
@@ -1090,7 +1119,7 @@ impl R8Compiler {
             M::Set(dst, init) => self.bt_set(ret, src, dst, *init)?,
             M::Defun(name, ArgList2(spec, names), progn) => {
                 let syms = names.iter().map(|(s,_)| *s).collect();
-                let (pos, sz) = self.lambda(spec, names, progn)?;
+                let (pos, sz) = self.lambda(Some(name), spec, names, progn)?;
                 self.new_fns.push((Sym::Id(name), spec, syms, pos, sz));
                 self.fns.insert(name, Func { pos, sz, args: spec });
                 if ret {
@@ -1173,7 +1202,7 @@ impl R8Compiler {
 
     pub fn take(&mut self, vm: &mut R8VM) -> Result<()> {
         vm.mem.env.append(&mut self.consts);
-        for op in self.code.iter_mut() {
+        for (i, op) in self.code.iter_mut().enumerate() {
             *op = match *op {
                 R8C::VCALL(idx, nargs) => {
                     let sym = vm.mem.get_env(idx as usize).sym().unwrap();
@@ -1182,7 +1211,11 @@ impl R8Compiler {
                             funk.args.check(nargs).map_err(|e| e.op(sym))?;
                             R8C::CALL(funk.pos.try_into()?, nargs)
                         }
-                        None => *op
+                        None => {
+                            println!("unlinked: {sym}");
+                            // self.add_unlinked(sym, self.code_offset + i);
+                            *op
+                        }
                     }
                 },
                 op => op

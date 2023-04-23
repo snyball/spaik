@@ -89,14 +89,15 @@ impl fmt::Display for Lbl {
 #[derive(Debug, Clone)]
 pub enum Arg {
     Lbl(Lbl),
+    AbsLbl(Lbl),
     ASMPV(ASMPV),
 }
 
 impl Arg {
     pub fn add_mut(&mut self, v: isize) -> Result<()> {
         match self {
-            Self::Lbl(_) => bail!(TypeError { expect: Builtin::Number,
-                                              got: Builtin::Label }),
+            Self::Lbl(_) | Self::AbsLbl(_) => bail!(TypeError { expect: Builtin::Number,
+                                                                got: Builtin::Label }),
             Self::ASMPV(pv) => pv.add_mut(v)
         }
     }
@@ -339,6 +340,10 @@ impl<T: ASMOp> ChASM<T> {
                                      Arg::Lbl(Lbl(c, s)) =>
                                          labels.get(&c)
                                                .map(|pos| ASMPV::i32(*pos as i32 - (i as i32)))
+                                               .ok_or_else(|| link_err(s, c)),
+                                     Arg::AbsLbl(Lbl(c, s)) =>
+                                         labels.get(&c)
+                                               .map(|pos| ASMPV::u32(*pos as u32 + sz as u32))
                                                .ok_or_else(|| link_err(s, c)),
                                      Arg::ASMPV(pv) => Ok(pv)
                                  }).collect::<std::result::Result<Vec<ASMPV>, _>>()?;
