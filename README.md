@@ -7,7 +7,7 @@ collection, iterators, continuations, async/await and wraps it up in a
 
 This README contains many shorts snippets showing how SPAIK is used, while you
 can find complete examples in the [examples](examples) directory, and the more
-detailed API docs can be found at [docs.rs](https://docs.rs/spaik/0.2.2/spaik/).
+detailed API docs can be found at [docs.rs](https://docs.rs/spaik/latest/spaik/).
 
 [You can also try SPAIK directly in your
 browser!](https://snyball.github.io/spaik-site/)
