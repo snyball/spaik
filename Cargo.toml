@@ -1,6 +1,6 @@
 [package]
 name = "spaik"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["Jonas Møller <jonas@nimda.no>"]
 description = "The SPAIK Programming Language"
 edition = "2021"
