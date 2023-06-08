@@ -1286,7 +1286,6 @@ impl R8VM {
         while let Some(tok) = tokit.next() {
             let Token { line, col, text } = tok;
             srcs.push(LineCol { line, col });
-            println!("{tok}");
             match text {
                 "(" => {
                     src_idxs.push(srcs.len());
