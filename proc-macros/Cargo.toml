@@ -3,6 +3,8 @@ name = "spaik-proc-macros"
 version = "0.1.0"
 authors = ["Jonas Møller <jonas@nimda.no>"]
 edition = "2021"
+description = "Procedural macros for SPAIK"
+license = "BSD-2-Clause"
 
 [lib]
 name = "spaik_proc_macros"
