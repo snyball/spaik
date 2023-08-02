@@ -77,12 +77,11 @@ pub(crate) mod stylize;
 pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 pub use nkgc::SPV;
 pub(crate) use nkgc::SymID;
-pub use swym::Sym;
 pub(crate) use nkgc::ObjRef;
 pub use nuke::Gc;
 pub type Str = Arc<str>;
 pub use nuke::Userdata;
-use swym::SymRef;
+pub use swym::SymRef as Sym;
 
 /** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)
@@ -117,7 +116,7 @@ pub use crate::error::Result;
 
 /// The easiest way to get started with SPAIK is `use spaik::prelude::*`
 pub mod prelude {
-    pub use super::{Sym, Subr, IntoLisp, FromLisp,
+    pub use super::{Subr, IntoLisp, FromLisp, Sym,
                     Ignore, IntoSubr, SpaikPlug, Spaik, Gc};
     #[cfg(feature = "derive")]
     pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
@@ -319,7 +318,7 @@ impl Spaik {
     /// - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
     ///           `<name>` as either a string or symbol
     #[inline]
-    pub fn load(&mut self, lib: impl AsSym) -> Result<SymRef> {
+    pub fn load(&mut self, lib: impl AsSym) -> Result<Sym> {
         let lib = lib.as_sym(&mut self.vm);
         self.vm.load(lib)
     }

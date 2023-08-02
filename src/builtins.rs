@@ -1,6 +1,6 @@
 //! Builtin Symbols
 
-use crate::{nkgc::SymID, Sym};
+use crate::nkgc::SymID;
 use crate::swym;
 use std::fmt::{Display, self, LowerHex};
 use std::mem;
@@ -158,11 +158,11 @@ impl Builtin {
         // Check if the pointer `p` is inside the static `BUILTIN_SYMS` array,
         // get its index, and transmute that into a Builtin.
         let p = p as usize;
-        let buf = &BUILTIN_SYMS[0] as *const Sym;
+        let buf = &BUILTIN_SYMS[0] as *const swym::Sym;
         let start = buf as usize;
         let end = unsafe { buf.add(NUM_BUILTINS) } as usize;
         (p >= start && p < end).then(|| unsafe {
-            mem::transmute(((p - start) / mem::size_of::<Sym>()) as u8)
+            mem::transmute(((p - start) / mem::size_of::<swym::Sym>()) as u8)
         })
     }
 
