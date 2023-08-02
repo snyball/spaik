@@ -278,6 +278,16 @@ macro_rules! num_op {
                 (Int(x), Int(y)) => Int(x $op y),
                 (Real(x), Int(y)) => Real(x $op *y as f32),
                 (Real(x), Real(y)) => Real(x $op y),
+                (Real(x), Vec2(y)) => Vec2(*x $op *y),
+                (Vec2(x), Real(y)) => Vec2(*x $op *y),
+                (Int(x), Vec2(y)) => Vec2(*x as f32 $op *y),
+                (Vec2(x), Int(y)) => Vec2(*x $op *y as f32),
+                (Real(x), Vec3(y)) => Vec3(*x $op *y),
+                (Vec3(x), Real(y)) => Vec3(*x $op *y),
+                (Int(x), Vec3(y)) => Vec3(*x as f32 $op *y),
+                (Vec3(x), Int(y)) => Vec3(*x $op *y as f32),
+                (Vec2(x), Vec2(y)) => Vec2(*x $op *y),
+                (Vec3(x), Vec3(y)) => Vec3(*x $op *y),
                 (x, y) =>
                     return Err(error!(IfaceNotImplemented,
                                       got: vec![x.type_of(), y.type_of()])
@@ -296,6 +306,12 @@ macro_rules! inplace_num_op {
                 (Int(x), Int(y)) => *x $op_inplace y,
                 (Real(x), Int(y)) => *x $op_inplace *y as f32,
                 (Real(x), Real(y)) => *x $op_inplace y,
+                (Vec2(x), Vec2(y)) => *x $op_inplace *y,
+                (Vec3(x), Vec3(y)) => *x $op_inplace *y,
+                (Vec2(x), Real(y)) => *x $op_inplace *y,
+                (Vec2(x), Int(y)) => *x $op_inplace *y as f32,
+                (Vec3(x), Real(y)) => *x $op_inplace *y,
+                (Vec3(x), Int(y)) => *x $op_inplace *y as f32,
                 (x, y) =>
                     return Err(error!(IfaceNotImplemented,
                                       got: vec![x.type_of(), y.type_of()])
