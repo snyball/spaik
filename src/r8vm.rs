@@ -312,6 +312,31 @@ mod sysfns {
             vm.mem.pop()
         }
 
+        fn vec2(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
+            let e = || Err(error!(ArgTypeError,
+                                  expect: vec![Builtin::Number, Builtin::Number],
+                                  got: vec![x.bt_type_of(), y.bt_type_of()])
+                           .bop(Builtin::Vec2));
+            let Some(x) = x.real() else { return e() };
+            let Some(y) = y.real() else { return e() };
+            Ok(PV::Vec2(glam::vec2(x, y)))
+        }
+
+        fn vec3(&mut self, vm: &mut R8VM, args: (x, y, z)) -> Result<PV> {
+            let e = || Err(error!(ArgTypeError,
+                                  expect: vec![Builtin::Number,
+                                               Builtin::Number,
+                                               Builtin::Number],
+                                  got: vec![x.bt_type_of(),
+                                            y.bt_type_of(),
+                                            z.bt_type_of()])
+                           .bop(Builtin::Vec3));
+            let Some(x) = x.real() else { return e() };
+            let Some(y) = y.real() else { return e() };
+            let Some(z) = z.real() else { return e() };
+            Ok(PV::Vec3(glam::vec3(x, y, z)))
+        }
+
         fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             join_str(args.iter().copied(), "").into_pv(&mut vm.mem)
         }
@@ -1081,6 +1106,8 @@ impl R8VM {
         addfn!("*", product);
         addfn!("/", aproduct);
         addfn!(pow);
+        addfn!(vec2);
+        addfn!(vec3);
 
         // Strings
         addfn!(string);

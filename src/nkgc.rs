@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
+use glam::{Vec2, Vec3};
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Debug};
 use std::{str, char};
@@ -158,6 +159,8 @@ pub enum PV {
     Real(Float),
     Bool(bool),
     Char(char),
+    Vec2(Vec2),
+    Vec3(Vec3),
     #[default]
     Nil,
 }
@@ -416,6 +419,14 @@ impl PV {
         if let PV::Ref(p) = *self { mem.tag(p, tag) }
     }
 
+    pub fn real(&self) -> Option<f32> {
+        match self {
+            PV::Int(x) => Some(*x as f32),
+            PV::Real(x) => Some(*x),
+            _ => None
+        }
+    }
+
     pub fn bt_type_of(&self) -> Builtin {
         use PV::*;
         match *self {
@@ -425,6 +436,8 @@ impl PV {
             Real(_) => Builtin::Float,
             Sym(_) => Builtin::Symbol,
             Char(_) => Builtin::Char,
+            Vec2(_) => Builtin::Vec2,
+            Vec3(_) => Builtin::Vec3,
             Ref(p) => unsafe {
                 Builtin::from_sym(atom_kind(p).into()).expect("
                     Builtin datatype does not have builtin symbol"
@@ -804,6 +817,11 @@ impl Hash for PV {
             PV::Nil => 0.hash(state),
             PV::Real(x) => x.to_ne_bytes().hash(state),
             PV::Char(x) => x.hash(state),
+            PV::Vec2(Vec2 { x, y }) => { x.to_ne_bytes().hash(state);
+                                         y.to_ne_bytes().hash(state) },
+            PV::Vec3(Vec3 { x, y, z }) => { x.to_ne_bytes().hash(state);
+                                            y.to_ne_bytes().hash(state);
+                                            z.to_ne_bytes().hash(state) },
             PV::Ref(r) => if unsafe { atom_kind(r) } == NkT::String {
                 unsafe { fastcast::<String>(r).hash(state) }
             } else {
@@ -826,6 +844,8 @@ impl LispFmt for PV {
             PV::Real(a) => write!(f, "{a}"),
             PV::Sym(id) => write!(f, "{id}"),
             PV::Char(c) => write!(f, "(char {c})"),
+            PV::Vec2(Vec2 { x, y }) => write!(f, "(vec2 {x} {y})"),
+            PV::Vec3(Vec3 { x, y, z }) => write!(f, "(vec3 {x} {y} {z})"),
             PV::Ref(p) => atom_fmt(p, visited, f)
         }
     }

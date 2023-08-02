@@ -68,6 +68,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             PV::Real(_) => self.deserialize_f32(visitor),
             PV::Bool(_) => self.deserialize_bool(visitor),
             PV::Char(_) => self.deserialize_char(visitor),
+            PV::Vec2(_) => self.deserialize_tuple(2, visitor),
+            PV::Vec3(_) => self.deserialize_tuple(3, visitor),
             PV::Nil => self.deserialize_unit(visitor),
         }
     }
