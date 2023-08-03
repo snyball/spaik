@@ -2,6 +2,7 @@
 
 #[cfg(feature = "extra")]
 use comfy_table::Table;
+use glam::Vec2;
 
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
@@ -1990,10 +1991,29 @@ impl R8VM {
                                                got: x.bt_type_of()).bop(op).argn(2))
                     };
                     let vec = self.mem.pop()?;
-                    let elem = with_ref!(vec, Vector(v) => {
-                        (*v).get(idx).ok_or(error!(IndexError, idx))
-                    }).map_err(|e| e.bop(op))?;
-                    self.mem.push(*elem);
+                    let elem = {
+                        let err = || Error::new(ErrorKind::TypeNError {
+                            expect: vec![Builtin::Vector,
+                                         Builtin::Vec2,
+                                         Builtin::Vec3],
+                            got: vec.bt_type_of(),
+                        });
+                        match (idx, vec) {
+                            (_, PV::Ref(p)) => match to_fissile_ref(p) {
+                                NkRef::Vector(v) => (*v).get(idx).ok_or(error!(IndexError, idx)).copied(),
+                                _ => Err(err())
+                            }
+                            (0, PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
+                            (1, PV::Vec2(glam::Vec2 { y, .. })) => Ok(PV::Real(y)),
+                            (_, PV::Vec2(_)) => err!(IndexError, idx),
+                            (0, PV::Vec3(glam::Vec3 { x, .. })) => Ok(PV::Real(x)),
+                            (1, PV::Vec3(glam::Vec3 { y, .. })) => Ok(PV::Real(y)),
+                            (2, PV::Vec3(glam::Vec3 { z, .. })) => Ok(PV::Real(z)),
+                            (_, PV::Vec3(_)) => err!(IndexError, idx),
+                            _ => Err(err())
+                        }
+                    }.map_err(|e| e.bop(op))?;
+                    self.mem.push(elem);
                 }
                 VSET() => {
                     // (set (get <vec> <idx>) <val>)
