@@ -10,7 +10,7 @@ use crate::subrs::{IntoLisp, FromLisp, self};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::io::{Write, Read};
-use std::mem::{self, size_of, align_of};
+use std::mem::{self, size_of, align_of, MaybeUninit};
 use std::ptr::{drop_in_place, self};
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt::{self, Display};
@@ -573,6 +573,15 @@ impl Object {
 
     pub unsafe fn fastcast<T: Userdata>(&self) -> *const T {
         self.mem as *const T
+    }
+
+    pub fn take<T: Userdata>(&mut self) -> Result<T, Error> {
+        let mut obj: MaybeUninit<T> = MaybeUninit::uninit();
+        unsafe {
+            ptr::copy(self.cast()?, obj.as_mut_ptr(), 1);
+            self.type_id = TypeId::of::<()>();
+            Ok(obj.assume_init())
+        }
     }
 }
 

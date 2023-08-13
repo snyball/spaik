@@ -293,6 +293,15 @@ impl Spaik {
                .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
     }
 
+    pub fn take<T>(&mut self, var: impl AsSym) -> Result<T>
+        where T: Userdata
+    {
+        let sym = var.as_sym(&mut self.vm);
+        self.vm.globals.remove(&sym)
+                       .ok_or_else(|| error!(UndefinedVariable, var: sym))
+                       .and_then(|_i| todo!("figure out the rest of this"))
+    }
+
     /// Run an expression and ignore the result (unless there was an error.)
     ///
     /// # Arguments
