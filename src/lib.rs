@@ -294,12 +294,13 @@ impl Spaik {
     }
 
     pub fn take<T>(&mut self, var: impl AsSym) -> Result<T>
-        where T: Userdata
+        where T: 'static
     {
         let sym = var.as_sym(&mut self.vm);
         self.vm.globals.remove(&sym)
                        .ok_or_else(|| error!(UndefinedVariable, var: sym))
-                       .and_then(|_i| todo!("figure out the rest of this"))
+                       .and_then(|i| with_ref_mut!(self.vm.mem.env[i],
+                                                   Struct(s) => { (*s).take() }))
     }
 
     /// Run an expression and ignore the result (unless there was an error.)
@@ -932,5 +933,16 @@ mod tests {
         vm.exec("(g)").unwrap();
         vm.exec("(g)").unwrap();
         assert_eq!(n.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn give_and_take() {
+        let mut vm = Spaik::new();
+        vm.set("test", ExampleObject { x: 1.0, y: 2.0 });
+        vm.exec("(println test)").unwrap();
+        let obj: ExampleObject = vm.take("test").unwrap();
+        assert_eq!(ExampleObject { x: 1.0, y: 2.0 }, obj);
+        vm.exec("(println test)").unwrap();
+        let obj: Gc<ExampleObject> = vm.get("test").unwrap();
     }
 }

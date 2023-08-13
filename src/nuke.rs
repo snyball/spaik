@@ -406,13 +406,13 @@ fn simplify_types<'a, 'b>(ta: &'a str, tb: &'b str) -> (&'a str, &'b str) {
     (ta, tb)
 }
 
-pub unsafe fn ud_layout<T: Userdata>() -> Layout {
+pub unsafe fn ud_layout<T>() -> Layout {
     Layout::from_size_align(size_of::<RcMem<T>>(),
                             align_of::<RcMem<T>>())
         .unwrap_unchecked()
 }
 
-pub unsafe fn drop_ud<T: Userdata>(obj: *mut u8) {
+pub unsafe fn drop_ud<T>(obj: *mut u8) {
     drop_in_place(obj as *mut T);
     dealloc(obj, ud_layout::<T>());
 }
@@ -480,6 +480,21 @@ lazy_static! {
     static ref THAW_FNS: Mutex<FnvHashMap<TypePath, ThawFn>> =
         Mutex::new(FnvHashMap::default());
 }
+
+#[repr(C)]
+struct Voided<T>(T);
+
+// static VT_VOID: &'static VTable = VTable {
+//     type_name: "void",
+//     get_rc: |obj| { 1 },
+//     trace: todo!(),
+//     update_ptrs: todo!(),
+//     drop: todo!(),
+//     lisp_fmt: todo!(),
+//     fmt: todo!(),
+//     call: todo!(),
+//     freeze: todo!(),
+// };
 
 impl Object {
     pub fn new<T: Userdata + Subr>(obj: T) -> Object {
@@ -550,7 +565,7 @@ impl Object {
         unsafe { (self.vt.get_rc)(self.mem) }
     }
 
-    pub fn cast_mut<T: Userdata>(&self) -> Result<*mut T, Error> {
+    pub fn cast_mut<T: 'static>(&self) -> Result<*mut T, Error> {
         if TypeId::of::<T>() != self.type_id {
             let expect_t = type_name::<T>();
             let actual_t = self.vt.type_name;
@@ -563,7 +578,7 @@ impl Object {
         Ok(self.mem as *mut T)
     }
 
-    pub fn cast<T: Userdata>(&self) -> Result<*const T, Error> {
+    pub fn cast<T: 'static>(&self) -> Result<*const T, Error> {
         Ok(self.cast_mut()? as *const T)
     }
 
@@ -575,11 +590,45 @@ impl Object {
         self.mem as *const T
     }
 
-    pub fn take<T: Userdata>(&mut self) -> Result<T, Error> {
+    pub fn take<T: 'static>(&mut self) -> Result<T, Error> {
         let mut obj: MaybeUninit<T> = MaybeUninit::uninit();
+        let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<Voided<T>>()) {
+            Entry::Occupied(vp) => *vp.get(),
+            Entry::Vacant(entry) => {
+                entry.insert(Box::leak(Box::new(VTable {
+                    type_name: "void",
+                    drop: |obj| unsafe {
+                        let rc_mem = obj as *mut RcMem<T>;
+                        if (*rc_mem).rc.is_dropped() {
+                            drop_ud::<T>(obj);
+                        }
+                    },
+                    get_rc: |obj| unsafe {
+                        let rc_mem = obj as *mut RcMem<T>;
+                        (*rc_mem).rc.0.load(atomic::Ordering::SeqCst)
+                    },
+                    #[cfg(not(feature = "freeze"))]
+                    freeze: |_, _| unimplemented!("freeze"),
+                    #[cfg(feature = "freeze")]
+                    freeze: |_, into| unsafe {
+                        use bincode::Options;
+                        let opts = bincode::DefaultOptions::new();
+                        let sz = opts.serialized_size(&()).unwrap();
+                        opts.serialize_into(into, &()).unwrap();
+                        sz as usize
+                    },
+                    trace: |_, _| {},
+                    update_ptrs: |_, _| {},
+                    lisp_fmt: |_, _, f| write!(f, "void"),
+                    fmt: |_, f| write!(f, "void"),
+                    call: |_, _, _| Ok(PV::Nil)
+                })))
+            },
+        };
         unsafe {
             ptr::copy(self.cast()?, obj.as_mut_ptr(), 1);
             self.type_id = TypeId::of::<()>();
+            self.vt = vtable;
             Ok(obj.assume_init())
         }
     }
