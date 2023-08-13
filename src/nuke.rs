@@ -688,8 +688,8 @@ pub struct Gc<T> where T: Userdata {
     this: *mut RcMem<T>,
 }
 
-unsafe impl<T: ?Sized + Sync + Send + Userdata> Send for Gc<T> {}
-unsafe impl<T: ?Sized + Sync + Send + Userdata> Sync for Gc<T> {}
+unsafe impl<T: Sync + Send + Userdata> Send for Gc<T> {}
+unsafe impl<T: Sync + Send + Userdata> Sync for Gc<T> {}
 
 impl<T: Userdata> Gc<T> {
     /// # Why does this take an `Fn` instead of an `FnMut`?
