@@ -19,6 +19,8 @@ For basic usage, all you need are the `eval` and `exec` methods (`exec` is just
 
 ``` rust
 let mut vm = Spaik::new();
+vm.set("f", |x: i32| x + 2); // Functions are first-class at the API boundary!
+assert_eq!(vm.eval("(f 2)"), 4)
 vm.exec(r#"(println "Hello, World!")"#)?;
 vm.set("*global*", 3);
 let res: i32 = vm.eval(r#"(+ 1 *global*)"#)?;
