@@ -201,10 +201,10 @@ macro_rules! fissile_types {
 /// Marker-trait for data that can be stored inside a SPAIK `Object`, and
 /// referred to from Rust using `Gc<T>`.
 #[cfg(not(feature = "freeze"))]
-pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any + 'static
+pub trait Userdata: LispFmt + Debug + Traceable + Any + 'static
 {}
 #[cfg(feature = "freeze")]
-pub trait Userdata: LispFmt + Debug + Clone + Traceable + Any +
+pub trait Userdata: LispFmt + Debug + Traceable + Any +
     Serialize + serde::de::DeserializeOwned + 'static
 {}
 

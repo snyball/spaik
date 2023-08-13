@@ -243,14 +243,6 @@ impl Spaik {
         self.objref_mut(var).map(|rf| rf as *const T)
     }
 
-    /// Get a clone of a user-defined object type stored in the vm.
-    #[inline]
-    pub fn obj<T: Userdata>(&mut self, var: impl AsSym) -> Result<T> {
-        unsafe {
-            self.objref_mut(var).map(|rf: *mut T| (*rf).clone())
-        }
-    }
-
     /// Retrieve a variable as a mutable reference.
     ///
     /// # Arguments
@@ -815,9 +807,9 @@ mod tests {
         let y: f32 = vm.eval("(obj-y dst-obj)").unwrap();
         assert_eq!(x, 2.0);
         assert_eq!(y, 5.0);
-        let dst_obj_2: TestObj = vm.obj("dst-obj").unwrap();
-        assert_eq!(dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
-                                        y: dst_obj.y + src_obj.y });
+        // let dst_obj_2: TestObj = vm.obj("dst-obj").unwrap();
+        // assert_eq!(dst_obj_2, TestObj { x: dst_obj.x + src_obj.x,
+        //                                 y: dst_obj.y + src_obj.y });
         let expr = "(obj-y wrong-obj)";
         let e = match vm.exec(expr).map_err(|e| e.kind().clone()) {
             Ok(_) => panic!("Expression should fail: {expr}"),
