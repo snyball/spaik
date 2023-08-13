@@ -610,7 +610,7 @@ impl Object {
                     #[cfg(not(feature = "freeze"))]
                     freeze: |_, _| unimplemented!("freeze"),
                     #[cfg(feature = "freeze")]
-                    freeze: |_, into| unsafe {
+                    freeze: |_, into| {
                         use bincode::Options;
                         let opts = bincode::DefaultOptions::new();
                         let sz = opts.serialized_size(&()).unwrap();
@@ -1069,7 +1069,7 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         NkRef::Struct(s) => clone!(s),
         NkRef::Iter(i) => clone!(i),
         NkRef::Continuation(_c) => todo!(),
-        NkRef::Subroutine(s) => unimplemented!("cloning subroutines is unimplemented"),
+        NkRef::Subroutine(_s) => unimplemented!("cloning subroutines is unimplemented"),
     }
 }
 
@@ -1388,8 +1388,8 @@ impl Nuke {
             None
         };
 
-        let mut cur = align_mut(self.free as *mut NkAtom,
-                                align_of::<NkAtom>());
+        let cur = align_mut(self.free as *mut NkAtom,
+                            align_of::<NkAtom>());
         let cur_diff = cur as usize - self.free as usize;
         assert_eq!(cur_diff, 0); // FIXME: Remove me later
         self.used += cur_diff;

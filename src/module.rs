@@ -83,7 +83,7 @@ impl LispModule {
             #[allow(unreachable_code)]
             symtbl.push(todo!("symbol entry for modules"));
         }
-        let mut consts = vec![];
+        let consts = vec![];
         LispModule {
             symtbl,
             exports,

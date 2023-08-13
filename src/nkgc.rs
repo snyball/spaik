@@ -267,8 +267,6 @@ impl Traceable for PV {
     }
 }
 
-pub type ArgList = Vec<SymID>;
-
 macro_rules! num_op {
     ($name:ident, $sym:tt, $op:tt) => {
         pub fn $name(&self, o: &PV) -> Result<PV, Error> {

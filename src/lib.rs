@@ -49,7 +49,6 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
-use spaik_proc_macros::spaik_export;
 use subrs::Lispify;
 pub use tokit::minify;
 pub(crate) mod tok;
@@ -146,8 +145,15 @@ impl fmt::LispFmt for ExampleObject {
         write!(f, "(ExampleObject :x {} :y {}", self.x, self.y)
     }
 }
-#[spaik_export]
-impl ExampleObject {}
+unsafe impl Subr for ExampleObject {
+    fn call(&mut self, _vm: &mut R8VM, _args: &[PV]) -> std::result::Result<PV, Error> {
+        todo!()
+    }
+
+    fn name(&self) -> &'static str {
+        todo!()
+    }
+}
 impl IntoLisp for ExampleObject {
     fn into_pv(self, mem: &mut _deps::Arena) -> Result<PV> {
         Ok(mem.put_pv(nuke::Object::new(self)))
@@ -656,8 +662,8 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
 mod tests {
     use serde::{Deserialize, Serialize};
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{spaikfn, Fissile, EnumCall};
-    use std::{sync::{Once, atomic::{AtomicI32, Ordering}}, ops::Add};
+    use spaik_proc_macros::{spaikfn, Fissile, EnumCall, spaik_export};
+    use std::sync::{Once, atomic::{AtomicI32, Ordering}};
 
     fn setup() {
         static INIT: Once = Once::new();

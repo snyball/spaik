@@ -1,14 +1,11 @@
 //! Rust Subroutines for SPAIK LISP
 
-use phf::phf_map;
-use spaik_proc_macros::spaik_export;
-
 use crate::r8vm::{R8VM, ArgSpec};
 use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
-use crate::{nuke::*, SymID, Builtin};
+use crate::{nuke::*, SymID};
 use crate::fmt::{LispFmt, VisitSet};
-use std::any::{Any, type_name};
+use std::any::Any;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::marker::PhantomData;

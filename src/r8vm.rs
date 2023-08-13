@@ -2,7 +2,6 @@
 
 #[cfg(feature = "extra")]
 use comfy_table::Table;
-use glam::Vec2;
 
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
@@ -16,7 +15,7 @@ use crate::{
     nuke::*,
     nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int},
     string_parse::string_parse,
-    subrs::{IntoLisp, Subr, BoxSubr, FromLisp, Lispify},
+    subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
 use fnv::FnvHashMap;
