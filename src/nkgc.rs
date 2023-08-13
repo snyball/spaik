@@ -1387,13 +1387,12 @@ impl Arena {
         }
         self.mem_fit::<Cons>(n as usize);
         let self_ptr = self as *mut Arena;
-        let alloc = || unsafe { (*self_ptr).alloc::<Cons>() };
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let mut cell = alloc();
+        let mut cell = self.alloc::<Cons>();
         let orig_cell = cell;
         for item in self.stack[idx..top - 1].iter() {
-            let next = alloc();
+            let next = unsafe { (*self_ptr).alloc::<Cons>() };
             unsafe {
                 ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))
             }
@@ -1417,13 +1416,12 @@ impl Arena {
         assert!(if dot { n >= 2 } else { true });
         self.mem_fit::<Cons>(n as usize);
         let self_ptr = self as *mut Arena;
-        let alloc = || unsafe { (*self_ptr).alloc::<Cons>() };
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let mut cell = alloc();
+        let mut cell = self.alloc::<Cons>();
         let orig_cell = cell;
         for item in self.stack[idx..top - 1 - dot as usize].iter() {
-            let next = alloc();
+            let next = unsafe { (*self_ptr).alloc::<Cons>() };
             unsafe {ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))}
             self.tags.insert(NkAtom::make_raw_ref(cell),
                              srcs.next().expect("Not enough sources for list"));
