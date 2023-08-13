@@ -1162,7 +1162,7 @@ impl R8VM {
         self.func_labels.shrink_to_fit();
     }
 
-    pub fn set<A, R, const N: usize>(&mut self, var: SymID, obj: impl Lispify<A, R, N>) -> Result<()> {
+    pub fn set<A, R, N>(&mut self, var: SymID, obj: impl Lispify<A, R, N>) -> Result<()> {
         let pv = obj.lispify(&mut self.mem)?;
         let idx = self.mem.push_env(pv);
         self.globals.insert(var, idx);

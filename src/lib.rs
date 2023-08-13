@@ -188,7 +188,7 @@ impl Spaik {
         self.set(func.name(), func.into_subr());
     }
 
-    pub fn set<A, R, const N: usize>(&mut self, var: impl AsSym, obj: impl Lispify<A, R, N>) {
+    pub fn set<A, R, N>(&mut self, var: impl AsSym, obj: impl Lispify<A, R, N>) {
         let var = var.as_sym(&mut self.vm);
         self.vm.set(var, obj).unwrap();
     }

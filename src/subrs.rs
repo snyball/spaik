@@ -5,6 +5,7 @@ use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::{nuke::*, SymID};
 use crate::fmt::{LispFmt, VisitSet};
+use std::any::Any;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::marker::PhantomData;
@@ -265,7 +266,7 @@ macro_rules! impl_funcable {
         }
 
 
-        impl<Funk, Rt, $($x),*> Lispify<($($x,)*), Rt, 1> for Funk
+        impl<Funk, Rt, $($x),*> Lispify<($($x,)*), Rt, fn()> for Funk
             where Funk: IntoSubr<($($x,)*), Rt>
         {
             fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
@@ -298,14 +299,14 @@ pub struct RLambda<F, A, R>
 }
 
 unsafe impl<F, A, R> Subr for RLambda<F, A, R>
-    where A: Send, R: Send, F: Funcable<A, R>
+    where A: Send, R: Send, F: Funcable<A, R> + Any
 {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
         self.f.call(vm, args)
     }
 
     fn name(&self) -> &'static str {
-        "lambda"
+        std::any::type_name::<F>()
     }
 }
 
@@ -338,11 +339,11 @@ pub trait IntoSubr<A, R> {
     fn into_subr(self) -> Box<dyn Subr>;
 }
 
-pub trait Lispify<A, R, const N: usize> {
+pub trait Lispify<A, R, N> {
     fn lispify(self, mem: &mut Arena) -> Result<PV, Error>;
 }
 
-impl<T> Lispify<(), (), 0> for T where T: IntoLisp {
+impl<T> Lispify<(), (), ()> for T where T: IntoLisp {
     fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
         self.into_pv(mem)
     }
