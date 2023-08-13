@@ -1,6 +1,5 @@
 use crate::{nkgc::SymID, swym::SwymDb};
 use crate::chasm::ASMOp;
-use crate::nuke::NkSum;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -70,7 +69,6 @@ pub struct LispModule {
 impl LispModule {
     pub fn new<ASM>(pmem_in: &[ASM],
                     symtbl_in: &SwymDb,
-                    iconsts: &[NkSum],
                     imports: Vec<Import>,
                     exports: Vec<Export>) -> LispModule
         where ASM: ASMOp
@@ -86,10 +84,6 @@ impl LispModule {
             symtbl.push(todo!("symbol entry for modules"));
         }
         let mut consts = vec![];
-        consts.extend(iconsts.iter().map(|c| match c {
-            NkSum::String(s) => Const::String(s.clone()),
-            _ => unimplemented!("Only string constants are supported as module exports"),
-        }));
         LispModule {
             symtbl,
             exports,

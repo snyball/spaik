@@ -211,12 +211,12 @@ impl<T, E> IntoLisp for Result<T, E>
  *         should use instead of implementing Subr yourself.
 */
 #[cfg(not(feature = "freeze"))]
-pub unsafe trait Subr: CloneSubr + Send + 'static {
+pub unsafe trait Subr: Send + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
     fn name(&self) -> &'static str;
 }
 #[cfg(feature = "freeze")]
-pub unsafe trait Subr: CloneSubr + Send + 'static {
+pub unsafe trait Subr: Send + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
     fn name(&self) -> &'static str;
 }
@@ -255,9 +255,9 @@ macro_rules! impl_funcable {
         }
 
         impl<Funk, Rt, $($x),*> IntoSubr<($($x,)*), Rt> for Funk
-            where Funk: FnMut($($x),*) -> Rt + Clone + Funcable<($($x,)*), Rt> + 'static,
-                  $($x: Send + Clone + 'static,)*
-                  Rt: Send + Clone + IntoLisp + 'static,
+            where Funk: FnMut($($x),*) -> Rt + Funcable<($($x,)*), Rt> + 'static,
+                  $($x: Send + 'static,)*
+                  Rt: Send + IntoLisp + 'static,
         {
             fn into_subr(self) -> Box<dyn Subr> {
                 Box::new(RLambda::new(self))
@@ -291,14 +291,14 @@ impl_funcable!(A, B, C, D, E, F, G, H, I, J, K, L);
 
 #[derive(Clone)]
 pub struct RLambda<F, A, R>
-    where A: Send + Clone + 'static, R: Send + Clone + 'static, F: Funcable<A, R> + Clone
+    where A: Send + 'static, R: Send + 'static, F: Funcable<A, R>
 {
     f: F,
     _phantom: PhantomData<(A, R)>,
 }
 
 unsafe impl<F, A, R> Subr for RLambda<F, A, R>
-    where A: Send + Clone, R: Send + Clone, F: Funcable<A, R> + Clone
+    where A: Send, R: Send, F: Funcable<A, R>
 {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
         self.f.call(vm, args)
@@ -310,7 +310,7 @@ unsafe impl<F, A, R> Subr for RLambda<F, A, R>
 }
 
 impl<F, A, R> RLambda<F, A, R>
-    where A: Send + Clone + 'static, R: Send + Clone + 'static, F: Funcable<A, R> + Clone
+    where A: Send + 'static, R: Send + 'static, F: Funcable<A, R>
 {
     pub fn new(f: F) -> Self {
         RLambda { f, _phantom: Default::default() }
@@ -318,16 +318,16 @@ impl<F, A, R> RLambda<F, A, R>
 }
 
 pub trait IntoRLambda<F, A, R>
-    where A: Send + Clone, R: Send + Clone, F: Funcable<A, R> + Clone
+    where A: Send, R: Send, F: Funcable<A, R>
 {
     fn into_rlambda(self) -> RLambda<F, A, R>;
 }
 
 impl<F, X, R> IntoRLambda<F, (X,), R> for F
-    where X: Send + Clone,
-          R: Send + Clone + IntoLisp,
+    where X: Send,
+          R: Send + IntoLisp,
           PV: FromLisp<X>,
-          F: FnMut(X) -> R + Send + Clone + 'static
+          F: FnMut(X) -> R + Send + 'static
 {
     fn into_rlambda(self) -> RLambda<F, (X,), R> {
         RLambda::new(self)
@@ -359,24 +359,6 @@ impl LispFmt for Box<dyn Subr> {
                 _: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(subr {})", self.name())
-    }
-}
-
-pub trait CloneSubr {
-    fn clone_subr(&self) -> Box<dyn Subr>;
-}
-
-impl<T> CloneSubr for T
-    where T: Subr + Clone + 'static
-{
-    fn clone_subr(&self) -> Box<dyn Subr> {
-        Box::new(self.clone())
-    }
-}
-
-impl Clone for Box<dyn Subr> {
-    fn clone(&self) -> Box<dyn Subr> {
-        self.clone_subr()
     }
 }
 

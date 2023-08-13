@@ -744,7 +744,6 @@ impl<T> InStream for T where T: io::Read + Debug + Send {}
 pub struct R8VM {
     /// Memory
     pub(crate) pmem: Vec<r8c::Op>,
-    consts: Vec<NkSum>,
     pub mem: Arena,
     pub(crate) globals: FnvHashMap<SymID, usize>,
     pub(crate) trace_counts: FnvHashMap<SymID, usize>,
@@ -775,7 +774,6 @@ impl Default for R8VM {
             pmem: Default::default(),
             reader_macros: Default::default(),
             tok_tree: tokit::standard_lisp_tok_tree(),
-            consts: Default::default(),
             catch: Default::default(),
             mem: Default::default(),
             globals: Default::default(),
@@ -1158,7 +1156,6 @@ impl R8VM {
     pub fn minimize(&mut self) {
         self.mem.minimize();
         self.pmem.shrink_to_fit();
-        self.consts.shrink_to_fit();
         self.globals.shrink_to_fit();
         self.breaks.shrink_to_fit();
         self.funcs.shrink_to_fit();
@@ -1184,12 +1181,6 @@ impl R8VM {
 
     pub fn get_debug_mode(&self) -> bool {
         self.debug_mode
-    }
-
-    pub fn push_const<T: Into<NkSum>>(&mut self, v: T) -> usize {
-        let top = self.consts.len();
-        self.consts.push(v.into());
-        top
     }
 
     pub fn catch(&mut self) {
@@ -1239,10 +1230,6 @@ impl R8VM {
             path.clear();
         }
         err!(ModuleNotFound, lib)
-    }
-
-    pub fn consts_top(&self) -> usize {
-        self.consts.len()
     }
 
     pub fn var(&self, sym: SymID) -> Result<PV> {
@@ -2556,6 +2543,6 @@ impl R8VM {
                        .map(|(&name, f)| Export::new(ExportKind::Func,
                                                      name,
                                                      f.pos.try_into().unwrap())));
-        LispModule::new(&self.pmem, &self.mem.symdb, &self.consts, vec![], exports)
+        LispModule::new(&self.pmem, &self.mem.symdb, vec![], exports)
     }
 }

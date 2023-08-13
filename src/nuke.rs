@@ -80,15 +80,12 @@ macro_rules! with_atom_inst {
 /// objects, and to figure out which pointers to follow during the GC
 /// mark phase. This will obviously cause UB if the memory layout of your
 /// type isn't what the destructor, or `trace`/`update_ptrs` expects
-pub unsafe trait Fissile: LispFmt + Debug + Clone + Traceable + Any + 'static {
+pub unsafe trait Fissile: LispFmt + Debug + Traceable + Any + 'static {
     fn type_of() -> NkT;
 }
 
 macro_rules! fissile_types {
     ($(($t:ident, $sym_type_of:expr, $path:path)),+) => {
-        #[derive(Debug)]
-        pub enum NkSum { $($t($path)),+ }
-
         #[repr(u8)]
         #[derive(Debug, PartialEq, Eq)]
         pub enum NkT { $($t),+ }
@@ -125,16 +122,6 @@ macro_rules! fissile_types {
                 match self { $(Self::$t(..) => NkT::$t ),+ }
             }
         }
-
-        impl NkSum {
-            pub fn push_to(&self, ar: &mut Arena) {
-                match self { $(Self::$t(v) => ar.push_new(v.clone())),+ }
-            }
-        }
-
-        $(impl From<$path> for NkSum {
-            fn from(item: $path) -> Self { NkSum::$t(item) }
-        })+
 
         const DESTRUCTORS: [unsafe fn (*mut u8); count_args!($($t),+)] = [
             $(|x| { unsafe { drop_in_place(x as *mut $path) } }),+
@@ -1005,7 +992,7 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         NkRef::Struct(s) => clone!(s),
         NkRef::Iter(i) => clone!(i),
         NkRef::Continuation(_c) => todo!(),
-        NkRef::Subroutine(s) => clone!(s),
+        NkRef::Subroutine(s) => unimplemented!("cloning subroutines is unimplemented"),
     }
 }
 
