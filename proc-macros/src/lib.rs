@@ -1,5 +1,7 @@
 extern crate proc_macro;
 
+use std::fmt::format;
+
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
@@ -264,6 +266,78 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
                        -> core::result::Result<#root::proc_macro_deps::PV, #root::error::Error>
             {
                 Ok(mem.put_pv(#root::nuke::Object::new(self)))
+            }
+        }
+    };
+
+    out.into()
+}
+
+#[proc_macro_attribute]
+pub fn spaik_export(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let root = crate_root();
+    let input = parse_macro_input!(item as ItemImpl);
+    let name = input.self_ty.clone();
+    let methods = input.items.iter().filter_map(|x| if let ImplItem::Method(m) = x {
+        Some(m)
+    } else {
+        None
+    });
+    let method_names = methods.clone().map(|x| x.sig.ident.clone());
+    let method_names2 = method_names.clone();
+    let method_m_names = method_names.clone().map(|x| quote!(M::#x));
+    let method_lisp_names = method_names.clone().map(|x| format!(":{x}"));
+    let method_m_names2 = method_m_names.clone();
+    let method_m_argc = methods.clone().map(|m| m.sig.inputs.len() as u16);
+    let m_idents = methods.clone().map(|m| {
+        m.sig.inputs.iter().filter_map(|i| match i {
+            FnArg::Receiver(_) => None,
+            FnArg::Typed(t) => if let Pat::Ident(i) = *t.pat.clone() {
+                Some(i.ident)
+            } else {
+                None
+            },
+        })
+    });
+    let setargs = m_idents.clone().map(|idents| {
+        let idents2 = idents.clone();
+        quote! {
+            #(let #idents = #idents2.from_lisp(&mut vm.mem)?;)*
+        }
+    });
+    let args = m_idents.clone().map(|idents| quote!(#(#idents),*));
+    let args2 = args.clone();
+
+    let out = quote! {
+        #input
+
+        #[allow(non_camel_case_types)]
+        unsafe impl #root::Subr for #name {
+            fn call(&mut self, vm: &mut #root::proc_macro_deps::R8VM, args: &[#root::proc_macro_deps::PV]) -> std::result::Result<#root::proc_macro_deps::PV, #root::error::Error> {
+                enum M { #(#method_names),* }
+                let op = args.get(0)
+                             .ok_or_else(|| error!(TypeError,
+                                                   expect: Builtin::Callable,
+                                                   got: Builtin::Struct)
+                                         .bop(Builtin::Apply))?
+                             .sym()
+                             .map_err(|e| e.bop(Builtin::MethodCall))?;
+                match op.as_ref() {
+                    #(
+                        #method_lisp_names => match &args[1..] {
+                            &[#args] => {
+                                #setargs
+                                self.#method_names2(#args2).lispify(&mut vm.mem)
+                            }
+                            _ => err!(ArgError, expect: ArgSpec::normal(#method_m_argc), got_num: (args.len()-1) as u32)
+                        }
+                    ),*
+                    _ => return err!(NoSuchMethod, strucc: self.name(), method: op.into()),
+                }
+            }
+
+            fn name(&self) -> &'static str {
+                std::any::type_name::<Self>()
             }
         }
     };

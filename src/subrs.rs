@@ -1,11 +1,14 @@
 //! Rust Subroutines for SPAIK LISP
 
+use phf::phf_map;
+use spaik_proc_macros::spaik_export;
+
 use crate::r8vm::{R8VM, ArgSpec};
 use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
-use crate::{nuke::*, SymID};
+use crate::{nuke::*, SymID, Builtin};
 use crate::fmt::{LispFmt, VisitSet};
-use std::any::Any;
+use std::any::{Any, type_name};
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::marker::PhantomData;
@@ -367,5 +370,43 @@ impl IntoLisp for Box<dyn Subr> {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
         let p = mem.put(self);
         Ok(NkAtom::make_ref(p))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use spaik_proc_macros::Fissile;
+
+    use crate::Spaik;
+
+    use super::*;
+    use serde::{Serialize, Deserialize};
+
+    #[test]
+    fn method_calls() {
+        let mut vm = Spaik::new_no_core();
+
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
+        struct Lmao {}
+
+        #[spaik_export]
+        impl Lmao {
+            fn foo(&self, x: i32, y: i32) -> i32 {
+                x + y
+            }
+
+            fn bar(&self, x: i32, y: i32) -> i32 {
+                x + y
+            }
+
+            fn baz(&self, x: i32, y: i32, z: &str) -> String {
+                format!("answer: {} ({z})", x+y)
+            }
+        }
+
+        vm.set("lmao", Lmao{});
+        assert_eq!(vm.eval("(lmao :foo 1 2)"), Ok(3));
+        assert_eq!(vm.eval(r#"(lmao :baz 8 8 "lmao")"#), Ok("answer: 16 (lmao)"));
     }
 }

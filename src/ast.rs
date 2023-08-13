@@ -587,7 +587,7 @@ impl<'a> Excavator<'a> {
             PV::Sym(name) => name,
             PV::Ref(p) => {
                 let Cons { car, cdr } = unsafe { *cast_err::<Cons>(p)? };
-                match car.sym().and_then(Builtin::from_sym) {
+                match car.sym().ok().and_then(Builtin::from_sym) {
                     Some(Builtin::Get) => {
                         let (vec, idx) = self.two_args(cdr, src.clone()).map_err(|e| e.bop(Builtin::Get))?;
                         // TODO: Unify this code path with the sym-set one
@@ -650,11 +650,7 @@ impl<'a> Excavator<'a> {
                                                       expect: ArgSpec::rest(1, 0),
                                                       got_num: 0)
                                             .bop(Builtin::ArgList))?;
-            let name = name.sym()
-                           .ok_or_else(|| error!(TypeError,
-                                                 expect: Builtin::Symbol,
-                                                 got: name.bt_type_of())
-                                       .argn(1).bop(Builtin::ArgList))?;
+            let name = name.sym().map_err(|e| e.argn(1).bop(Builtin::ArgList))?;
             let arglist = self.arg_parse(it.into(), src.clone())?;
             Ok(AST2 { kind: M::Defun(name, arglist, body?),
                       src })

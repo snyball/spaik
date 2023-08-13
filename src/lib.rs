@@ -49,6 +49,7 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
+use spaik_proc_macros::spaik_export;
 use subrs::Lispify;
 pub use tokit::minify;
 pub(crate) mod tok;
@@ -142,6 +143,8 @@ impl fmt::LispFmt for ExampleObject {
         write!(f, "(ExampleObject :x {} :y {}", self.x, self.y)
     }
 }
+#[spaik_export]
+impl ExampleObject {}
 impl IntoLisp for ExampleObject {
     fn into_pv(self, mem: &mut proc_macro_deps::Arena) -> Result<PV> {
         Ok(mem.put_pv(nuke::Object::new(self)))
@@ -759,6 +762,8 @@ mod tests {
             x: f32,
             y: f32,
         }
+        #[spaik_export]
+        impl TestObj {}
 
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
@@ -766,6 +771,8 @@ mod tests {
             x: f32,
             thing: String,
         }
+        #[spaik_export]
+        impl TestObj2 {}
 
         #[allow(non_camel_case_types)]
         struct fns;
@@ -898,6 +905,8 @@ mod tests {
             x: f32,
             y: f32,
         }
+        #[spaik_export]
+        impl TestObj {}
 
         let mut vm = Spaik::new_no_core();
         vm.set("test-obj", TestObj { x: 10.0, y: 20.0 });

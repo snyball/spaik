@@ -212,6 +212,7 @@ pub enum ErrorKind {
     STypeError { expect: String, got: String },
     UnexpectedDottedList,
     TypeError { expect: Builtin, got: Builtin },
+    NoSuchMethod { strucc: &'static str, method: SymID },
     TypeNError { expect: Vec<Builtin>, got: Builtin },
     ArgTypeError { expect: Vec<Builtin>, got: Vec<Builtin> },
     IfaceNotImplemented { got: Vec<SymID> },
@@ -534,6 +535,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Syntax Error: Trailing escape character")?,
         NoSuchEscapeChar { chr } =>
             write!(f, "Syntax Error: No such escape character {chr:?}")?,
+        NoSuchMethod { strucc, method } =>
+            write!(f, "No Such Method: ({strucc} {method})")?,
     }
 
     if let Some(src) = meta.src() {

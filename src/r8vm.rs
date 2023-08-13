@@ -1431,7 +1431,7 @@ impl R8VM {
 
     pub fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV> {
         let op = self.mem.from_top(n as usize);
-        let v = if let Some(m) = op.sym().and_then(|op| self.macros.get(&op)).copied() {
+        let v = if let Some(m) = op.sym().ok().and_then(|op| self.macros.get(&op)).copied() {
             if dot {
                 return Err(error!(UnexpectedDottedList,).bop(Builtin::Apply))
             }
@@ -1858,6 +1858,14 @@ impl R8VM {
             (*cont).put_stack(stack);
 
             res
+        }, Struct(s) => {
+            let top = self.mem.stack.len();
+            let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
+            let dip = self.ip_delta(ip);
+            let res = (*s).call(self, &args[..]);
+            self.mem.stack.drain(idx..).for_each(drop); // drain gang
+            self.mem.push(res?);
+            Ok(self.ret_to(dip))
         })
     }
 

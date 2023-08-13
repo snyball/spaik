@@ -1,9 +1,11 @@
 //! The Nuclear Allocator
 
+use crate::Subr;
 use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::builtins::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
+use crate::r8vm::R8VM;
 use crate::subrs::{IntoLisp, FromLisp, self};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
@@ -298,6 +300,8 @@ pub struct VTable {
     lisp_fmt: unsafe fn(*const u8, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    /// `Subr::call`
+    call: unsafe fn(*const u8, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>,
     /// Serialize the object
     #[allow(dead_code)]
     freeze: unsafe fn(*const u8, into: &mut dyn Write) -> usize,
@@ -478,7 +482,7 @@ lazy_static! {
 }
 
 impl Object {
-    pub fn new<T: Userdata>(obj: T) -> Object {
+    pub fn new<T: Userdata + Subr>(obj: T) -> Object {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
@@ -522,6 +526,7 @@ impl Object {
                     update_ptrs: delegate! { update_ptrs(reloc) },
                     lisp_fmt: delegate! { lisp_fmt(visited, f) },
                     fmt: delegate! { fmt(f) },
+                    call: delegate! { call(vm, args) }
                 })))
             },
         };
@@ -582,6 +587,20 @@ impl Traceable for Object {
         unsafe {
             (self.vt.update_ptrs)(self.mem, reloc);
         }
+    }
+}
+
+unsafe impl Send for Object {}
+
+unsafe impl Subr for Object {
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        unsafe {
+            (self.vt.call)(self.mem, vm, args)
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        self.vt.type_name
     }
 }
 

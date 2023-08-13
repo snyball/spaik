@@ -615,10 +615,12 @@ impl PV {
     }
 
     #[inline]
-    pub fn sym(&self) -> Option<SymID> {
-        Some(match *self {
+    pub fn sym(&self) -> Result<SymID, Error> {
+        Ok(match *self {
             PV::Sym(sym) => sym,
-            _ => return None,
+            _ => return err!(TypeError,
+                             expect: Builtin::Symbol,
+                             got: self.bt_type_of()),
         })
     }
 
@@ -642,42 +644,6 @@ impl PV {
             _ => false,
         }
     }
-
-    pub fn to_arglist(&self) -> Result<ArgList, String> {
-        if !self.is_list() {
-            return Err(format!("Invalid argument list, was not a list: {}", self));
-        }
-
-        let mut args = Vec::new();
-        for arg in self.iter() {
-            if arg.is_atom() {
-                args.push(arg.sym()
-                          .ok_or_else(|| format!(
-                              "Invalid argument list, not a symbol: {}", arg))?)
-            } else {
-                return Err(format!("Invalid argument list, not a symbol: {}", arg));
-            }
-        }
-        Ok(args)
-    }
-
-    // #[inline]
-    // pub fn setcar(&mut self, new: PV) -> Result<PV, Error> {
-    //     with_ref_mut!(self, Cons(Cons { ref mut car, .. }) => {
-    //         let prev = *car;
-    //         *car = new;
-    //         Ok(prev)
-    //     })
-    // }
-
-    // #[inline]
-    // pub fn setcdr(&mut self, new: PV) -> Result<PV, Error> {
-    //     with_ref_mut!(self, Cons(Cons { ref mut cdr, .. }) => {
-    //         let prev = *cdr;
-    //         *cdr = new;
-    //         Ok(prev)
-    //     })
-    // }
 
     pub fn append(&mut self, new_tail: PV) -> Result<(), Error> {
         let e = 'err: {
@@ -1897,12 +1863,16 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn virtual_destructors() {
+        use spaik_proc_macros::spaik_export;
+
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {
             hello: Vec<u64>,
             thing: String,
         }
+        #[spaik_export]
+        impl TestObj {}
         let mut ar = Arena::new(1024);
         for i in 0..10 {
             let mut hello = vec![];
