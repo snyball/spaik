@@ -49,6 +49,7 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
+use subrs::Lispify;
 pub use tokit::minify;
 pub(crate) mod tok;
 #[macro_use]
@@ -110,14 +111,14 @@ use crate::r8vm::R8VM;
 pub use crate::r8vm::{Args, EnumCall};
 pub(crate) use crate::r8vm::ArgSpec;
 use crate::nkgc::PV;
-pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, IntoSubr};
+pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, BoxSubr};
 pub use crate::error::Error;
 pub use crate::error::Result;
 
 /// The easiest way to get started with SPAIK is `use spaik::prelude::*`
 pub mod prelude {
     pub use super::{Subr, IntoLisp, FromLisp, Sym,
-                    Ignore, IntoSubr, SpaikPlug, Spaik, Gc};
+                    Ignore, BoxSubr, SpaikPlug, Spaik, Gc};
     #[cfg(feature = "derive")]
     pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
 }
@@ -187,9 +188,7 @@ impl Spaik {
         self.set(func.name(), func.into_subr());
     }
 
-    /// Move `obj` into the vm as `var`.
-    #[inline]
-    pub fn set(&mut self, var: impl AsSym, obj: impl IntoLisp) {
+    pub fn set<A, R>(&mut self, var: impl AsSym, obj: impl Lispify<A, R>) {
         let var = var.as_sym(&mut self.vm);
         self.vm.set(var, obj).unwrap();
     }
@@ -904,5 +903,13 @@ mod tests {
         vm.set("test-obj", TestObj { x: 10.0, y: 20.0 });
         let _rf: Gc<TestObj> = vm.get("test-obj").unwrap();
         let mut _vm = vm.fork::<(), ()>();
+    }
+
+    #[test]
+    fn splat() {
+        let mut vm = Spaik::new_no_core();
+        vm.set("test", 1);
+        vm.set("f", |x: i32| x + 2);
+        assert_eq!(vm.eval("(f 2)"), Ok(4));
     }
 }

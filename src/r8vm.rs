@@ -16,7 +16,7 @@ use crate::{
     nuke::*,
     nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int},
     string_parse::string_parse,
-    subrs::{IntoLisp, Subr, IntoSubr, FromLisp},
+    subrs::{IntoLisp, Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
 use fnv::FnvHashMap;
@@ -1165,8 +1165,8 @@ impl R8VM {
         self.func_labels.shrink_to_fit();
     }
 
-    pub fn set<T: IntoLisp>(&mut self, var: SymID, obj: T) -> Result<()> {
-        let pv = obj.into_pv(&mut self.mem)?;
+    pub fn set<A, R>(&mut self, var: SymID, obj: impl Lispify<A, R>) -> Result<()> {
+        let pv = obj.lispify(&mut self.mem)?;
         let idx = self.mem.push_env(pv);
         self.globals.insert(var, idx);
         Ok(())

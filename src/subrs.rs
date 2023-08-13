@@ -1,12 +1,13 @@
 //! Rust Subroutines for SPAIK LISP
 
-use crate::r8vm::R8VM;
+use crate::r8vm::{R8VM, ArgSpec};
 use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::{nuke::*, SymID};
 use crate::fmt::{LispFmt, VisitSet};
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
+use std::marker::PhantomData;
 
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to create an SPV reference-counter
@@ -220,13 +221,130 @@ pub unsafe trait Subr: CloneSubr + Send + 'static {
     fn name(&self) -> &'static str;
 }
 
-pub trait IntoSubr: Subr {
+pub trait BoxSubr {
     fn into_subr(self) -> Box<dyn Subr>;
 }
 
-impl<T> IntoSubr for T where T: Subr + Sized + 'static {
+impl<T> BoxSubr for T where T: Subr + Sized + 'static {
     fn into_subr(self) -> Box<dyn Subr> {
         Box::new(self)
+    }
+}
+
+pub trait Funcable<A, R>: Send + 'static {
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
+}
+
+macro_rules! impl_funcable {
+    ($($x:tt),*) => {
+        #[allow(non_snake_case, unused_parens)]
+        impl<Funk, Rt, $($x),*> Funcable<($($x,)*), Rt> for Funk
+            where Funk: FnMut($($x),*) -> Rt + Send + 'static,
+                  $(PV: FromLisp<$x>,)*
+                  Rt: IntoLisp
+        {
+            fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+                let ($($x),*) = match &args[..] {
+                    &[$($x),*] => ($($x.from_lisp(&mut vm.mem)?),*),
+                    _ => return err!(ArgError,
+                                     expect: ArgSpec::normal(count_args!($($x),*)),
+                                     got_num: args.len() as u32)
+                };
+                (self)($($x),*).into_pv(&mut vm.mem)
+            }
+        }
+
+        impl<Funk, Rt, $($x),*> IntoSubr<($($x,)*), Rt> for Funk
+            where Funk: FnMut($($x),*) -> Rt + Clone + Funcable<($($x,)*), Rt> + 'static,
+                  $($x: Send + Clone + 'static,)*
+                  Rt: Send + Clone + IntoLisp + 'static,
+        {
+            fn into_subr(self) -> Box<dyn Subr> {
+                Box::new(RLambda::new(self))
+            }
+        }
+
+
+        impl<Funk, Rt, $($x),*> Lispify<($($x,)*), Rt> for Funk
+            where Funk: IntoSubr<($($x,)*), Rt>
+        {
+            fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
+                self.into_subr().into_pv(mem)
+            }
+        }
+    };
+}
+
+// impl_funcable!();
+impl_funcable!(A);
+impl_funcable!(A, B);
+impl_funcable!(A, B, C);
+impl_funcable!(A, B, C, D);
+impl_funcable!(A, B, C, D, E);
+impl_funcable!(A, B, C, D, E, F);
+impl_funcable!(A, B, C, D, E, F, G);
+impl_funcable!(A, B, C, D, E, F, G, H);
+impl_funcable!(A, B, C, D, E, F, G, H, I);
+impl_funcable!(A, B, C, D, E, F, G, H, I, J);
+impl_funcable!(A, B, C, D, E, F, G, H, I, J, K);
+impl_funcable!(A, B, C, D, E, F, G, H, I, J, K, L);
+
+#[derive(Clone)]
+pub struct RLambda<F, A, R>
+    where A: Send + Clone + 'static, R: Send + Clone + 'static, F: Funcable<A, R> + Clone
+{
+    f: F,
+    _phantom: PhantomData<(A, R)>,
+}
+
+unsafe impl<F, A, R> Subr for RLambda<F, A, R>
+    where A: Send + Clone, R: Send + Clone, F: Funcable<A, R> + Clone
+{
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
+        self.f.call(vm, args)
+    }
+
+    fn name(&self) -> &'static str {
+        "lambda"
+    }
+}
+
+impl<F, A, R> RLambda<F, A, R>
+    where A: Send + Clone + 'static, R: Send + Clone + 'static, F: Funcable<A, R> + Clone
+{
+    pub fn new(f: F) -> Self {
+        RLambda { f, _phantom: Default::default() }
+    }
+}
+
+pub trait IntoRLambda<F, A, R>
+    where A: Send + Clone, R: Send + Clone, F: Funcable<A, R> + Clone
+{
+    fn into_rlambda(self) -> RLambda<F, A, R>;
+}
+
+impl<F, X, R> IntoRLambda<F, (X,), R> for F
+    where X: Send + Clone,
+          R: Send + Clone + IntoLisp,
+          PV: FromLisp<X>,
+          F: FnMut(X) -> R + Send + Clone + 'static
+{
+    fn into_rlambda(self) -> RLambda<F, (X,), R> {
+        RLambda::new(self)
+    }
+}
+
+pub trait IntoSubr<A, R> {
+    fn into_subr(self) -> Box<dyn Subr>;
+}
+
+pub trait Lispify<A, R> {
+    fn lispify(self, mem: &mut Arena) -> Result<PV, Error>;
+}
+
+impl<T> Lispify<(), ()> for T where T: IntoLisp {
+    fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
+        self.into_pv(mem)
     }
 }
 
