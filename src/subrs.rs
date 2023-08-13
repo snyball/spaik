@@ -372,7 +372,7 @@ impl IntoLisp for Box<dyn Subr> {
 
 #[cfg(test)]
 mod tests {
-    use spaik_proc_macros::Fissile;
+    use spaik_proc_macros::{Fissile, spaik_export};
 
     use crate::Spaik;
 

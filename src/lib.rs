@@ -49,7 +49,7 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
-use subrs::Lispify;
+pub use subrs::Lispify;
 pub use tokit::minify;
 pub(crate) mod tok;
 #[macro_use]

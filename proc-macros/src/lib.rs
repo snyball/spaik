@@ -313,14 +313,17 @@ pub fn spaik_export(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[allow(non_camel_case_types)]
         unsafe impl #root::Subr for #name {
             fn call(&mut self, vm: &mut #root::_deps::R8VM, args: &[#root::_deps::PV]) -> std::result::Result<#root::_deps::PV, #root::error::Error> {
+                use #root::{Lispify, FromLisp};
                 enum M { #(#method_names),* }
                 let op = args.get(0)
-                             .ok_or_else(|| error!(TypeError,
-                                                   expect: Builtin::Callable,
-                                                   got: Builtin::Struct)
-                                         .bop(Builtin::Apply))?
+                             .ok_or_else(|| #root::error::Error::new(
+                                 #root::error::ErrorKind::TypeError {
+                                     expect: #root::Builtin::Callable,
+                                     got: #root::Builtin::Struct
+                                 }
+                             ).bop(#root::Builtin::Apply))?
                              .sym()
-                             .map_err(|e| e.bop(Builtin::MethodCall))?;
+                             .map_err(|e| e.bop(#root::Builtin::MethodCall))?;
                 match op.as_ref() {
                     #(
                         #method_lisp_names => match &args[1..] {
@@ -328,10 +331,19 @@ pub fn spaik_export(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 #setargs
                                 self.#method_names2(#args2).lispify(&mut vm.mem)
                             }
-                            _ => err!(ArgError, expect: ArgSpec::normal(#method_m_argc), got_num: (args.len()-1) as u32)
+                            _ => Err(#root::error::Error::new(
+                                #root::error::ErrorKind::ArgError {
+                                    expect: #root::_deps::ArgSpec::normal(#method_m_argc),
+                                    got_num: (args.len()-1) as u32
+                                }
+                            ))
                         }
                     ),*
-                    _ => return err!(NoSuchMethod, strucc: self.name(), method: op.into()),
+                    _ => return Err(#root::error::Error::new(
+                        #root::error::ErrorKind::NoSuchMethod {
+                            strucc: self.name(), method: op.into()
+                        }
+                    ))
                 }
             }
 
