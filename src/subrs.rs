@@ -265,7 +265,7 @@ macro_rules! impl_funcable {
         }
 
 
-        impl<Funk, Rt, $($x),*> Lispify<($($x,)*), Rt> for Funk
+        impl<Funk, Rt, $($x),*> Lispify<($($x,)*), Rt, 1> for Funk
             where Funk: IntoSubr<($($x,)*), Rt>
         {
             fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
@@ -275,7 +275,7 @@ macro_rules! impl_funcable {
     };
 }
 
-// impl_funcable!();
+impl_funcable!();
 impl_funcable!(A);
 impl_funcable!(A, B);
 impl_funcable!(A, B, C);
@@ -338,11 +338,11 @@ pub trait IntoSubr<A, R> {
     fn into_subr(self) -> Box<dyn Subr>;
 }
 
-pub trait Lispify<A, R> {
+pub trait Lispify<A, R, const N: usize> {
     fn lispify(self, mem: &mut Arena) -> Result<PV, Error>;
 }
 
-impl<T> Lispify<(), ()> for T where T: IntoLisp {
+impl<T> Lispify<(), (), 0> for T where T: IntoLisp {
     fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
         self.into_pv(mem)
     }

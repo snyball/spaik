@@ -188,7 +188,7 @@ impl Spaik {
         self.set(func.name(), func.into_subr());
     }
 
-    pub fn set<A, R>(&mut self, var: impl AsSym, obj: impl Lispify<A, R>) {
+    pub fn set<A, R, const N: usize>(&mut self, var: impl AsSym, obj: impl Lispify<A, R, N>) {
         let var = var.as_sym(&mut self.vm);
         self.vm.set(var, obj).unwrap();
     }
@@ -649,7 +649,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
     #[cfg(feature = "derive")]
     use spaik_proc_macros::{spaikfn, Fissile, EnumCall};
-    use std::sync::Once;
+    use std::{sync::{Once, atomic::{AtomicI32, Ordering}}, ops::Add};
 
     fn setup() {
         static INIT: Once = Once::new();
@@ -911,5 +911,13 @@ mod tests {
         vm.set("test", 1);
         vm.set("f", |x: i32| x + 2);
         assert_eq!(vm.eval("(f 2)"), Ok(4));
+        let n = Arc::new(AtomicI32::new(0));
+        let q = n.clone();
+        vm.set("g", move || {
+            q.fetch_add(1, Ordering::SeqCst);
+        });
+        vm.exec("(g)").unwrap();
+        vm.exec("(g)").unwrap();
+        assert_eq!(n.load(Ordering::SeqCst), 2);
     }
 }
