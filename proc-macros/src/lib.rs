@@ -62,16 +62,16 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
 
         unsafe impl #spaik_root::Subr for #anon_namespace::#obj_ident {
             fn call(&mut self,
-                    vm: &mut #spaik_root::proc_macro_deps::R8VM,
-                    args: &[#spaik_root::proc_macro_deps::PV])
-                    -> core::result::Result<#spaik_root::proc_macro_deps::PV,
+                    vm: &mut #spaik_root::_deps::R8VM,
+                    args: &[#spaik_root::_deps::PV])
+                    -> core::result::Result<#spaik_root::_deps::PV,
                                             #spaik_root::error::Error>
             {
-                use #spaik_root::proc_macro_deps::ArgSpec;
+                use #spaik_root::_deps::ArgSpec;
                 use #spaik_root::error::Error;
                 const SPEC: ArgSpec = ArgSpec::normal(#nargs);
                 SPEC.check(args.len() as u16)?;
-                #(let #spaik_root::proc_macro_deps::ObjRef(#inputs_it)
+                #(let #spaik_root::_deps::ObjRef(#inputs_it)
                   =
                   args[#inputs_it_idx_1].try_into()
                   .map_err(|e: Error| e.argn(#inputs_it_idx_2))?;
@@ -206,8 +206,8 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
 
     let out = quote! {
         impl #root::EnumCall for #name {
-            fn pushargs(self, args: &[#root::proc_macro_deps::SymID],
-                        mem: &mut #root::proc_macro_deps::Arena)
+            fn pushargs(self, args: &[#root::_deps::SymID],
+                        mem: &mut #root::_deps::Arena)
                         -> #root::error::Result<()>
             {
                 use #root::IntoLisp;
@@ -216,7 +216,7 @@ pub fn derive_enum_call(item: TokenStream) -> TokenStream {
                 }
                 Ok(())
             }
-            fn name(&self, mem: &mut #root::proc_macro_deps::Arena) -> #root::proc_macro_deps::SymID {
+            fn name(&self, mem: &mut #root::_deps::Arena) -> #root::_deps::SymID {
                 use #root::IntoLisp;
                 match self {
                     #(Self::#variant_2 #query_nil => mem.put_sym_id(#variant_name_s)),*
@@ -244,14 +244,14 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
     let field_kws = fields.map(|f| format!(":{}", f.ident.expect("Identifier")));
 
     let out = quote! {
-        impl #root::proc_macro_deps::Traceable for #name {
-            fn trace(&self, _gray: &mut Vec<*mut #root::nuke::NkAtom>) {}
-            fn update_ptrs(&mut self, _reloc: &#root::nuke::PtrMap) {}
+        impl #root::_deps::Traceable for #name {
+            fn trace(&self, _gray: &mut Vec<*mut #root::_deps::NkAtom>) {}
+            fn update_ptrs(&mut self, _reloc: &#root::_deps::PtrMap) {}
         }
 
-        impl #root::fmt::LispFmt for #name {
+        impl #root::_deps::LispFmt for #name {
             fn lisp_fmt(&self,
-                        _visited: &mut #root::fmt::VisitSet,
+                        _visited: &mut #root::_deps::VisitSet,
                         f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "({}", stringify!(#name))?;
                 #( write!(f, " {} {:?}", #field_kws, self.#field_names)?; )*
@@ -259,13 +259,13 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
             }
         }
 
-        impl Userdata for #name {}
+        impl #root::Userdata for #name {}
 
         impl #root::IntoLisp for #name {
-            fn into_pv(self, mem: &mut #root::proc_macro_deps::Arena)
-                       -> core::result::Result<#root::proc_macro_deps::PV, #root::error::Error>
+            fn into_pv(self, mem: &mut #root::_deps::Arena)
+                       -> core::result::Result<#root::_deps::PV, #root::error::Error>
             {
-                Ok(mem.put_pv(#root::nuke::Object::new(self)))
+                Ok(mem.put_pv(#root::_deps::Object::new(self)))
             }
         }
     };
@@ -275,6 +275,7 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn spaik_export(attr: TokenStream, item: TokenStream) -> TokenStream {
+    use convert_case::{Case, Casing};
     let root = crate_root();
     let input = parse_macro_input!(item as ItemImpl);
     let name = input.self_ty.clone();
@@ -285,9 +286,7 @@ pub fn spaik_export(attr: TokenStream, item: TokenStream) -> TokenStream {
     });
     let method_names = methods.clone().map(|x| x.sig.ident.clone());
     let method_names2 = method_names.clone();
-    let method_m_names = method_names.clone().map(|x| quote!(M::#x));
-    let method_lisp_names = method_names.clone().map(|x| format!(":{x}"));
-    let method_m_names2 = method_m_names.clone();
+    let method_lisp_names = methods.clone().map(|x| format!(":{}", x.sig.ident).to_case(Case::Kebab));
     let method_m_argc = methods.clone().map(|m| m.sig.inputs.len() as u16);
     let m_idents = methods.clone().map(|m| {
         m.sig.inputs.iter().filter_map(|i| match i {
@@ -313,7 +312,7 @@ pub fn spaik_export(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[allow(non_camel_case_types)]
         unsafe impl #root::Subr for #name {
-            fn call(&mut self, vm: &mut #root::proc_macro_deps::R8VM, args: &[#root::proc_macro_deps::PV]) -> std::result::Result<#root::proc_macro_deps::PV, #root::error::Error> {
+            fn call(&mut self, vm: &mut #root::_deps::R8VM, args: &[#root::_deps::PV]) -> std::result::Result<#root::_deps::PV, #root::error::Error> {
                 enum M { #(#method_names),* }
                 let op = args.get(0)
                              .ok_or_else(|| error!(TypeError,

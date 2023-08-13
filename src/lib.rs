@@ -91,10 +91,13 @@ pub use swym::SymRef as Sym;
  * Everything inside this module should be considered an implementation detail,
  * and can change between even semver patch versions.
  */
-pub mod proc_macro_deps {
+pub mod _deps {
     pub use crate::r8vm::{R8VM, ArgSpec};
     pub use crate::nkgc::SymID;
     pub use crate::nkgc::{PV, ObjRef, Arena, Traceable};
+    pub use crate::nuke::{NkAtom, PtrMap, Object};
+    pub use crate::fmt::LispFmt;
+    pub use crate::fmt::VisitSet;
 }
 
 use std::fmt::Debug;
@@ -146,7 +149,7 @@ impl fmt::LispFmt for ExampleObject {
 #[spaik_export]
 impl ExampleObject {}
 impl IntoLisp for ExampleObject {
-    fn into_pv(self, mem: &mut proc_macro_deps::Arena) -> Result<PV> {
+    fn into_pv(self, mem: &mut _deps::Arena) -> Result<PV> {
         Ok(mem.put_pv(nuke::Object::new(self)))
     }
 }
