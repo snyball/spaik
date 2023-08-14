@@ -628,8 +628,8 @@ impl Object {
         }
     }
 
-    pub fn void(&mut self) {
-        let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<Voided<()>>()) {
+    pub fn void_vtable<T: 'static>() -> &'static VTable {
+        match VTABLES.lock().unwrap().entry(TypeId::of::<Voided<T>>()) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
@@ -653,43 +653,21 @@ impl Object {
                     call: |_, _, _| Ok(PV::Nil)
                 })))
             },
-        };
+        }
+    }
+
+    pub fn void(&mut self) {
         self.type_id = TypeId::of::<Voided<()>>();
-        self.vt = vtable;
+        self.vt = Self::void_vtable::<()>();
         self.mem = null_mut();
     }
 
     pub fn take<T: 'static>(&mut self) -> Result<T, Error> {
         let mut obj: MaybeUninit<T> = MaybeUninit::uninit();
-        let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<Voided<T>>()) {
-            Entry::Occupied(vp) => *vp.get(),
-            Entry::Vacant(entry) => {
-                entry.insert(Box::leak(Box::new(VTable {
-                    type_name: "void",
-                    drop: |_| {},
-                    get_rc: |_| 1,
-                    #[cfg(not(feature = "freeze"))]
-                    freeze: |_, _| unimplemented!("freeze"),
-                    #[cfg(feature = "freeze")]
-                    freeze: |_, into| {
-                        use bincode::Options;
-                        let opts = bincode::DefaultOptions::new();
-                        let sz = opts.serialized_size(&()).unwrap();
-                        opts.serialize_into(into, &()).unwrap();
-                        sz as usize
-                    },
-                    trace: |_, _| {},
-                    update_ptrs: |_, _| {},
-                    lisp_fmt: |_, _, f| write!(f, "void"),
-                    fmt: |_, f| write!(f, "void"),
-                    call: |_, _, _| Ok(PV::Nil)
-                })))
-            },
-        };
         unsafe {
             ptr::copy(self.cast()?, obj.as_mut_ptr(), 1);
             self.type_id = TypeId::of::<Voided<T>>();
-            self.vt = vtable;
+            self.vt = Self::void_vtable::<T>();
             self.mem = null_mut();
             Ok(obj.assume_init())
         }
