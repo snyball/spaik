@@ -376,7 +376,6 @@ mod tests {
 
     use crate::Spaik;
 
-    use super::*;
     use serde::{Serialize, Deserialize};
 
     #[test]
