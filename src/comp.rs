@@ -1069,7 +1069,7 @@ impl R8Compiler {
         match op {
             Builtin::Apply => opcall_mut!(APL a0, a1),
             Builtin::LoopWithEpilogue => self.bt_loop(ret,
-                                                      Some(a0).into_iter(),
+                                                      Some(a0),
                                                       Some(Some(a1).into_iter()))?,
             x => unimplemented!("{x:?}"),
         }
@@ -1099,7 +1099,7 @@ impl R8Compiler {
             M::If(cond, if_t, if_f) =>
                 self.bt_if(ret, *cond, if_t.map(|v| *v), if_f.map(|v| *v))?,
             M::Atom(pv) => if ret { self.atom(pv)? },
-            M::Progn(seq) => self.compile_seq(ret, seq.into_iter())?,
+            M::Progn(seq) => self.compile_seq(ret, seq)?,
             M::SymApp(op, args) => self.bt_sym_app(ret, src, op, args)?,
             M::App(op, args) => self.gapp(ret, *op, args)?,
             M::Lambda(ArgList2(spec, names), progn) =>
