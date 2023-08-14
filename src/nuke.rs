@@ -497,7 +497,7 @@ struct Voided<T>(T);
 // };
 
 impl Object {
-    pub fn new<T: Userdata + Subr>(obj: T) -> Object {
+    pub fn new<T: Userdata + Subr + 'static>(obj: T) -> Object {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
@@ -588,6 +588,44 @@ impl Object {
 
     pub unsafe fn fastcast<T: Userdata>(&self) -> *const T {
         self.mem as *const T
+    }
+
+    pub fn from_ref<T: Userdata + Subr>(obj: &mut T) -> Object {
+        macro_rules! delegate {($name:ident($($arg:ident),*)) => {
+            |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
+        }}
+        let type_id = TypeId::of::<&mut T>();
+        let vt = match VTABLES.lock().unwrap().entry(type_id) {
+            Entry::Occupied(vp) => *vp.get(),
+            Entry::Vacant(entry) => {
+                entry.insert(Box::leak(Box::new(VTable {
+                    type_name: "void",
+                    drop: |_| {},
+                    get_rc: |_| 1,
+                    #[cfg(not(feature = "freeze"))]
+                    freeze: |_, _| unimplemented!("freeze"),
+                    #[cfg(feature = "freeze")]
+                    freeze: |p, into| unsafe {
+                        use bincode::Options;
+                        let obj = p as *mut T;
+                        let opts = bincode::DefaultOptions::new();
+                        let sz = opts.serialized_size(&*obj).unwrap();
+                        opts.serialize_into(into, &*obj).unwrap();
+                        sz as usize
+                    },
+                    trace: delegate! { trace(gray) },
+                    update_ptrs: delegate! { update_ptrs(reloc) },
+                    lisp_fmt: delegate! { lisp_fmt(visited, f) },
+                    fmt: delegate! { fmt(f) },
+                    call: delegate! { call(vm, args) }
+                })))
+            },
+        };
+        Object {
+            mem: obj as *mut T as *mut u8,
+            type_id,
+            vt,
+        }
     }
 
     pub fn take<T: 'static>(&mut self) -> Result<T, Error> {
@@ -1673,6 +1711,10 @@ impl PtrMap {
 
 #[cfg(test)]
 mod tests {
+    use spaik_proc_macros::{Fissile, spaik_export};
+
+    use crate::Spaik;
+
     use super::*;
 
     #[test]
@@ -1699,5 +1741,20 @@ mod tests {
         let tb = "crate::sum::shit::ABC";
         assert_eq!(simplify_types(ta, tb),
                    ("si::ABC", "shit::ABC"));
+    }
+
+    #[test]
+    fn userdata_ref() {
+        #[derive(Debug, Fissile)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
+        struct Data {
+            x: String
+        }
+        #[spaik_export]
+        impl Data {}
+        let mut data = Data { x: String::from("something") };
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define (f x) (println x))").unwrap();
+        // vm.call("f", (&mut data,));
     }
 }

@@ -947,23 +947,20 @@ impl<const N: usize> Args for &[PV; N] {
 
 macro_rules! impl_args_tuple {
     ($($arg:ident),*) => {
+        #[allow(non_snake_case)]
         impl<$($arg),*> Args for ($($arg),*,)
             where $($arg: crate::subrs::IntoLisp + crate::subrs::RefIntoLisp ),*
         {
             fn pusharg(self, mem: &mut Arena) -> Result<()> {
-                #[allow(non_snake_case)]
                 let ($($arg),*,) = self;
-                $(#[allow(non_snake_case)]
-                  let $arg = $arg.into_pv(mem)?;
+                $(let $arg = $arg.into_pv(mem)?;
                   mem.push($arg);)*
                 Ok(())
             }
 
             fn pusharg_ref(&self, mem: &mut Arena) -> Result<()> {
-                #[allow(non_snake_case)]
                 let ($($arg),*,) = self;
-                $(#[allow(non_snake_case)]
-                  let $arg = $arg.ref_into_pv(mem)?;
+                $(let $arg = $arg.ref_into_pv(mem)?;
                   mem.push($arg);)*
                 Ok(())
             }
@@ -993,6 +990,48 @@ impl_args_tuple!(X, Y, Z, W, A, B, C, D, E);
 impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F);
 impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G);
 impl_args_tuple!(X, Y, Z, W, A, B, C, D, E, F, G, H);
+
+pub trait NArgs<A> {
+    fn pusharg(self, mem: &mut Arena) -> Result<()>;
+    fn nargs(&self) -> usize;
+}
+
+macro_rules! impl_nargs {
+    ($nargs:literal, $($t:tt($($ts:tt),+)),+) => {
+        #[allow( non_snake_case)]
+        impl<$($t, $($ts),+),+> NArgs<($($($ts),+),*)> for ($($t,)*)
+            where $($t: Lispify<$($ts),*>),+
+        {
+            fn pusharg(self, mem: &mut Arena) -> Result<()> {
+                let ($($t,)*) = self;
+                $(let $t = $t.lispify(mem)?; mem.push($t);)*
+                Ok(())
+            }
+
+            fn nargs(&self) -> usize {
+                $nargs
+            }
+        }
+    };
+}
+
+impl NArgs<()> for () {
+    fn pusharg(self, _mem: &mut Arena) -> Result<()> { Ok(()) }
+    fn nargs(&self) -> usize { 0 }
+}
+
+impl_nargs!(1,A(A0,A1,A2));
+impl_nargs!(2,A(A0,A1,A2),B(B0,B1,B2));
+impl_nargs!(3,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2));
+impl_nargs!(4,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2));
+impl_nargs!(5,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2),E(E0,E1,E2));
+impl_nargs!(6,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2),E(E0,E1,E2),F(F0,F1,F2));
+impl_nargs!(7,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2),E(E0,E1,E2),F(F0,F1,F2),G(G0,G1,G2));
+impl_nargs!(8,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2),E(E0,E1,E2),F(F0,F1,F2),G(G0,G1,G2),H(H0,H1,H2));
+impl_nargs!(9,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2),E(E0,E1,E2),F(F0,F1,F2),G(G0,G1,G2),H(H0,H1,H2),I(I0,I1,I2));
+impl_nargs!(10,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2),E(E0,E1,E2),F(F0,F1,F2),G(G0,G1,G2),H(H0,H1,H2),I(I0,I1,I2),J(J0,J1,J2));
+impl_nargs!(11,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2),E(E0,E1,E2),F(F0,F1,F2),G(G0,G1,G2),H(H0,H1,H2),I(I0,I1,I2),J(J0,J1,J2),K(K0,K1,K2));
+impl_nargs!(12,A(A0,A1,A2),B(B0,B1,B2),C(C0,C1,C2),D(D0,D1,D2),E(E0,E1,E2),F(F0,F1,F2),G(G0,G1,G2),H(H0,H1,H2),I(I0,I1,I2),J(J0,J1,J2),K(K0,K1,K2),L(L0,L1,L2));
 
 #[cfg(not(feature = "no-threading"))]
 unsafe impl Send for R8VM {}
@@ -2314,6 +2353,12 @@ impl R8VM {
     pub fn call(&mut self, sym: SymID, args: impl AsArgs) -> Result<PV> {
         Ok(symcall_with!(self, sym, args.inner_nargs(), {
             args.inner_pusharg(&mut self.mem)?
+        }))
+    }
+
+    pub fn ncall<A>(&mut self, sym: SymID, args: impl NArgs<A>) -> Result<PV> {
+        Ok(symcall_with!(self, sym, args.nargs(), {
+            args.pusharg(&mut self.mem)?
         }))
     }
 

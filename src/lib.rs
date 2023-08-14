@@ -49,6 +49,7 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
+use r8vm::NArgs;
 pub use subrs::Lispify;
 pub use tokit::minify;
 pub(crate) mod tok;
@@ -377,11 +378,11 @@ impl Spaik {
     ///
     /// Use `Spaik::run` if don't care about the result.
     #[inline]
-    pub fn call<R>(&mut self, sym: impl AsSym, args: impl Args) -> Result<R>
+    pub fn call<R, A>(&mut self, sym: impl AsSym, args: impl NArgs<A>) -> Result<R>
         where PV: FromLisp<R>
     {
         let sym = sym.as_sym(&mut self.vm);
-        self.vm.call(sym, args)
+        self.vm.ncall(sym, args)
                .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
     }
 
@@ -389,7 +390,7 @@ impl Spaik {
     ///
     /// Use `Spaik::call` if you need the result.
     #[inline]
-    pub fn run(&mut self, sym: impl AsSym, args: impl Args) -> Result<()> {
+    pub fn run<A>(&mut self, sym: impl AsSym, args: impl NArgs<A>) -> Result<()> {
         let _: Ignore = self.call(sym, args)?;
         Ok(())
     }
@@ -950,5 +951,19 @@ mod tests {
         assert_eq!(ExampleObject { x: 1.0, y: 2.0 }, obj);
         vm.exec("(println test)").unwrap();
         let obj: Gc<ExampleObject> = vm.get("test").unwrap();
+    }
+
+    #[test]
+    fn call_with_lambda() {
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define (f g) (g 1))").unwrap();
+        assert_eq!(vm.call("f", (|x: i32| x + 2,)), Ok(3));
+    }
+
+    #[test]
+    fn call_empty() {
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define (f) 2)").unwrap();
+        assert_eq!(vm.call("f", ()), Ok(2));
     }
 }
