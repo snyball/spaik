@@ -772,7 +772,7 @@ impl<T> fmt::Display for Gc<T> where T: fmt::Display + Userdata {
 impl<T> FromLisp<Gc<T>> for PV where T: Userdata {
     fn from_lisp(self, _mem: &mut Arena) -> Result<Gc<T>, Error> {
         with_ref!(self, Struct(s) => {
-            let this = ((*s).cast_mut()? as *mut T) as *mut RcMem<T>;
+            let this = (*s).cast_mut()? as *mut RcMem<T>;
             unsafe { (*this).rc.inc() }
             Ok(Gc { this })
         })
@@ -1046,7 +1046,7 @@ pub fn cast<T: Fissile>(atom: *const NkAtom) -> Option<*const T> {
 
 #[inline]
 pub fn cast_mut_err<T: Fissile>(atom: *mut NkAtom) -> Result<*mut T, Error> {
-    cast_mut(atom as *mut NkAtom).ok_or_else(|| {
+    cast_mut(atom).ok_or_else(|| {
         error!(TypeError,
                expect: T::type_of().into(),
                got: unsafe { atom_kind(atom).into() })
