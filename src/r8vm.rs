@@ -2300,6 +2300,7 @@ impl R8VM {
         };
 
         let res = run();
+        self.mem.pop_borrows();
         let dip = self.ip_delta(ip);
         match res {
             Ok(_) => Ok(dip),

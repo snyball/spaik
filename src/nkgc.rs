@@ -1180,6 +1180,7 @@ pub struct Arena {
     extref: FnvHashMap<ExtRefID, (i32, PV)>,
     extdrop_recv: Receiver<ExtRefMsg>,
     extdrop_send: Sender<ExtRefMsg>,
+    borrows: Vec<*mut NkAtom>,
     state: GCState,
     extref_id_cnt: u32,
     no_reorder: bool,
@@ -1200,7 +1201,7 @@ enum GCState {
     Sleep(i32),
 }
 
-const DEFAULT_MEMSZ: usize = 32768;
+const DEFAULT_MEMSZ: usize = 4096;
 const DEFAULT_GRAYSZ: usize = 256;
 const DEFAULT_STACKSZ: usize = 32;
 const DEFAULT_ENVSZ: usize = 0;
@@ -1241,6 +1242,7 @@ impl Arena {
             no_reorder: false,
             conts: Vec::new(),
             extref_id_cnt: 0,
+            borrows: Vec::new(),
         };
         for blt in BUILTIN_SYMS.iter() {
             ar.symdb.put_static(blt);
@@ -1564,6 +1566,9 @@ impl Arena {
         for ptr in self.gray.iter_mut() {
             *ptr = self.nuke.reloc().get(*ptr) as *mut NkAtom;
         }
+        for ptr in self.borrows.iter_mut() {
+            *ptr = self.nuke.reloc().get(*ptr) as *mut NkAtom;
+        }
         for obj in self.nuke.iter_mut() {
             update_ptr_atom(obj, self.nuke.reloc());
         }
@@ -1574,6 +1579,18 @@ impl Arena {
             cont.update_ptrs(self.nuke.reloc());
         }
         self.nuke.confirm_relocation(tok);
+    }
+
+    pub fn pop_borrows(&mut self) {
+        for obj in self.borrows.drain(..) {
+            if let NkMut::Struct(s) = to_fissile_mut(obj) {
+                unsafe { (*s).void() }
+            }
+        }
+    }
+
+    pub fn push_borrow(&mut self, rf: *mut NkAtom) {
+        self.borrows.push(rf)
     }
 
     fn mem_fit<T: Fissile>(&mut self, n: usize) {
@@ -1650,13 +1667,17 @@ impl Arena {
         let it = self.stack.iter()
                            .chain(self.env.iter())
                            .chain(self.conts.iter().flatten())
-                           .chain(self.extref.values().map(|(_, pv)| pv));
-        for obj in it {
-            if let PV::Ref(cell) = *obj {
-                unsafe {
-                    (*cell).set_color(Color::Gray);
-                    self.gray.push(cell);
-                }
+                           .chain(self.extref.values().map(|(_, pv)| pv))
+                           .filter_map(|obj| if let PV::Ref(cell) = *obj {
+                               Some(cell)
+                           } else {
+                               None
+                           })
+                           .chain(self.borrows.iter().copied());
+        for cell in it {
+            unsafe {
+                (*cell).set_color(Color::Gray);
+                self.gray.push(cell);
             }
         }
     }

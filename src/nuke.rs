@@ -599,7 +599,7 @@ impl Object {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
-                    type_name: "void",
+                    type_name: type_name::<T>(),
                     drop: |_| {},
                     get_rc: |_| 1,
                     #[cfg(not(feature = "freeze"))]
@@ -625,6 +625,38 @@ impl Object {
             mem: obj as *mut T as *mut u8,
             type_id,
             vt,
+        }
+    }
+
+    pub fn void(&mut self) {
+        let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<Voided<()>>()) {
+            Entry::Occupied(vp) => *vp.get(),
+            Entry::Vacant(entry) => {
+                entry.insert(Box::leak(Box::new(VTable {
+                    type_name: "void",
+                    drop: |obj| {},
+                    get_rc: |obj| 1,
+                    #[cfg(not(feature = "freeze"))]
+                    freeze: |_, _| unimplemented!("freeze"),
+                    #[cfg(feature = "freeze")]
+                    freeze: |_, into| {
+                        use bincode::Options;
+                        let opts = bincode::DefaultOptions::new();
+                        let sz = opts.serialized_size(&()).unwrap();
+                        opts.serialize_into(into, &()).unwrap();
+                        sz as usize
+                    },
+                    trace: |_, _| {},
+                    update_ptrs: |_, _| {},
+                    lisp_fmt: |_, _, f| write!(f, "void"),
+                    fmt: |_, f| write!(f, "void"),
+                    call: |_, _, _| Ok(PV::Nil)
+                })))
+            },
+        };
+        unsafe {
+            self.type_id = TypeId::of::<Voided<()>>();
+            self.vt = vtable;
         }
     }
 
@@ -665,7 +697,7 @@ impl Object {
         };
         unsafe {
             ptr::copy(self.cast()?, obj.as_mut_ptr(), 1);
-            self.type_id = TypeId::of::<()>();
+            self.type_id = TypeId::of::<Voided<T>>();
             self.vt = vtable;
             Ok(obj.assume_init())
         }

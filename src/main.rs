@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if f.read_to_string(&mut code).is_err() {
         return Ok(())
     }
-    let mut vm = Spaik::new();
+    let mut vm = Spaik::new_no_core();
     match vm.exec(&code) {
         Ok(_) => (),
         Err(e) => eprintln!("{}", e),

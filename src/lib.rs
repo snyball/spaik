@@ -143,7 +143,7 @@ impl fmt::LispFmt for ExampleObject {
     fn lisp_fmt(&self,
                 _visited: &mut fmt::VisitSet,
                 f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "(ExampleObject :x {} :y {}", self.x, self.y)
+        write!(f, "(ExampleObject :x {} :y {})", self.x, self.y)
     }
 }
 unsafe impl Subr for ExampleObject {
@@ -965,5 +965,14 @@ mod tests {
         let mut vm = Spaik::new_no_core();
         vm.exec("(define (f) 2)").unwrap();
         assert_eq!(vm.call("f", ()), Ok(2));
+    }
+
+    #[test]
+    fn call_mut_ref() {
+        let mut obj = ExampleObject { x: 1.0, y: 2.0 };
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define *q* nil)").unwrap();
+        vm.exec("(define (f q) (set *q* q) 2)").unwrap();
+        assert_eq!(vm.call("f", (&mut obj,)), Ok(2));
     }
 }

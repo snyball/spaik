@@ -343,6 +343,15 @@ pub trait Lispify<A, R, N> {
     fn lispify(self, mem: &mut Arena) -> Result<PV, Error>;
 }
 
+impl<T> IntoLisp for &mut T where T: Userdata + Subr {
+    fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
+        let p = mem.put(Object::from_ref(self));
+        let rf = NkAtom::make_raw_ref(p);
+        mem.push_borrow(rf);
+        Ok(PV::Ref(rf))
+    }
+}
+
 impl<T> Lispify<(), (), ()> for T where T: IntoLisp {
     fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
         self.into_pv(mem)
