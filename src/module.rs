@@ -67,29 +67,12 @@ pub struct LispModule {
 }
 
 impl LispModule {
-    pub fn new<ASM>(pmem_in: &[ASM],
-                    symtbl_in: &SwymDb,
-                    imports: Vec<Import>,
-                    exports: Vec<Export>) -> LispModule
+    pub fn new<ASM>(_pmem_in: &[ASM],
+                    _symtbl_in: &SwymDb,
+                    _imports: Vec<Import>,
+                    _exports: Vec<Export>) -> LispModule
         where ASM: ASMOp
     {
-        let mut pmem = vec![];
-        for op in pmem_in.iter() {
-            op.write(&mut pmem).unwrap();
-        }
-        let mut symtbl = vec![];
-        #[allow(unused_variables)]
-        for (sym, name) in symtbl_in.iter() {
-            #[allow(unreachable_code)]
-            symtbl.push(todo!("symbol entry for modules"));
-        }
-        let consts = vec![];
-        LispModule {
-            symtbl,
-            exports,
-            imports,
-            consts,
-            pmem,
-        }
+        todo!()
     }
 }
