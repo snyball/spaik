@@ -760,7 +760,6 @@ pub struct R8VM {
     catch: Vec<usize>,
 
     stdout: Mutex<Box<dyn OutStream>>,
-    stdin: Mutex<Box<dyn InStream>>,
 
     debug_mode: bool,
 
@@ -782,7 +781,6 @@ impl Default for R8VM {
             func_labels: Default::default(),
             func_arg_syms: Default::default(),
             stdout: Mutex::new(Box::new(io::stdout())),
-            stdin: Mutex::new(Box::new(io::stdin())),
             labels: Default::default(),
             debug_mode: false,
             frame: Default::default(),
@@ -2424,10 +2422,6 @@ impl R8VM {
 
     pub fn set_stdout(&mut self, out: Box<dyn OutStream>) {
         *self.stdout.lock().unwrap() = out;
-    }
-
-    pub fn set_stdin(&mut self, inp: Box<dyn InStream>) {
-        *self.stdin.lock().unwrap() = inp;
     }
 
     pub fn dump_all_fns(&self) -> Result<()> {
