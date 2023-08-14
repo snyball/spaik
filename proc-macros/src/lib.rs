@@ -1,12 +1,12 @@
 extern crate proc_macro;
 
-use std::fmt::format;
+
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, DataEnum};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, DataEnum, ItemTrait};
 
 fn crate_root() -> proc_macro2::TokenStream {
     let found_crate = crate_name("spaik")
@@ -274,7 +274,7 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn spaik_export(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn spaik_export(_attr: TokenStream, item: TokenStream) -> TokenStream {
     use convert_case::{Case, Casing};
     let root = crate_root();
     let input = parse_macro_input!(item as ItemImpl);
