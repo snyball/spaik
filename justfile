@@ -49,5 +49,8 @@ test-all: install-tools
 @miri *args:
     cargo miri "$@"
 
+test-miri:
+    cargo miri test
+
 default:
     @just --list
