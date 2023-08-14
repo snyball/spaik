@@ -950,7 +950,7 @@ mod tests {
         let obj: ExampleObject = vm.take("test").unwrap();
         assert_eq!(ExampleObject { x: 1.0, y: 2.0 }, obj);
         vm.exec("(println test)").unwrap();
-        let obj: Gc<ExampleObject> = vm.get("test").unwrap();
+        let _obj: Gc<ExampleObject> = vm.get("test").unwrap();
     }
 
     #[test]

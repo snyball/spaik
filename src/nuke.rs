@@ -1752,7 +1752,7 @@ mod tests {
         }
         #[spaik_export]
         impl Data {}
-        let mut data = Data { x: String::from("something") };
+        let _data = Data { x: String::from("something") };
         let mut vm = Spaik::new_no_core();
         vm.exec("(define (f x) (println x))").unwrap();
         // vm.call("f", (&mut data,));
