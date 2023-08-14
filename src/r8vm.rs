@@ -998,7 +998,7 @@ pub trait NArgs<A> {
 
 macro_rules! impl_nargs {
     ($nargs:literal, $($t:tt($($ts:tt),+)),+) => {
-        #[allow( non_snake_case)]
+        #[allow(non_snake_case)]
         impl<$($t, $($ts),+),+> NArgs<($($($ts),+),*)> for ($($t,)*)
             where $($t: Lispify<$($ts),*>),+
         {
