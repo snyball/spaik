@@ -1002,12 +1002,14 @@ macro_rules! impl_nargs {
         impl<$($t, $($ts),+),+> NArgs<($($($ts),+),*)> for ($($t,)*)
             where $($t: Lispify<$($ts),*>),+
         {
+            #[inline]
             fn pusharg(self, mem: &mut Arena) -> Result<()> {
                 let ($($t,)*) = self;
                 $(let $t = $t.lispify(mem)?; mem.push($t);)*
                 Ok(())
             }
 
+            #[inline]
             fn nargs(&self) -> usize {
                 $nargs
             }
