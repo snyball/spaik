@@ -772,7 +772,8 @@ impl<T> fmt::Display for Gc<T> where T: fmt::Display + Userdata {
 impl<T> FromLisp<Gc<T>> for PV where T: Userdata {
     fn from_lisp(self, _mem: &mut Arena) -> Result<Gc<T>, Error> {
         with_ref!(self, Struct(s) => {
-            let this = (*s).cast_mut()? as *mut RcMem<T>;
+            #[allow(clippy::unnecessary_cast)]
+            let this = ((*s).cast_mut()? as *mut T) as *mut RcMem<T>;
             unsafe { (*this).rc.inc() }
             Ok(Gc { this })
         })
