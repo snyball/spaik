@@ -11,7 +11,7 @@ use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::io::{Write, Read};
 use std::mem::{self, size_of, align_of, MaybeUninit};
-use std::ptr::{drop_in_place, self};
+use std::ptr::{drop_in_place, self, null_mut};
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt::{self, Display};
 use core::fmt::Debug;
@@ -634,8 +634,8 @@ impl Object {
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     type_name: "void",
-                    drop: |obj| {},
-                    get_rc: |obj| 1,
+                    drop: |_| {},
+                    get_rc: |_| 1,
                     #[cfg(not(feature = "freeze"))]
                     freeze: |_, _| unimplemented!("freeze"),
                     #[cfg(feature = "freeze")]
@@ -654,10 +654,9 @@ impl Object {
                 })))
             },
         };
-        unsafe {
-            self.type_id = TypeId::of::<Voided<()>>();
-            self.vt = vtable;
-        }
+        self.type_id = TypeId::of::<Voided<()>>();
+        self.vt = vtable;
+        self.mem = null_mut();
     }
 
     pub fn take<T: 'static>(&mut self) -> Result<T, Error> {
@@ -667,16 +666,8 @@ impl Object {
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     type_name: "void",
-                    drop: |obj| unsafe {
-                        let rc_mem = obj as *mut RcMem<T>;
-                        if (*rc_mem).rc.is_dropped() {
-                            drop_ud::<T>(obj);
-                        }
-                    },
-                    get_rc: |obj| unsafe {
-                        let rc_mem = obj as *mut RcMem<T>;
-                        (*rc_mem).rc.0.load(atomic::Ordering::SeqCst)
-                    },
+                    drop: |_| {},
+                    get_rc: |_| 1,
                     #[cfg(not(feature = "freeze"))]
                     freeze: |_, _| unimplemented!("freeze"),
                     #[cfg(feature = "freeze")]
@@ -699,6 +690,7 @@ impl Object {
             ptr::copy(self.cast()?, obj.as_mut_ptr(), 1);
             self.type_id = TypeId::of::<Voided<T>>();
             self.vt = vtable;
+            self.mem = null_mut();
             Ok(obj.assume_init())
         }
     }
