@@ -482,7 +482,7 @@ lazy_static! {
 }
 
 #[repr(C)]
-struct Voided<T>(T);
+struct Voided;
 
 // static VT_VOID: &'static VTable = VTable {
 //     type_name: "void",
@@ -628,8 +628,8 @@ impl Object {
         }
     }
 
-    pub fn void_vtable<T: 'static>() -> &'static VTable {
-        match VTABLES.lock().unwrap().entry(TypeId::of::<Voided<T>>()) {
+    pub fn void_vtable() -> &'static VTable {
+        match VTABLES.lock().unwrap().entry(TypeId::of::<Voided>()) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
@@ -657,8 +657,8 @@ impl Object {
     }
 
     pub fn void(&mut self) {
-        self.type_id = TypeId::of::<Voided<()>>();
-        self.vt = Self::void_vtable::<()>();
+        self.type_id = TypeId::of::<Voided>();
+        self.vt = Self::void_vtable();
         self.mem = null_mut();
     }
 
@@ -666,8 +666,8 @@ impl Object {
         let mut obj: MaybeUninit<T> = MaybeUninit::uninit();
         unsafe {
             ptr::copy(self.cast()?, obj.as_mut_ptr(), 1);
-            self.type_id = TypeId::of::<Voided<T>>();
-            self.vt = Self::void_vtable::<T>();
+            self.type_id = TypeId::of::<Voided>();
+            self.vt = Self::void_vtable();
             self.mem = null_mut();
             Ok(obj.assume_init())
         }
