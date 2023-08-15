@@ -671,6 +671,8 @@ mod tests {
         INIT.call_once(pretty_env_logger::init);
     }
 
+    use crate::error::ErrorKind;
+
     use super::*;
 
     #[cfg(not(feature = "no-threading"))]
@@ -949,8 +951,8 @@ mod tests {
         vm.exec("(println test)").unwrap();
         let obj: ExampleObject = vm.take("test").unwrap();
         assert_eq!(ExampleObject { x: 1.0, y: 2.0 }, obj);
-        vm.exec("(println test)").unwrap();
-        let _obj: Gc<ExampleObject> = vm.get("test").unwrap();
+        assert!(matches!(vm.exec("(+ test 1)").map_err(|e| e.kind().clone()),
+                         Err(ErrorKind::UndefinedVariable { .. })));
     }
 
     #[test]
