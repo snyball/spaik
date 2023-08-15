@@ -50,15 +50,11 @@ path, because `(load ...)` also runs during compilation.
 
 It is often useful for functions to be called from both Rust and Lisp, here the
 function `add_to` is being defined as both a Rust function in the global scope,
-and as a SPAIK function in `Fns`. We can then choose to  register the
-`Fns::add_to` function in the VM.
+and as a SPAIK function.
 
 ``` rust
 use spaik::prelude::*;
 
-struct Fns;
-
-#[spaikfn(Fns)]
 fn add_to(x: i32) -> i32 {
     x + 1
 }
@@ -66,7 +62,7 @@ fn add_to(x: i32) -> i32 {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut vm = Spaik::new();
     println!("Calling from Rust: {}", add_to(2));
-    vm.register(Fns::add_to);
+    vm.set("add-to", add_to);
     vm.exec(r#"(let ((r (add-to 2))) (println "Calling Rust from SPAIK: {r}"))"#)?;
     Ok(())
 }

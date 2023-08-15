@@ -76,7 +76,7 @@ pub use scratch::main as scratch_main;
 pub(crate) mod stylize;
 
 #[cfg(feature = "derive")]
-pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
+pub use spaik_proc_macros::{EnumCall, Fissile};
 pub use nkgc::SPV;
 pub(crate) use nkgc::SymID;
 pub(crate) use nkgc::ObjRef;
@@ -124,7 +124,7 @@ pub mod prelude {
     pub use super::{Subr, IntoLisp, FromLisp, Sym,
                     Ignore, BoxSubr, SpaikPlug, Spaik, Gc};
     #[cfg(feature = "derive")]
-    pub use spaik_proc_macros::{EnumCall, spaikfn, Fissile};
+    pub use spaik_proc_macros::{EnumCall, Fissile};
 }
 
 #[cfg(feature = "freeze")]
@@ -663,7 +663,7 @@ impl<T, Cmd> SpaikPlug<T, Cmd>
 mod tests {
     use serde::{Deserialize, Serialize};
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{spaikfn, Fissile, EnumCall, spaik_export};
+    use spaik_proc_macros::{Fissile, EnumCall, spaik_export};
     use std::sync::{Once, atomic::{AtomicI32, Ordering}};
 
     fn setup() {
@@ -747,16 +747,12 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn register_fn() {
-        #[allow(non_camel_case_types)]
-        struct fns;
-
-        #[spaikfn(fns)]
         fn funky_function(x: i32, y: i32) -> i32 {
             x + 2 + y
         }
 
         let mut vm = Spaik::new();
-        vm.register(fns::funky_function);
+        vm.set("funky-function", funky_function);
         let result: i32 = vm.eval("(funky-function 2 8)").unwrap();
         assert_eq!(result, 12);
 
@@ -788,10 +784,6 @@ mod tests {
         #[spaik_export]
         impl TestObj2 {}
 
-        #[allow(non_camel_case_types)]
-        struct fns;
-
-        #[spaikfn(fns)]
         fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
             let res = x + y.pow(2);
             obj2.x += obj.x;
@@ -799,20 +791,17 @@ mod tests {
             res
         }
 
-        #[spaikfn(fns)]
         fn obj_x(obj: &TestObj) -> f32 {
             obj.x
         }
 
-        #[spaikfn(fns)]
         fn obj_y(obj: &TestObj) -> f32 {
             obj.y
         }
 
         let mut vm = Spaik::new_no_core();
-        // vm.register(fns::my_function);
-        vm.register(fns::obj_x);
-        vm.register(fns::obj_y);
+        vm.set("obj-x", obj_x);
+        vm.set("obj-y", obj_y);
         vm.set("my-function", my_function);
         let src_obj = TestObj { x: 1.0, y: 3.0 };
         let dst_obj = TestObj { x: 1.0, y: 2.0 };

@@ -1,6 +1,5 @@
 //! The Nuclear Garbage Collector
 
-use crate::Lispify;
 use crate::builtins::{Builtin, BUILTIN_SYMS};
 use crate::r8vm::{RuntimeError, ArgSpec, R8VM};
 use crate::nuke::{*, self};
