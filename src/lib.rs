@@ -49,7 +49,9 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
+use convert_case::Casing;
 use r8vm::NArgs;
+use subrs::IntoSubr;
 pub use subrs::Lispify;
 pub use tokit::minify;
 pub(crate) mod tok;
@@ -100,6 +102,7 @@ pub mod _deps {
     pub use crate::fmt::VisitSet;
 }
 
+use std::any::type_name;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, Receiver, TryRecvError, RecvTimeoutError};
@@ -199,6 +202,14 @@ impl Spaik {
     #[inline]
     pub fn register(&mut self, func: impl Subr) {
         self.set(func.name(), func.into_subr());
+    }
+
+    #[inline]
+    pub fn defun<A, R, F: IntoSubr<A, R>>(&mut self, func: F) {
+        let t = type_name::<F>();
+        let (_, name) = t.rsplit_once(":").unwrap_or(("", t));
+        let name = name.to_case(convert_case::Case::Kebab);
+        self.set(name.as_ref(), func.into_subr());
     }
 
     pub fn set<A, R, N>(&mut self, var: impl AsSym, obj: impl Lispify<A, R, N>) {
@@ -752,7 +763,7 @@ mod tests {
         }
 
         let mut vm = Spaik::new();
-        vm.set("funky-function", funky_function);
+        vm.defun(funky_function);
         let result: i32 = vm.eval("(funky-function 2 8)").unwrap();
         assert_eq!(result, 12);
 
@@ -800,9 +811,9 @@ mod tests {
         }
 
         let mut vm = Spaik::new_no_core();
-        vm.set("obj-x", obj_x);
-        vm.set("obj-y", obj_y);
-        vm.set("my-function", my_function);
+        vm.defun(obj_x);
+        vm.defun(obj_y);
+        vm.defun(my_function);
         let src_obj = TestObj { x: 1.0, y: 3.0 };
         let dst_obj = TestObj { x: 1.0, y: 2.0 };
         let wrong_obj = TestObj2 { x: 10.0, thing: "test".to_string() };
