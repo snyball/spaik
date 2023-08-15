@@ -810,9 +810,10 @@ mod tests {
         }
 
         let mut vm = Spaik::new_no_core();
-        vm.register(fns::my_function);
+        // vm.register(fns::my_function);
         vm.register(fns::obj_x);
         vm.register(fns::obj_y);
+        vm.set("my-function", my_function);
         let src_obj = TestObj { x: 1.0, y: 3.0 };
         let dst_obj = TestObj { x: 1.0, y: 2.0 };
         let wrong_obj = TestObj2 { x: 10.0, thing: "test".to_string() };
@@ -946,9 +947,9 @@ mod tests {
 
     #[test]
     fn give_and_take() {
-        let mut vm = Spaik::new();
+        let mut vm = Spaik::new_no_core();
         vm.set("test", ExampleObject { x: 1.0, y: 2.0 });
-        vm.exec("(println test)").unwrap();
+        vm.exec("((lambda (x) x) test)").unwrap();
         let obj: ExampleObject = vm.take("test").unwrap();
         assert_eq!(ExampleObject { x: 1.0, y: 2.0 }, obj);
         assert!(matches!(vm.exec("(+ test 1)").map_err(|e| e.kind().clone()),

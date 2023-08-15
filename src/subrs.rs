@@ -241,11 +241,11 @@ macro_rules! impl_funcable {
         #[allow(non_snake_case, unused_parens)]
         impl<Funk, Rt, $($x),*> Funcable<($($x,)*), Rt> for Funk
             where Funk: FnMut($($x),*) -> Rt + Send + 'static,
-                  $(PV: FromLisp<$x>,)*
+                  $(PV: FromLisp<ObjRef<$x>>,)*
                   Rt: IntoLisp
         {
             fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-                let ($($x),*) = match &args[..] {
+                let ($(ObjRef($x)),*) = match &args[..] {
                     &[$($x),*] => ($($x.from_lisp(&mut vm.mem)?),*),
                     _ => return err!(ArgError,
                                      expect: ArgSpec::normal(count_args!($($x),*)),
@@ -315,23 +315,6 @@ impl<F, A, R> RLambda<F, A, R>
 {
     pub fn new(f: F) -> Self {
         RLambda { f, _phantom: Default::default() }
-    }
-}
-
-pub trait IntoRLambda<F, A, R>
-    where A: Send, R: Send, F: Funcable<A, R>
-{
-    fn into_rlambda(self) -> RLambda<F, A, R>;
-}
-
-impl<F, X, R> IntoRLambda<F, (X,), R> for F
-    where X: Send,
-          R: Send + IntoLisp,
-          PV: FromLisp<X>,
-          F: FnMut(X) -> R + Send + 'static
-{
-    fn into_rlambda(self) -> RLambda<F, (X,), R> {
-        RLambda::new(self)
     }
 }
 
