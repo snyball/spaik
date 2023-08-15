@@ -650,7 +650,7 @@ impl Object {
                     update_ptrs: |_, _| {},
                     lisp_fmt: |_, _, f| write!(f, "void"),
                     fmt: |_, f| write!(f, "void"),
-                    call: |_, _, _| Ok(PV::Nil)
+                    call: |_, _, _| err!(VoidVariable,),
                 })))
             },
         }

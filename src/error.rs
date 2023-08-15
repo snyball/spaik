@@ -249,6 +249,7 @@ pub enum ErrorKind {
     SyntaxError(SyntaxErrorKind),
     IDError { id: usize },
     None,
+    VoidVariable,
 }
 
 impl From<std::io::Error> for Error {
@@ -537,6 +538,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Syntax Error: No such escape character {chr:?}")?,
         NoSuchMethod { strucc, method } =>
             write!(f, "No Such Method: ({strucc} {method})")?,
+        VoidVariable =>
+            write!(f, "Variable is void")?,
     }
 
     if let Some(src) = meta.src() {
