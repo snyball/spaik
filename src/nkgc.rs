@@ -103,9 +103,9 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a mut T> {
     }
 }
 
-impl<T> FromLisp<T> for PV where T: TryFrom<PV, Error = Error> {
+impl<T,E> FromLisp<T> for PV where T: TryFrom<PV, Error = E>, E: Into<Error> {
     fn from_lisp(self, _mem: &mut Arena) -> Result<T, Error> {
-        self.try_into()
+        self.try_into().map_err(|e: E| e.into())
     }
 }
 
