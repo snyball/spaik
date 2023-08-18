@@ -1,6 +1,6 @@
 [package]
 name = "spaik-proc-macros"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Jonas Møller <jonas@nimda.no>"]
 edition = "2021"
 description = "Procedural macros for SPAIK"
