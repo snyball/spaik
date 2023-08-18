@@ -1009,7 +1009,6 @@ mod tests {
         assert_eq!(vm.call("f", (&mut obj,)), Ok(2));
     }
 
-
     #[cfg(feature = "derive")]
     #[test]
     #[should_panic]
