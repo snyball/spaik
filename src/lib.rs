@@ -103,7 +103,7 @@ pub mod _deps {
 }
 
 use std::any::type_name;
-use std::convert::Infallible;
+
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, Receiver, TryRecvError, RecvTimeoutError};
