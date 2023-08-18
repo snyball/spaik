@@ -7,6 +7,7 @@ use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
 use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, DataEnum, ItemTrait};
+use convert_case::{Case, Casing};
 
 fn crate_root() -> proc_macro2::TokenStream {
     let found_crate = crate_name("spaik")
@@ -94,6 +95,13 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
     out.into()
 }
 
+#[proc_macro]
+pub fn kebabify(inp: TokenStream) -> TokenStream {
+    let ident = parse_macro_input!(inp as Ident);
+    let kebab = format!("{ident}").to_case(Case::Kebab);
+    quote!(#kebab).into()
+}
+
 #[proc_macro_attribute]
 pub fn spaikfn(attr: TokenStream, item: TokenStream) -> TokenStream {
     let namespace = parse_macro_input!(attr as Ident);
@@ -126,7 +134,6 @@ pub fn spaiklib(_attr: TokenStream, _item: TokenStream) -> TokenStream {
 
 #[proc_macro_derive(EnumCall)]
 pub fn derive_enum_call(item: TokenStream) -> TokenStream {
-    use convert_case::{Case, Casing};
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
@@ -351,6 +358,19 @@ pub fn spaik_export(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 std::any::type_name::<Self>()
             }
         }
+    };
+
+    out.into()
+}
+
+#[proc_macro_attribute]
+pub fn interface(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    
+    let _root = crate_root();
+    let input = parse_macro_input!(item as ItemTrait);
+
+    let out = quote! {
+        #input
     };
 
     out.into()
