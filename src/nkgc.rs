@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use fnv::FnvHashMap;
+#[cfg(feature = "math")]
 use glam::{Vec2, Vec3};
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Debug};
@@ -159,7 +160,9 @@ pub enum PV {
     Real(Float),
     Bool(bool),
     Char(char),
+    #[cfg(feature = "math")]
     Vec2(Vec2),
+    #[cfg(feature = "math")]
     Vec3(Vec3),
     #[default]
     Nil,
@@ -276,16 +279,16 @@ macro_rules! num_op {
                 (Int(x), Int(y)) => Int(x $op y),
                 (Real(x), Int(y)) => Real(x $op *y as f32),
                 (Real(x), Real(y)) => Real(x $op y),
-                (Real(x), Vec2(y)) => Vec2(*x $op *y),
-                (Vec2(x), Real(y)) => Vec2(*x $op *y),
-                (Int(x), Vec2(y)) => Vec2(*x as f32 $op *y),
-                (Vec2(x), Int(y)) => Vec2(*x $op *y as f32),
-                (Real(x), Vec3(y)) => Vec3(*x $op *y),
-                (Vec3(x), Real(y)) => Vec3(*x $op *y),
-                (Int(x), Vec3(y)) => Vec3(*x as f32 $op *y),
-                (Vec3(x), Int(y)) => Vec3(*x $op *y as f32),
-                (Vec2(x), Vec2(y)) => Vec2(*x $op *y),
-                (Vec3(x), Vec3(y)) => Vec3(*x $op *y),
+                #[cfg(feature = "math")] (Real(x), Vec2(y)) => Vec2(*x $op *y),
+                #[cfg(feature = "math")] (Vec2(x), Real(y)) => Vec2(*x $op *y),
+                #[cfg(feature = "math")] (Int(x), Vec2(y)) => Vec2(*x as f32 $op *y),
+                #[cfg(feature = "math")] (Vec2(x), Int(y)) => Vec2(*x $op *y as f32),
+                #[cfg(feature = "math")] (Real(x), Vec3(y)) => Vec3(*x $op *y),
+                #[cfg(feature = "math")] (Vec3(x), Real(y)) => Vec3(*x $op *y),
+                #[cfg(feature = "math")] (Int(x), Vec3(y)) => Vec3(*x as f32 $op *y),
+                #[cfg(feature = "math")] (Vec3(x), Int(y)) => Vec3(*x $op *y as f32),
+                #[cfg(feature = "math")] (Vec2(x), Vec2(y)) => Vec2(*x $op *y),
+                #[cfg(feature = "math")] (Vec3(x), Vec3(y)) => Vec3(*x $op *y),
                 (x, y) =>
                     return Err(error!(IfaceNotImplemented,
                                       got: vec![x.type_of(), y.type_of()])
@@ -304,12 +307,12 @@ macro_rules! inplace_num_op {
                 (Int(x), Int(y)) => *x $op_inplace y,
                 (Real(x), Int(y)) => *x $op_inplace *y as f32,
                 (Real(x), Real(y)) => *x $op_inplace y,
-                (Vec2(x), Vec2(y)) => *x $op_inplace *y,
-                (Vec3(x), Vec3(y)) => *x $op_inplace *y,
-                (Vec2(x), Real(y)) => *x $op_inplace *y,
-                (Vec2(x), Int(y)) => *x $op_inplace *y as f32,
-                (Vec3(x), Real(y)) => *x $op_inplace *y,
-                (Vec3(x), Int(y)) => *x $op_inplace *y as f32,
+                #[cfg(feature = "math")] (Vec2(x), Vec2(y)) => *x $op_inplace *y,
+                #[cfg(feature = "math")] (Vec3(x), Vec3(y)) => *x $op_inplace *y,
+                #[cfg(feature = "math")] (Vec2(x), Real(y)) => *x $op_inplace *y,
+                #[cfg(feature = "math")] (Vec2(x), Int(y)) => *x $op_inplace *y as f32,
+                #[cfg(feature = "math")] (Vec3(x), Real(y)) => *x $op_inplace *y,
+                #[cfg(feature = "math")] (Vec3(x), Int(y)) => *x $op_inplace *y as f32,
                 (x, y) =>
                     return Err(error!(IfaceNotImplemented,
                                       got: vec![x.type_of(), y.type_of()])
@@ -450,8 +453,8 @@ impl PV {
             Real(_) => Builtin::Float,
             Sym(_) => Builtin::Symbol,
             Char(_) => Builtin::Char,
-            Vec2(_) => Builtin::Vec2,
-            Vec3(_) => Builtin::Vec3,
+            #[cfg(feature = "math")] Vec2(_) => Builtin::Vec2,
+            #[cfg(feature = "math")] Vec3(_) => Builtin::Vec3,
             Ref(p) => unsafe {
                 Builtin::from_sym(atom_kind(p).into()).expect("
                     Builtin datatype does not have builtin symbol"
@@ -797,8 +800,10 @@ impl Hash for PV {
             PV::Nil => 0.hash(state),
             PV::Real(x) => x.to_ne_bytes().hash(state),
             PV::Char(x) => x.hash(state),
+            #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => { x.to_ne_bytes().hash(state);
                                          y.to_ne_bytes().hash(state) },
+            #[cfg(feature = "math")]
             PV::Vec3(Vec3 { x, y, z }) => { x.to_ne_bytes().hash(state);
                                             y.to_ne_bytes().hash(state);
                                             z.to_ne_bytes().hash(state) },
@@ -824,7 +829,9 @@ impl LispFmt for PV {
             PV::Real(a) => write!(f, "{a}"),
             PV::Sym(id) => write!(f, "{id}"),
             PV::Char(c) => write!(f, "(char {c})"),
+            #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => write!(f, "(vec2 {x} {y})"),
+            #[cfg(feature = "math")]
             PV::Vec3(Vec3 { x, y, z }) => write!(f, "(vec3 {x} {y} {z})"),
             PV::Ref(p) => atom_fmt(p, visited, f)
         }

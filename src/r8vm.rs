@@ -184,12 +184,11 @@ fn tostring(x: PV) -> String {
 macro_rules! featurefn {
     ($ft:expr, $e:expr) => {{
         #[cfg(feature = $ft)]
-        let funk = || -> Result<()> {
-            $e;
-            Ok(())
+        let funk = || -> Result<_> {
+            $e
         };
         #[cfg(not(feature = $ft))]
-        let funk = || -> Result<()> {
+        let funk = || -> Result<_> {
             err!(MissingFeature, flag: $ft)
         };
         funk()
@@ -288,6 +287,7 @@ mod sysfns {
                 let file = std::fs::File::create(_dst.str().as_ref())?;
                 let mut wr = std::io::BufWriter::new(file);
                 bincode::serialize_into(&mut wr, &module).unwrap();
+                Ok(())
             })?;
             Ok(PV::Nil)
         }
@@ -313,28 +313,32 @@ mod sysfns {
         }
 
         fn vec2(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
-            let e = || Err(error!(ArgTypeError,
-                                  expect: vec![Builtin::Number, Builtin::Number],
-                                  got: vec![x.bt_type_of(), y.bt_type_of()])
-                           .bop(Builtin::Vec2));
-            let Some(x) = x.real() else { return e() };
-            let Some(y) = y.real() else { return e() };
-            Ok(PV::Vec2(glam::vec2(x, y)))
+            featurefn!("math", {
+                let e = || Err(error!(ArgTypeError,
+                                      expect: vec![Builtin::Number, Builtin::Number],
+                                      got: vec![x.bt_type_of(), y.bt_type_of()])
+                               .bop(Builtin::Vec2));
+                let Some(x) = x.real() else { return e() };
+                let Some(y) = y.real() else { return e() };
+                Ok(PV::Vec2(glam::vec2(x, y)))
+            })
         }
 
         fn vec3(&mut self, vm: &mut R8VM, args: (x, y, z)) -> Result<PV> {
-            let e = || Err(error!(ArgTypeError,
-                                  expect: vec![Builtin::Number,
-                                               Builtin::Number,
-                                               Builtin::Number],
-                                  got: vec![x.bt_type_of(),
-                                            y.bt_type_of(),
-                                            z.bt_type_of()])
-                           .bop(Builtin::Vec3));
-            let Some(x) = x.real() else { return e() };
-            let Some(y) = y.real() else { return e() };
-            let Some(z) = z.real() else { return e() };
-            Ok(PV::Vec3(glam::vec3(x, y, z)))
+            featurefn!("math", {
+                let e = || Err(error!(ArgTypeError,
+                                      expect: vec![Builtin::Number,
+                                                   Builtin::Number,
+                                                   Builtin::Number],
+                                      got: vec![x.bt_type_of(),
+                                                y.bt_type_of(),
+                                                z.bt_type_of()])
+                               .bop(Builtin::Vec3));
+                let Some(x) = x.real() else { return e() };
+                let Some(y) = y.real() else { return e() };
+                let Some(z) = z.real() else { return e() };
+                Ok(PV::Vec3(glam::vec3(x, y, z)))
+            })
         }
 
         fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
@@ -394,22 +398,22 @@ mod sysfns {
         }
 
         fn dump_macro_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
-            featurefn!("extra", vm.dump_macro_tbl()?)?;
+            featurefn!("extra", vm.dump_macro_tbl())?;
             Ok(PV::Nil)
         }
 
         fn dump_sym_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
-            featurefn!("extra", vm.dump_symbol_tbl()?)?;
+            featurefn!("extra", vm.dump_symbol_tbl())?;
             Ok(PV::Nil)
         }
 
         fn dump_env_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
-            featurefn!("extra", vm.dump_env_tbl()?)?;
+            featurefn!("extra", vm.dump_env_tbl())?;
             Ok(PV::Nil)
         }
 
         fn dump_fn_tbl(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
-            featurefn!("extra", vm.dump_fn_tbl()?)?;
+            featurefn!("extra", vm.dump_fn_tbl())?;
             Ok(PV::Nil)
         }
 
@@ -2036,13 +2040,13 @@ impl R8VM {
                                 NkRef::Vector(v) => (*v).get(idx).ok_or(error!(IndexError, idx)).copied(),
                                 _ => Err(err())
                             }
-                            (0, PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
-                            (1, PV::Vec2(glam::Vec2 { y, .. })) => Ok(PV::Real(y)),
-                            (_, PV::Vec2(_)) => err!(IndexError, idx),
-                            (0, PV::Vec3(glam::Vec3 { x, .. })) => Ok(PV::Real(x)),
-                            (1, PV::Vec3(glam::Vec3 { y, .. })) => Ok(PV::Real(y)),
-                            (2, PV::Vec3(glam::Vec3 { z, .. })) => Ok(PV::Real(z)),
-                            (_, PV::Vec3(_)) => err!(IndexError, idx),
+                            #[cfg(feature = "math")] (0, PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
+                            #[cfg(feature = "math")] (1, PV::Vec2(glam::Vec2 { y, .. })) => Ok(PV::Real(y)),
+                            #[cfg(feature = "math")] (_, PV::Vec2(_)) => err!(IndexError, idx),
+                            #[cfg(feature = "math")] (0, PV::Vec3(glam::Vec3 { x, .. })) => Ok(PV::Real(x)),
+                            #[cfg(feature = "math")] (1, PV::Vec3(glam::Vec3 { y, .. })) => Ok(PV::Real(y)),
+                            #[cfg(feature = "math")] (2, PV::Vec3(glam::Vec3 { z, .. })) => Ok(PV::Real(z)),
+                            #[cfg(feature = "math")] (_, PV::Vec3(_)) => err!(IndexError, idx),
                             _ => Err(err())
                         }
                     }.map_err(|e| e.bop(op))?;
