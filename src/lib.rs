@@ -189,10 +189,10 @@ impl AsSym for SymID {
 #[cfg(feature = "derive")]
 #[macro_export]
 macro_rules! iface {
-    (pub trait $tr:ident {
+    ($vis:vis trait $tr:ident {
         $(fn $f:ident($($arg:ident : $t:ty),*) -> Result<$($e:ty),*>;)*
     }) => {
-        pub trait $tr {
+        $vis trait $tr {
             $(fn $f(&mut self, $($arg : $t),*) -> Result<$($e),*>;)*
         }
         impl $tr for Spaik {
@@ -201,10 +201,10 @@ macro_rules! iface {
             })*
         }
     };
-    (pub trait $tr:ident {
+    ($vis:vis trait $tr:ident {
         $(fn $f:ident($($arg:ident : $t:ty),*) -> $r:ty;)*
     }) => {
-        pub trait $tr {
+        $vis trait $tr {
             $(fn $f(&mut self, $($arg : $t),*) -> $r;)*
         }
         impl $tr for Spaik {
@@ -1013,7 +1013,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn interface() {
-        iface!(pub trait C1 {
+        iface!(trait C1 {
             fn f(x: i32, y: f32) -> bool;
             fn g(x: i32, y: f32) -> i32;
         });
@@ -1024,7 +1024,7 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn interface_2() {
-        iface!(pub trait C1 {
+        iface!(trait C1 {
             fn funky_funk(x: i32, y: i32) -> i32;
             fn g(x: i32, y: i32) -> i32;
         });
@@ -1038,7 +1038,7 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn interface_result() {
-        iface!(pub trait C1 {
+        iface!(trait C1 {
             fn ayy_lmao(x: i32, y: i32) -> Result<i32>;
             fn g(x: i32, y: i32) -> Result<i32>;
         });
