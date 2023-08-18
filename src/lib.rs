@@ -78,7 +78,7 @@ pub use scratch::main as scratch_main;
 pub(crate) mod stylize;
 
 #[cfg(feature = "derive")]
-pub use spaik_proc_macros::{EnumCall, Fissile};
+pub use spaik_proc_macros::{EnumCall, Fissile, kebabify};
 pub use nkgc::SPV;
 pub(crate) use nkgc::SymID;
 pub(crate) use nkgc::ObjRef;
@@ -103,6 +103,7 @@ pub mod _deps {
 }
 
 use std::any::type_name;
+use std::convert::Infallible;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, Receiver, TryRecvError, RecvTimeoutError};
@@ -183,6 +184,34 @@ impl AsSym for SymID {
     fn as_sym(&self, _vm: &mut R8VM) -> SymID {
         *self
     }
+}
+
+#[macro_export]
+macro_rules! iface {
+    (pub trait $tr:ident {
+        $(fn $f:ident($($arg:ident : $t:ty),*) -> Result<$($e:ty),*>;)*
+    }) => {
+        pub trait $tr {
+            $(fn $f(&mut self, $($arg : $t),*) -> Result<$($e),*>;)*
+        }
+        impl $tr for Spaik {
+            $(fn $f(&mut self, $($arg : $t),*) -> Result<$($e),*> {
+                self.call($crate::kebabify!($f), ($($arg,)*)).map_err(|e| e.into())
+            })*
+        }
+    };
+    (pub trait $tr:ident {
+        $(fn $f:ident($($arg:ident : $t:ty),*) -> $r:ty;)*
+    }) => {
+        pub trait $tr {
+            $(fn $f(&mut self, $($arg : $t),*) -> $r;)*
+        }
+        impl $tr for Spaik {
+            $(fn $f(&mut self, $($arg : $t),*) -> $r {
+                self.call($crate::kebabify!($f), ($($arg,)*)).unwrap()
+            })*
+        }
+    };
 }
 
 impl Spaik {
@@ -977,5 +1006,42 @@ mod tests {
         vm.exec("(define *q* nil)").unwrap();
         vm.exec("(define (f q) (set *q* q) 2)").unwrap();
         assert_eq!(vm.call("f", (&mut obj,)), Ok(2));
+    }
+
+
+    #[test]
+    #[should_panic]
+    fn interface() {
+        iface!(pub trait C1 {
+            fn f(x: i32, y: f32) -> bool;
+            fn g(x: i32, y: f32) -> i32;
+        });
+        let mut vm = Spaik::new_no_core();
+        vm.f(10, 32.0);
+    }
+
+    #[test]
+    fn interface_2() {
+        iface!(pub trait C1 {
+            fn funky_funk(x: i32, y: i32) -> i32;
+            fn g(x: i32, y: i32) -> i32;
+        });
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define (funky-funk x y) (+ x y))").unwrap();
+        vm.exec("(define (g x y) (* x y))").unwrap();
+        assert_eq!(vm.funky_funk(5, 5), 10);
+        assert_eq!(vm.g(5, 5), 25);
+    }
+
+    #[test]
+    fn interface_result() {
+        iface!(pub trait C1 {
+            fn ayy_lmao(x: i32, y: i32) -> Result<i32>;
+            fn g(x: i32, y: i32) -> Result<i32>;
+        });
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define (ayy-lmao x y) (+ x y))").unwrap();
+        assert_eq!(vm.ayy_lmao(5, 5), Ok(10));
+        assert!(vm.g(5, 5).is_err());
     }
 }
