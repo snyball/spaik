@@ -364,12 +364,14 @@ impl IntoLisp for Box<dyn Subr> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "derive")]
     use spaik_proc_macros::{Fissile, spaik_export};
 
     use crate::Spaik;
 
     use serde::{Serialize, Deserialize};
 
+    #[cfg(feature = "derive")]
     #[test]
     fn method_calls() {
         let mut vm = Spaik::new_no_core();

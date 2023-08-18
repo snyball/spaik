@@ -186,6 +186,7 @@ impl AsSym for SymID {
     }
 }
 
+#[cfg(feature = "derive")]
 #[macro_export]
 macro_rules! iface {
     (pub trait $tr:ident {
@@ -1009,6 +1010,7 @@ mod tests {
     }
 
 
+    #[cfg(feature = "derive")]
     #[test]
     #[should_panic]
     fn interface() {
@@ -1020,6 +1022,7 @@ mod tests {
         vm.f(10, 32.0);
     }
 
+    #[cfg(feature = "derive")]
     #[test]
     fn interface_2() {
         iface!(pub trait C1 {
@@ -1033,6 +1036,7 @@ mod tests {
         assert_eq!(vm.g(5, 5), 25);
     }
 
+    #[cfg(feature = "derive")]
     #[test]
     fn interface_result() {
         iface!(pub trait C1 {

@@ -1714,6 +1714,7 @@ impl PtrMap {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "derive")]
     use spaik_proc_macros::{Fissile, spaik_export};
 
     use crate::Spaik;
@@ -1746,6 +1747,7 @@ mod tests {
                    ("si::ABC", "shit::ABC"));
     }
 
+    #[cfg(feature = "derive")]
     #[test]
     fn userdata_ref() {
         #[derive(Debug, Fissile)]
