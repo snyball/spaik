@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut vm = Spaik::new();
     vm.add_load_path(".");
     vm.load("async-example")?;
-    let mut vm = vm.fork::<Msg, Cmd>();
+    let vm = vm.fork::<Msg, Cmd>();
 
     vm.cmd(Cmd::Add(10));
     vm.cmd(Cmd::Add(20));
