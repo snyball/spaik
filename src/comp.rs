@@ -9,7 +9,7 @@ use fnv::{FnvHashSet, FnvHashMap};
 
 use crate::nkgc::{PV, SymID, Int};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
-use crate::chasm::{ChOp, ChASM, Lbl, self, Arg};
+use crate::chasm::{ChOp, ChASM, Lbl, self, Arg, ChASMOpName};
 use crate::error::Source;
 use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor, Visitable};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
@@ -28,19 +28,6 @@ macro_rules! def_macros {
         }
 
         #[allow(unused_macros)]
-        macro_rules! opcall {
-            ($d op:ident $d ($d arg:expr),*) => {{
-                if $ret {
-                    $d ($self.push($d arg)?;)*
-                    asm!($d op);
-                    $self.env_pop(count_args!($d($d arg),*))?;
-                } else {
-                    $d ($self.compile(false, $d arg)?;)*
-                }
-            }};
-        }
-
-        #[allow(unused_macros)]
         macro_rules! opcall_mut {
             ($d op:ident $d ($d arg:expr),*) => {{
                 $d ($self.push($d arg)?;)*
@@ -49,21 +36,6 @@ macro_rules! def_macros {
                     asm!(POP 1);
                 }
                 $self.env_pop(count_args!($d($d arg),*))?;
-            }};
-        }
-
-        #[allow(unused_macros)]
-        macro_rules! vopcall {
-            ($d op:ident $d argv:expr) => {{
-                if $ret {
-                    let nargs = $self.pushit(($d argv).into_iter())?;
-                    asm!($d op nargs);
-                    $self.env_pop(nargs)?;
-                } else {
-                    for arg in ($d argv).into_iter() {
-                        $self.compile(false, arg)?;
-                    }
-                }
             }};
         }
     };
@@ -1052,11 +1024,9 @@ impl R8Compiler {
         }
     }
 
-    pub fn bt1(&mut self, ret: bool, op: Builtin, arg: AST2) -> Result<()> {
-        def_macros!($, ret, self);
-
+    pub fn bt1(&mut self, ret: bool, op: Builtin, arg: Box<AST2>) -> Result<()> {
         match op {
-            Builtin::Len => opcall!(LEN arg),
+            Builtin::Len => self.opcall(ret, LEN, [arg])?,
             x => unimplemented!("{x:?}"),
         }
 
@@ -1074,6 +1044,35 @@ impl R8Compiler {
             x => unimplemented!("{x:?}"),
         }
 
+        Ok(())
+    }
+
+    fn opcall<const N: usize>(&mut self, ret: bool, op: r8c::OpName, args: [Box<AST2>; N]) -> Result<()> {
+        if ret {
+            let len = args.len();
+            for arg in args.into_iter() {
+                self.push(*arg)?;
+            }
+            self.asm_op(ChOp::new(op, vec![]));
+            self.env_pop(len)?;
+        } else {
+            for arg in args.into_iter() {
+                self.compile(false, *arg)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn vopcall(&mut self, ret: bool, op: r8c::OpName, argv: Vec<AST2>) -> Result<()> {
+        if ret {
+            let nargs = self.pushit(argv.into_iter())?;
+            self.asm_op(ChOp::new(op, vec![nargs.into()]));
+            self.env_pop(nargs)?;
+        } else {
+            for arg in argv.into_iter() {
+                self.compile(false, arg)?;
+            }
+        }
         Ok(())
     }
 
@@ -1142,44 +1141,44 @@ impl R8Compiler {
                 self.compile(true, *arg)?;
                 asm!(UWND);
             },
-            M::Not(x) => opcall!(NOT *x),
-            M::Gt(x, y) => opcall!(GT *x, *y),
-            M::Gte(x, y) => opcall!(GTE *x, *y),
-            M::Lt(x, y) => opcall!(LT *x, *y),
-            M::Lte(x, y) => opcall!(LTE *x, *y),
-            M::Eq(x, y) => opcall!(EQL *x, *y),
-            M::Eqp(x, y) => opcall!(EQP *x, *y),
+            M::Not(x) => self.opcall(ret, NOT, [x])?,
+            M::Gt(x, y) => self.opcall(ret, GT, [x, y])?,
+            M::Gte(x, y) => self.opcall(ret, GTE, [x, y])?,
+            M::Lt(x, y) => self.opcall(ret, LT, [x, y])?,
+            M::Lte(x, y) => self.opcall(ret, LTE, [x, y])?,
+            M::Eq(x, y) => self.opcall(ret, EQL, [x, y])?,
+            M::Eqp(x, y) => self.opcall(ret, EQP, [x, y])?,
             M::Add(args) if ret => self.binop(Builtin::Add, src, chasm!(ADD),
                                               None, Some(chasm!(INT 0)), args)?,
-            M::Add(args) => vopcall!(NIL args),
+            M::Add(args) => self.vopcall(ret, NIL, args)?,
             M::Sub(args) if ret => self.binop(Builtin::Sub, src, chasm!(SUB),
                                               Some(chasm!(INT 0)), None, args)?,
-            M::Sub(args) => vopcall!(NIL args),
+            M::Sub(args) => self.vopcall(ret, NIL, args)?,
             M::Mul(args) if ret => self.binop(Builtin::Mul, src, chasm!(MUL),
                                               None, Some(chasm!(INT 1)), args)?,
-            M::Mul(args) => vopcall!(NIL args),
+            M::Mul(args) => self.vopcall(ret, NIL, args)?,
             M::Div(args) if ret => self.binop(Builtin::Div, src, chasm!(DIV),
                                               Some(chasm!(FLT 1.0_f32.to_bits())), None, args)?,
-            M::Div(args) => vopcall!(NIL args),
+            M::Div(args) => self.vopcall(ret, NIL, args)?,
             M::And(args) => self.bt_and(ret, args)?,
             M::Or(args) => self.bt_or(ret, args)?,
 
             M::NextIter(it) => self.bt_next(ret, *it)?,
-            M::Car(x) => opcall!(CAR *x),
-            M::Cdr(x) => opcall!(CDR *x),
-            M::Cons(x, y) => opcall!(CNS *x, *y),
-            M::List(xs) => vopcall!(LST xs),
+            M::Car(x) => self.opcall(ret, CAR, [x])?,
+            M::Cdr(x) => self.opcall(ret, CDR, [x])?,
+            M::Cons(x, y) => self.opcall(ret, CNS, [x, y])?,
+            M::List(xs) => self.vopcall(ret, LST, xs)?,
             M::Append(xs) => self.bt_append(ret, xs, src)?,
-            M::Vector(xs) => vopcall!(VEC xs),
+            M::Vector(xs) => self.vopcall(ret, VEC, xs)?,
             M::Push(vec, elem) => self.bt_vpush(ret, *vec, *elem)?,
-            M::Get(vec, idx) => opcall!(VGET *vec, *idx),
+            M::Get(vec, idx) => self.opcall(ret, VGET, [vec, idx])?,
             M::Pop(vec) => opcall_mut!(VPOP *vec),
             M::CallCC(funk) => {
                 self.compile(true, *funk)?;
                 asm!(CCONT 0);
                 if !ret { asm!(POP 1) }
             }
-            M::Bt1(op, arg) => self.bt1(ret, op, *arg)?,
+            M::Bt1(op, arg) => self.bt1(ret, op, arg)?,
             M::Bt2(op, a0, a1) => self.bt2(ret, op, *a0, *a1)?,
             M::TailCall(_args) => todo!(),
         }
