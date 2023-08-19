@@ -8,7 +8,7 @@ repository = "https://github.com/snyball/spaik"
 homepage = "https://github.com/snyball/spaik"
 license = "BSD-2-Clause"
 default-run = "repl"
-rust-version = "1.65"
+rust-version = "1.70"
 
 [profile.release]
 panic = "abort"
@@ -35,7 +35,6 @@ freeze = ["bincode"]
 no-threading = []
 
 [dependencies]
-lazy_static = "1.4"
 fnv = "1.0"
 log = "0.4"
 convert_case = "0.6.0"

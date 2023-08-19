@@ -26,8 +26,6 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::option_map_unit_fn)]
 
-#[macro_use]
-extern crate lazy_static;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;

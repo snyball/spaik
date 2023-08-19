@@ -21,7 +21,7 @@ use std::time::SystemTime;
 use fnv::FnvHashMap;
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::collections::hash_map::Entry;
 use std::alloc::{Layout, alloc, dealloc, realloc, handle_alloc_error};
 use std::sync::atomic;
@@ -474,12 +474,8 @@ impl TypePath {
     }
 }
 
-lazy_static! {
-    static ref VTABLES: Mutex<FnvHashMap<TypeId, &'static VTable>> =
-        Mutex::new(FnvHashMap::default());
-    static ref THAW_FNS: Mutex<FnvHashMap<TypePath, ThawFn>> =
-        Mutex::new(FnvHashMap::default());
-}
+static VTABLES: OnceLock<Mutex<FnvHashMap<TypeId, &'static VTable>>> = OnceLock::new();
+static THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, ThawFn>>> = OnceLock::new();
 
 #[repr(C)]
 struct Voided;
@@ -503,7 +499,9 @@ impl Object {
         }}
         let layout = unsafe { ud_layout::<T>() };
         #[cfg(feature = "freeze")]
-        if let Entry::Vacant(e) = THAW_FNS.lock().unwrap().entry(TypePath::of::<T>()) {
+        let thaw_fns = THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        #[cfg(feature = "freeze")]
+        if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<T>()) {
             e.insert(|from| {
                 use bincode::Options;
                 let opts = bincode::DefaultOptions::new();
@@ -511,7 +509,8 @@ impl Object {
                 Ok(Object::new(obj))
             });
         }
-        let vtable = match VTABLES.lock().unwrap().entry(TypeId::of::<T>()) {
+        let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let vtable = match vtables.lock().unwrap().entry(TypeId::of::<T>()) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
@@ -595,7 +594,8 @@ impl Object {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
         let type_id = TypeId::of::<&mut T>();
-        let vt = match VTABLES.lock().unwrap().entry(type_id) {
+        let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let vt = match vtables.lock().unwrap().entry(type_id) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
@@ -629,7 +629,8 @@ impl Object {
     }
 
     pub fn void_vtable() -> &'static VTable {
-        match VTABLES.lock().unwrap().entry(TypeId::of::<Voided>()) {
+        let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        match vtables.lock().unwrap().entry(TypeId::of::<Voided>()) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
