@@ -24,9 +24,12 @@ macro_rules! builtins {
             $(crate::swym::Sym::from_static($str)),*
         ];
 
-        static BUILTIN_LOOKUP: phf::Map<&'static str, Builtin> = phf::phf_map! {
-            $($str => Builtin::$sym),*
-        };
+        fn get_builtin(s: &str) -> Option<Builtin> {
+            Some(match s {
+                $($str => Builtin::$sym),*,
+                _ => return None
+            })
+        }
     }
 }
 
@@ -187,7 +190,7 @@ impl Builtin {
     }
 
     pub fn from<T: AsRef<str>>(s: T) -> Option<Builtin> {
-        BUILTIN_LOOKUP.get(s.as_ref()).copied()
+        get_builtin(s.as_ref())
     }
 }
 

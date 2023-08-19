@@ -1,7 +1,5 @@
 //! Structured Errors
 
-use num_traits::PrimInt as Integer;
-
 use crate::Builtin;
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use crate::nkgc::SymID;
@@ -384,10 +382,20 @@ impl Display for OneOf<'_> {
     }
 }
 
+pub trait IsOne {
+    fn is_one(&self) -> bool;
+}
+
+impl<T> IsOne for T where T: TryInto<i8> + Copy {
+    fn is_one(&self) -> bool {
+        (*self).try_into().ok().and_then(|x: i8| Some(x == 1)).unwrap_or_default()
+    }
+}
+
 fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     use ErrorKind::*;
 
-    fn plurs(num: impl Integer) -> &'static str {
+    fn plurs(num: impl IsOne) -> &'static str {
         if num.is_one() {""} else {"s"}
     }
 
@@ -714,4 +722,19 @@ macro_rules! error_src {
             (crate::error::ErrorKind::$kind { $($init)* }),
         ).src($src)
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_one() {
+        assert!(1i32.is_one());
+        assert!(!2i32.is_one());
+        assert!(1usize.is_one());
+        assert!(!2usize.is_one());
+        assert!(1u32.is_one());
+        assert!(!2u32.is_one());
+    }
 }

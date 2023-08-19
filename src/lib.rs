@@ -47,7 +47,6 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
-use convert_case::Casing;
 use r8vm::NArgs;
 use subrs::IntoSubr;
 pub use subrs::Lispify;
@@ -236,7 +235,7 @@ impl Spaik {
     pub fn defun<A, R, F: IntoSubr<A, R>>(&mut self, func: F) {
         let t = type_name::<F>();
         let (_, name) = t.rsplit_once(":").unwrap_or(("", t));
-        let name = name.to_case(convert_case::Case::Kebab);
+        let name = name.replace('_', "-");
         self.set(name.as_ref(), func.into_subr());
     }
 
