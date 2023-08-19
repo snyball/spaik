@@ -491,7 +491,6 @@ impl Spaik {
         let (rx_run, tx_run) = channel();
         let handle = thread::spawn(move || {
             self.register(send_message { sender: rx_send });
-            self.run("init", ()).unwrap();
             loop {
                 let ev: Event<Cmd> = tx_run.recv().unwrap();
                 match ev {
