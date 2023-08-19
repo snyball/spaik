@@ -701,12 +701,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
     #[cfg(feature = "derive")]
     use spaik_proc_macros::{Fissile, EnumCall, spaik_export};
-    use std::sync::{Once, atomic::{AtomicI32, Ordering}};
-
-    fn setup() {
-        static INIT: Once = Once::new();
-        INIT.call_once(pretty_env_logger::init);
-    }
+    use std::sync::atomic::{AtomicI32, Ordering};
 
     use crate::error::ErrorKind;
 
@@ -716,7 +711,6 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn spaik_fork_send_from_rust_to_lisp() {
-        setup();
         let mut vm = Spaik::new_no_core();
         vm.exec("(define init-var nil)").unwrap();
         vm.exec("(define (init) (set init-var 'init))").unwrap();
@@ -732,7 +726,6 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn spaik_fork_send_from_lisp_to_rust() {
-        setup();
         #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
         #[serde(rename_all = "kebab-case")]
         enum Msg {

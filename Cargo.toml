@@ -54,7 +54,6 @@ version = "0.3.2"
 
 [dev-dependencies]
 iai = { version = "0.1.1", features = ["macro"] }
-pretty_env_logger = "0.4"
 
 [build-dependencies]
 wasm-bindgen = { version = "0.2.79", optional = true }
