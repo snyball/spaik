@@ -16,6 +16,7 @@ codegen-units = 1
 debug = 2
 
 [profile.wasm]
+debug = 0
 inherits = "release"
 panic = "abort"
 lto = "fat"
