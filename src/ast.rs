@@ -278,11 +278,11 @@ impl AST2 {
 }
 
 pub trait Visitable {
-    fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()>;
+    fn visit(&mut self, visitor: &mut dyn Visitor) -> Result<()>;
 }
 
 impl Visitable for AST2 {
-    fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()> {
+    fn visit(&mut self, visitor: &mut dyn Visitor) -> Result<()> {
         macro_rules! visit {
             ($($arg:expr),*) => {{
                 $(visitor.visit(&mut *$arg)?;)*
@@ -352,7 +352,7 @@ impl Visitable for AST2 {
 }
 
 impl Visitable for Vec<AST2> {
-    fn visit(&mut self, visitor: &mut impl Visitor) -> Result<()> {
+    fn visit(&mut self, visitor: &mut dyn Visitor) -> Result<()> {
         for x in self.iter_mut() {
             visitor.visit(x)?;
         }
@@ -850,7 +850,7 @@ impl<'a> Excavator<'a> {
     }
 }
 
-pub trait Visitor: Sized {
+pub trait Visitor {
     fn visit(&mut self, elem: &mut AST2) -> Result<()>;
 }
 
