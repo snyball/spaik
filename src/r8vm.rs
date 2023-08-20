@@ -2467,14 +2467,14 @@ impl R8VM {
         let fmt_special = |pos: isize, op: r8c::Op| {
             use r8c::Op::*;
             if let Some(delta) = get_jmp(op) {
-                return Some((op.name().to_lowercase(),
+                return Some((op.name().to_ascii_lowercase(),
                              vec![self.labels.get(&((pos + delta) as u32))
                                   .map(|lbl| format!("{}", lbl))
                                   .unwrap_or(format!("{}", delta))
                                   .style_asm_label_ref()
                                   .to_string()]))
             }
-            Some((op.name().to_lowercase(), match op {
+            Some((op.name().to_ascii_lowercase(), match op {
                 VCALL(idx, args) => vec![self.mem.get_env(idx as usize).to_string(),
                                          args.to_string()],
                 INS(idx) => vec![self.mem.get_env(idx as usize).to_string()],
@@ -2492,7 +2492,7 @@ impl R8VM {
                 writeln!(stdout, "{}:", s.style_asm_label())?;
             }
             let (name, args) = fmt_special(i, op).unwrap_or(
-                (op.name().to_lowercase(),
+                (op.name().to_ascii_lowercase(),
                  op.args().iter().map(|v| v.to_string()).collect())
             );
             writeln!(stdout, "    {} {}",

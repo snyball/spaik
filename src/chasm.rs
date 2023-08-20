@@ -280,7 +280,7 @@ macro_rules! chasm_def {
                                 .iter()
                                 .map(|&s: &i64| s.to_string())
                                 .collect::<Vec<_>>();
-                            write!(f, "{} {}", stringify!($en).to_lowercase(),
+                            write!(f, "{} {}", stringify!($en).to_ascii_lowercase(),
                                    args_v.join(", "))
                         }
                     ),+
