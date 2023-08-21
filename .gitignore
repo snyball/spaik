@@ -27,3 +27,4 @@ js/node_modules
 js/dist
 js/bin
 package-lock.json
+cachegrind.out*
