@@ -78,7 +78,7 @@ pub use scratch::main as scratch_main;
 pub(crate) mod stylize;
 
 #[cfg(feature = "derive")]
-pub use spaik_proc_macros::{EnumCall, Fissile, kebabify};
+pub use spaik_proc_macros::{Fissile, kebabify};
 pub use nkgc::SPV;
 pub(crate) use nkgc::SymID;
 pub(crate) use nkgc::ObjRef;
@@ -112,7 +112,7 @@ use serde::de::DeserializeOwned;
 pub use crate::builtins::Builtin;
 pub use crate::nuke::Fissile;
 use crate::r8vm::R8VM;
-pub use crate::r8vm::{Args, EnumCall};
+pub use crate::r8vm::Args;
 use crate::nkgc::PV;
 pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, BoxSubr};
 pub use crate::error::Error;
@@ -123,7 +123,7 @@ pub mod prelude {
     pub use super::{Subr, IntoLisp, FromLisp, Sym,
                     Ignore, BoxSubr, plug::SpaikPlug, Spaik, Gc};
     #[cfg(feature = "derive")]
-    pub use spaik_proc_macros::{EnumCall, Fissile};
+    pub use spaik_proc_macros::Fissile;
 }
 
 #[cfg(feature = "freeze")]
@@ -523,16 +523,6 @@ impl Spaik {
 impl Default for Spaik {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl EnumCall for () {
-    fn name(&self, _mem: &mut nkgc::Arena) -> SymID {
-        unimplemented!()
-    }
-
-    fn pushargs(self, _args: &[SymID], _mem: &mut nkgc::Arena) -> Result<()> {
-        unimplemented!()
     }
 }
 

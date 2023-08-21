@@ -869,11 +869,6 @@ macro_rules! symcall_with {
     }};
 }
 
-pub trait EnumCall {
-    fn name(&self, mem: &mut Arena) -> SymID;
-    fn pushargs(self, args: &[SymID], mem: &mut Arena) -> Result<()>;
-}
-
 pub trait Args {
     fn pusharg(self, mem: &mut Arena) -> Result<()>;
     fn pusharg_ref(&self, mem: &mut Arena) -> Result<()>;
@@ -1184,15 +1179,6 @@ impl R8VM {
 
     pub fn has_mut_extrefs(&self) -> bool {
         self.mem.has_mut_extrefs()
-    }
-
-    pub fn call_by_enum(&mut self, enm: impl EnumCall) -> Result<PV> {
-        let name = enm.name(&mut self.mem);
-        let args = self.func_arg_syms.get(&name).map(|v| &**v).ok_or(
-            error!(UndefinedFunction, name)
-        )?;
-        let nargs = args.len();
-        Ok(symcall_with!(self, name, nargs, { enm.pushargs(args, &mut self.mem)? }))
     }
 
     pub fn minimize(&mut self) {

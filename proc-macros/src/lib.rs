@@ -1,7 +1,5 @@
 extern crate proc_macro;
 
-
-
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
@@ -130,109 +128,6 @@ pub fn spaikiface(_attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn spaiklib(_attr: TokenStream, _item: TokenStream) -> TokenStream {
     quote!().into()
-}
-
-#[proc_macro_derive(EnumCall)]
-pub fn derive_enum_call(item: TokenStream) -> TokenStream {
-    let root = crate_root();
-    let input = parse_macro_input!(item as DeriveInput);
-    let name = input.ident.clone();
-    let _name_s = input.ident.to_string().to_case(Case::Kebab);
-    let data = input.data.clone();
-    let fields = match data {
-        Data::Enum(DataEnum {
-            variants, ..
-        }) => variants,
-        _ => unimplemented!()
-    }.into_iter();
-
-    let variant = fields.clone().map(|f| f.ident.clone());
-    let variant_2 = variant.clone();
-    let variant_name_s = variant.clone()
-                                .map(|id| id.clone().to_string().to_case(Case::Kebab));
-    let variant_data = fields.clone().map(|f| {
-        let idents = f.fields.clone()
-                             .into_iter()
-                             .enumerate()
-                             .map(|(i, f)| f.ident.clone().unwrap_or_else(|| {
-                                 format_ident!("arg{i}")
-                             }));
-        let is_tuple = f.fields.iter()
-                               .next()
-                               .and_then(|f| f.ident.clone())
-                               .is_none();
-        (is_tuple, idents)
-    });
-    let query_nil = variant_data.clone().map(|(is_tuple, _)| {
-        if is_tuple {
-            quote!(( .. ))
-        } else {
-            quote!({ .. })
-        }
-    });
-    let query = variant_data.clone().map(|(is_tuple, idents)| {
-        if is_tuple {
-            quote!((#(#idents),*))
-        } else {
-            quote!({ #(#idents),* })
-        }
-    });
-    let body = variant_data.clone().map(|(is_tuple, idents)| {
-        if is_tuple {
-            quote!({#(
-                let pv = #idents .into_pv(mem).unwrap();
-                mem.push(pv);
-            )*})
-        } else {
-            let idents_lhs = idents.clone();
-            let idents_rhs = idents.clone();
-            let idents_str = idents.clone()
-                                   .map(|ident| ident.to_string().to_case(Case::Kebab));
-            let num_idents = idents.clone().count();
-            let count = idents.clone().enumerate().map(|(i, _)| i);
-            quote!({
-                static strs: &'static [&'static str; #num_idents] = &[#(#idents_str),*];
-                #(let mut #idents_lhs = Some(#idents_rhs));*;
-                for arg in args {
-                    let sym = arg.as_ref();
-                    let pv = match strs.iter().copied().position(|x| x == sym) {
-                        #(Some(#count) => #idents
-                                          .take()
-                                          .expect("Duplicate argument should not be possible")
-                                          .into_pv(mem)
-                                          .unwrap()),*,
-                        Some(_) => unreachable!(),
-                        None => return Err((#root::error::ErrorKind::UndefinedVariable
-                                            {var: *arg}).into())
-                    };
-                    mem.push(pv)
-                }
-            })
-        }
-    });
-
-    let out = quote! {
-        impl #root::EnumCall for #name {
-            fn pushargs(self, args: &[#root::_deps::SymID],
-                        mem: &mut #root::_deps::Arena)
-                        -> #root::error::Result<()>
-            {
-                use #root::IntoLisp;
-                match self {
-                    #(Self::#variant #query => #body),*
-                }
-                Ok(())
-            }
-            fn name(&self, mem: &mut #root::_deps::Arena) -> #root::_deps::SymID {
-                use #root::IntoLisp;
-                match self {
-                    #(Self::#variant_2 #query_nil => mem.put_sym_id(#variant_name_s)),*
-                }
-            }
-        }
-    };
-
-    out.into()
 }
 
 #[proc_macro_derive(Fissile)]

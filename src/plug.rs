@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 
 use crate::nkgc::PV;
 use crate::r8vm::{R8VM, ArgSpec};
-use crate::{EnumCall, Args, AsSym, SPV, Builtin, deserialize, nkgc, FromLisp, Subr, Result, Spaik, IntoLisp};
+use crate::{Args, AsSym, SPV, Builtin, deserialize, nkgc, FromLisp, Subr, Result, Spaik, IntoLisp};
 
 pub enum Event {
     Promise { res: Box<dyn Args + Send>, cont: SPV },
