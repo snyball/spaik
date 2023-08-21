@@ -47,6 +47,7 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
+use plug::*;
 use r8vm::NArgs;
 use subrs::IntoSubr;
 pub use subrs::Lispify;
@@ -62,8 +63,10 @@ mod stack_gymnastics;
 pub use lisp_test::run_tests;
 #[cfg(feature = "modules")]
 pub(crate) mod module;
-// #[cfg(feature = "serde")]
+#[cfg(feature = "serde")]
 pub(crate) mod deserialize;
+#[cfg(feature = "serde")]
+pub mod plug;
 pub(crate) mod limits;
 #[cfg(feature = "math")]
 pub(crate) mod math;
@@ -103,10 +106,6 @@ use std::any::type_name;
 
 use std::fmt::Debug;
 use std::sync::Arc;
-use std::sync::mpsc::{Sender, Receiver, TryRecvError, RecvTimeoutError};
-use std::thread::JoinHandle;
-use std::time::Duration;
-use std::ops::{Deref, DerefMut};
 
 use serde::de::DeserializeOwned;
 
@@ -114,7 +113,6 @@ pub use crate::builtins::Builtin;
 pub use crate::nuke::Fissile;
 use crate::r8vm::R8VM;
 pub use crate::r8vm::{Args, EnumCall};
-pub(crate) use crate::r8vm::ArgSpec;
 use crate::nkgc::PV;
 pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, BoxSubr};
 pub use crate::error::Error;
@@ -123,7 +121,7 @@ pub use crate::error::Result;
 /// The easiest way to get started with SPAIK is `use spaik::prelude::*`
 pub mod prelude {
     pub use super::{Subr, IntoLisp, FromLisp, Sym,
-                    Ignore, BoxSubr, SpaikPlug, Spaik, Gc};
+                    Ignore, BoxSubr, plug::SpaikPlug, Spaik, Gc};
     #[cfg(feature = "derive")]
     pub use spaik_proc_macros::{EnumCall, Fissile};
 }
@@ -185,7 +183,7 @@ impl AsSym for SymID {
 
 #[cfg(feature = "derive")]
 #[macro_export]
-macro_rules! iface {
+macro_rules! defuns {
     ($vis:vis trait $tr:ident {
         $(fn $f:ident($($arg:ident : $t:ty),*) -> Result<$($e:ty),*>;)*
     }) => {
@@ -207,6 +205,29 @@ macro_rules! iface {
         impl $tr for Spaik {
             $(fn $f(&mut self, $($arg : $t),*) -> $r {
                 self.call($crate::kebabify!($f), ($($arg,)*)).unwrap()
+            })*
+        }
+    };
+}
+
+#[cfg(feature = "derive")]
+#[macro_export]
+macro_rules! defevents {
+    ($vis:vis trait $tr:ident {
+        $(fn $f:ident($($arg:ident : $t:ty),*);)*
+    }) => {
+        $vis trait $tr<K> {
+            $(fn $f(&mut self, $($arg : $t),*) -> K;)*
+        }
+        impl $tr<Result<()>> for Spaik {
+            $(fn $f(&mut self, $($arg : $t),*) -> Result<()> {
+                let _: Ignore = self.call($crate::kebabify!($f), ($($arg,)*))?;
+                Ok(())
+            })*
+        }
+        impl<T> $tr<()> for SpaikPlug<T> {
+            $(fn $f(&mut self, $($arg : $t),*) {
+                self.send($crate::kebabify!($f), ($($arg,)*))
             })*
         }
     };
@@ -392,26 +413,6 @@ impl Spaik {
         todo!()
     }
 
-    /// Call a function by-enum and return the result
-    ///
-    /// Use `Spaik::cmd` if don't care about the result.
-    #[inline]
-    pub fn query<R>(&mut self, enm: impl EnumCall) -> Result<R>
-        where PV: FromLisp<R>
-    {
-        self.vm.call_by_enum(enm)
-               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
-    }
-
-    /// Call a function by-enum and ignore the result
-    ///
-    /// Use `Spaik::query` if you need the result.
-    #[inline]
-    pub fn cmd(&mut self, enm: impl EnumCall) -> Result<()> {
-        let _: Ignore = self.query(enm)?;
-        Ok(())
-    }
-
     /// Call a function by-name an args and return the result.
     ///
     /// Use `Spaik::run` if don't care about the result.
@@ -474,9 +475,8 @@ impl Spaik {
 
     /// Move the VM off-thread and return a `SpaikPlug` handle for IPC.
     #[cfg(not(feature = "no-threading"))]
-    pub fn fork<T, Cmd>(mut self) -> SpaikPlug<T, Cmd>
-        where T: DeserializeOwned + Send + Debug + Clone + 'static,
-              Cmd: EnumCall + Send + 'static
+    pub fn fork<T>(mut self) -> SpaikPlug<T>
+        where T: DeserializeOwned + Send + Debug + Clone + 'static
     {
         use std::{sync::mpsc::channel, thread};
 
@@ -489,7 +489,7 @@ impl Spaik {
         let handle = thread::spawn(move || {
             self.register(send_message { sender: rx_send });
             loop {
-                let ev: Event<Cmd> = tx_run.recv().unwrap();
+                let ev: Event = tx_run.recv().unwrap();
                 match ev {
                     Event::Stop => break,
                     Event::Promise { res, cont } => {
@@ -507,9 +507,6 @@ impl Spaik {
                         if let Err(e) = res {
                             log::error!("{e}");
                         }
-                    }
-                    Event::Command(cmd) => if let Err(e) = self.cmd(cmd) {
-                        log::error!("{}", e);
                     }
                 }
             }
@@ -539,168 +536,11 @@ impl EnumCall for () {
     }
 }
 
-pub enum Event<Cmd: EnumCall + Send> {
-    Promise { res: Box<dyn Args + Send>, cont: SPV },
-    Event { name: Box<dyn AsSym + Send>,
-            args: Box<dyn Args + Send> },
-    Command(Cmd),
-    Stop,
-}
-
-/// Promise made to `SpaikPlug`
-#[derive(Debug)]
-#[must_use = "A promise made should be a promise kept"]
-pub struct Promise<T> {
-    msg: Box<T>,
-    cont: Option<SPV>,
-}
-
-impl<T> Deref for Promise<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.msg
-    }
-}
-
-impl<T> DerefMut for Promise<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.msg
-    }
-}
-
-// #[cfg(feature = "serde")]
-impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
-    fn from_lisp(self, mem: &mut nkgc::Arena) -> Result<Promise<T>> {
-        with_ref!(self, Cons(p) => {
-            let msg = (*p).car;
-            let cont = (*p).cdr;
-            let msg = deserialize::from_pv(msg, &mem.symdb)?;
-            if cont.type_of() != Builtin::Continuation.sym() {
-                return err!(TypeError,
-                            expect: Builtin::Continuation,
-                            got: cont.bt_type_of());
-            }
-            let cont = Some(mem.make_extref(cont));
-            Ok(Promise { msg, cont })
-        })
-    }
-}
-
-impl<T> Promise<T> {
-    pub fn get(&self) -> &T {
-        &self.msg
-    }
-
-    pub fn get_mut(&mut self) -> &mut T {
-        &mut self.msg
-    }
-}
-
-/// Asynchronous SPAIK, in another thread
-pub struct SpaikPlug<T, Cmd>
-    where Cmd: EnumCall + Send, T: Send
-{
-    promises: Receiver<Promise<T>>,
-    events: Sender<Event<Cmd>>,
-    handle: JoinHandle<Spaik>,
-}
-
-#[derive(Clone, Debug)]
-#[allow(non_camel_case_types)]
-struct send_message<T>
-    where T: DeserializeOwned + Clone + Send
-{
-    sender: Sender<Promise<T>>,
-}
-
-unsafe impl<T> Subr for send_message<T>
-    where T: DeserializeOwned + Clone + Send + 'static + Debug + Sized
-{
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
-        let (msg, r, cont) = match args {
-            [x, y] => (deserialize::from_pv(*x, &vm.mem.symdb)
-                       .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
-                       *x,
-                       Some(vm.mem.make_extref(*y))),
-            [x] => (deserialize::from_pv(*x, &vm.mem.symdb)
-                    .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
-                    *x,
-                    None),
-            _ => ArgSpec::opt(1, 1).check(args.len() as u16)
-                                   .map_err(|e| e.bop(Builtin::ZSendMessage))
-                                   .map(|_| -> ! { unreachable!() })?
-
-        };
-        self.sender.send(Promise { msg, cont })?;
-        Ok(r)
-    }
-    fn name(&self) -> &'static str { "<ζ>-send-message" }
-}
-
-impl<T, Cmd> SpaikPlug<T, Cmd>
-    where Cmd: EnumCall + Send, T: Send
-{
-    #[inline]
-    pub fn recv(&self) -> Option<Promise<T>>
-        where T: DeserializeOwned
-    {
-        match self.promises.try_recv() {
-            Ok(e) => Some(e),
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                panic!("Spaik VM disconnected");
-            }
-        }
-    }
-
-    pub fn cmd(&self, cmd: Cmd) {
-        self.events.send(Event::Command(cmd)).unwrap();
-    }
-
-    #[inline]
-    pub fn recv_timeout(&self, timeout: Duration) -> Option<Promise<T>>
-        where T: DeserializeOwned
-    {
-        match self.promises.recv_timeout(timeout) {
-            Ok(e) => Some(e),
-            Err(RecvTimeoutError::Timeout) => None,
-            Err(RecvTimeoutError::Disconnected) => {
-                panic!("Spaik VM disconnected");
-            }
-        }
-    }
-
-    #[inline]
-    pub fn send<V, A>(&self, name: V, args: A)
-        where V: AsSym + Send + 'static,
-              A: Args + Send + 'static
-    {
-        self.events.send(Event::Event { name: Box::new(name),
-                                        args: Box::new(args) }).unwrap();
-    }
-
-    #[inline]
-    pub fn fulfil<R>(&self, promise: Promise<T>, ans: R)
-        where R: IntoLisp + Clone + Send + 'static
-    {
-        if let Some(cont) = promise.cont {
-            self.events.send(Event::Promise { res: Box::new((ans,)),
-                                              cont }).unwrap();
-        }
-    }
-
-    #[inline]
-    pub fn join(self) -> Spaik {
-        self.events.send(Event::Stop).unwrap();
-        self.handle.join().unwrap()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{Fissile, EnumCall, spaik_export};
+    use spaik_proc_macros::{Fissile, spaik_export};
     use std::sync::atomic::{AtomicI32, Ordering};
 
     use crate::error::ErrorKind;
@@ -712,11 +552,15 @@ mod tests {
     #[test]
     fn spaik_fork_send_from_rust_to_lisp() {
         let mut vm = Spaik::new_no_core();
+        defevents!(trait Events {
+            fn event_0(x: i32);
+        });
         vm.exec("(define init-var nil)").unwrap();
         vm.exec("(define (init) (set init-var 'init))").unwrap();
         vm.exec("(define (event-0 x) (set init-var (+ x 1)))").unwrap();
-        let vm = vm.fork::<i32, ()>();
-        vm.send("event-0", (123,));
+        vm.event_0(1).unwrap();
+        let mut vm = vm.fork::<i32>();
+        vm.event_0(123);
         let mut vm = vm.join();
         let init_var: i32 = vm.eval("init-var").unwrap();
         assert_eq!(init_var, 124);
@@ -726,6 +570,8 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn spaik_fork_send_from_lisp_to_rust() {
+        use std::time::Duration;
+
         #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
         #[serde(rename_all = "kebab-case")]
         enum Msg {
@@ -737,7 +583,7 @@ mod tests {
         vm.exec(r#"(defun event-0 (x)
                      (let ((res (await '(test :id 1337))))
                        (set init-var (+ res x 1))))"#).unwrap();
-        let vm = vm.fork::<Msg, ()>();
+        let vm = vm.fork::<Msg>();
         let ev0_arg = 123;
         vm.send("event-0", (ev0_arg,));
         let p = vm.recv_timeout(Duration::from_secs(10)).expect("timeout");
@@ -863,30 +709,6 @@ mod tests {
         dbg!(&perst_ref);
     }
 
-    #[cfg(feature = "derive")]
-    #[test]
-    fn enum_call_test() {
-        #[allow(dead_code)]
-        #[derive(EnumCall)]
-        pub enum CallSome {
-            FuncA { arg0: u32, arg1: i64, arg2: String },
-            FuncB { arg0: u32, arg1: i16, arg2: &'static str },
-            FuncC(u32, i8, &'static str),
-        }
-        let mut vm = Spaik::new_no_core();
-        vm.exec("(define (func-a arg-0 arg-1 arg-2) (+ arg-0 arg-1))").unwrap();
-        vm.exec("(define global 10)").unwrap();
-        vm.exec("(define (func-b arg-2) (set global arg-2))").unwrap();
-        let (a, b) = (10, 20);
-        let r: u32 = vm.query(CallSome::FuncA {
-            arg0: a, arg1: b, arg2: "lmao".to_string()
-        }).unwrap();
-        assert_eq!(r, a + b as u32);
-        vm.cmd(CallSome::FuncB { arg0: 0, arg1: 0, arg2: "lmao" }).unwrap();
-        let s: String = vm.get("global").unwrap();
-        assert_eq!("lmao", &s);
-    }
-
     #[test]
     fn test_yield() {
         let mut vm = Spaik::new();
@@ -945,7 +767,7 @@ mod tests {
         let mut vm = Spaik::new_no_core();
         vm.set("test-obj", TestObj { x: 10.0, y: 20.0 });
         let _rf: Gc<TestObj> = vm.get("test-obj").unwrap();
-        let mut _vm = vm.fork::<(), ()>();
+        let mut _vm = vm.fork::<()>();
     }
 
     #[test]
@@ -1002,7 +824,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn interface() {
-        iface!(trait C1 {
+        defuns!(trait C1 {
             fn f(x: i32, y: f32) -> bool;
             fn g(x: i32, y: f32) -> i32;
         });
@@ -1013,7 +835,7 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn interface_2() {
-        iface!(trait C1 {
+        defuns!(trait C1 {
             fn funky_funk(x: i32, y: i32) -> i32;
             fn g(x: i32, y: i32) -> i32;
         });
@@ -1027,7 +849,7 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn interface_result() {
-        iface!(trait C1 {
+        defuns!(trait C1 {
             fn ayy_lmao(x: i32, y: i32) -> Result<i32>;
             fn g(x: i32, y: i32) -> Result<i32>;
         });
