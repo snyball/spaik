@@ -47,6 +47,7 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
+pub mod plug;
 pub use plug::*;
 use r8vm::NArgs;
 use subrs::IntoSubr;
@@ -66,7 +67,6 @@ pub(crate) mod module;
 #[cfg(feature = "serde")]
 pub(crate) mod deserialize;
 #[cfg(feature = "serde")]
-pub mod plug;
 pub(crate) mod limits;
 #[cfg(feature = "math")]
 pub(crate) mod math;
