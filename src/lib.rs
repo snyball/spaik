@@ -47,7 +47,7 @@ pub(crate) mod tokit;
 pub(crate) mod subrs;
 pub(crate) mod builtins;
 pub(crate) mod string_parse;
-use plug::*;
+pub use plug::*;
 use r8vm::NArgs;
 use subrs::IntoSubr;
 pub use subrs::Lispify;
