@@ -1,14 +1,22 @@
 //! Rust Subroutines for SPAIK LISP
 
+use fnv::FnvHashMap;
+use owo_colors::colors::xterm::Sundown;
+use serde::de::DeserializeOwned;
+use serde::{Serialize, Deserialize};
+
 use crate::r8vm::{R8VM, ArgSpec};
 use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
 use crate::{nuke::*, SymID};
 use crate::fmt::{LispFmt, VisitSet};
 use std::any::Any;
+use std::collections::hash_map::Entry;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
+use std::io::{Read, Cursor};
 use std::marker::PhantomData;
+use std::sync::{OnceLock, Mutex};
 
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to create an SPV reference-counter
@@ -203,6 +211,75 @@ impl<T, E> IntoLisp for Result<T, E>
     }
 }
 
+pub trait CloneSubr: Subr {
+    fn clone_subr(&self) -> Box<dyn Subr>;
+}
+
+impl<T> CloneSubr for T
+where
+    T: 'static + Subr + Clone
+{
+    fn clone_subr(&self) -> Box<dyn Subr> {
+        Box::new(self.clone())
+    }
+}
+
+#[cfg(feature = "freeze")]
+pub type SubrThawFn = fn(from: &mut dyn Read) -> Result<Box<dyn Subr>, Error>;
+#[cfg(feature = "freeze")]
+static SUBR_THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, SubrThawFn>>> = OnceLock::new();
+#[cfg(feature = "freeze")]
+static SUBRS: OnceLock<Mutex<FnvHashMap<TypePath, Box<dyn CloneSubr>>>> = OnceLock::new();
+
+#[cfg(feature = "freeze")]
+pub struct Zubr {
+    name: TypePath,
+    data: Option<Vec<u8>>,
+}
+
+#[cfg(feature = "freeze")]
+impl Zubr {
+    pub fn funmut<T: Subr + DeserializeOwned>() {
+        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<T>()) {
+            e.insert(|from| {
+                use bincode::Options;
+                let opts = bincode::DefaultOptions::new();
+                let obj: T = opts.deserialize_from(from).unwrap();
+                Ok(obj.into_subr())
+            });
+        }
+    }
+
+    pub fn fun<A, R, F>(f: F)
+        where A: Send + 'static,
+              R: Send + 'static,
+              F: Funcable<A, R> + IntoSubr<A, R> + Clone + 'static
+    {
+        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let subrs = SUBRS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<F>()) {
+            subrs.lock().unwrap().insert(TypePath::of::<F>(), Box::new(RLambda::new(f)));
+            e.insert(|_| {
+                let subrs = SUBRS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+                Ok(subrs.lock().unwrap()[&TypePath::of::<F>()].clone_subr())
+            });
+        }
+    }
+
+    pub fn thaw(&self) -> Result<Box<dyn Subr>, Error> {
+        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        // let mut cr = Cursor::new(&self.data);
+        let empty = [];
+        let mut cr = if let Some(ref data) = self.data {
+            Cursor::new(&data[..])
+        } else {
+            Cursor::new(&empty[..])
+        };
+        (thaw_fns.lock().unwrap()[&self.name])(&mut cr)
+    }
+}
+
 /**
  * SAFETY: The call method may be passed an arg reference into the,
  *         vm stack (which it gets a mutable reference to.) The call
@@ -220,6 +297,9 @@ pub unsafe trait Subr: Send + 'static {
 pub unsafe trait Subr: Send + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
     fn name(&self) -> &'static str;
+    fn freeze(&self) -> Zubr {
+        Zubr { name: TypePath::of::<Self>(), data: None }
+    }
 }
 
 pub trait BoxSubr {
@@ -290,12 +370,21 @@ impl_funcable!(A, B, C, D, E, F, G, H, I, J);
 impl_funcable!(A, B, C, D, E, F, G, H, I, J, K);
 impl_funcable!(A, B, C, D, E, F, G, H, I, J, K, L);
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct RLambda<F, A, R>
     where A: Send + 'static, R: Send + 'static, F: Funcable<A, R>
 {
     f: F,
     _phantom: PhantomData<(A, R)>,
+}
+
+impl<F, A, R> Clone for RLambda<F, A, R>
+    where F: Clone, A: Send + 'static, R: Send + 'static, F: Funcable<A, R>
+{
+    fn clone(&self) -> Self {
+        Self { f: self.f.clone(),
+               _phantom: Default::default() }
+    }
 }
 
 unsafe impl<F, A, R> Subr for RLambda<F, A, R>
