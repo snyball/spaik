@@ -176,7 +176,7 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn spaik_export(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn export(_attr: TokenStream, item: TokenStream) -> TokenStream {
     use convert_case::{Case, Casing};
     let root = crate_root();
     let input = parse_macro_input!(item as ItemImpl);
