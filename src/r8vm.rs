@@ -1127,8 +1127,8 @@ impl R8VM {
             addfn!("dump-fn-tbl", dump_fn_tbl);
             addfn!("dump-gc-stats", dump_gc_stats);
             addfn!("dump-stack", dump_stack);
+            addfn!(disassemble);
         }
-        addfn!(disassemble);
 
         // Control-Flow
         addfn!(panic);
