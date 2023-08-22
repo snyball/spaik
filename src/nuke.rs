@@ -469,7 +469,7 @@ pub type ThawFn = fn(from: &mut dyn Read) -> Result<Object, Error>;
 pub struct TypePath(&'static str);
 
 impl TypePath {
-    pub fn of<T>() -> Self {
+    pub fn of<T: ?Sized>() -> Self {
         TypePath(type_name::<T>())
     }
 }
@@ -493,11 +493,10 @@ struct Voided;
 // };
 
 impl Object {
-    pub fn new<T: Userdata + Subr + 'static>(obj: T) -> Object {
+    pub fn register<T: Userdata + Subr + 'static>() -> &'static VTable {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
-        let layout = unsafe { ud_layout::<T>() };
         #[cfg(feature = "freeze")]
         let thaw_fns = THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
         #[cfg(feature = "freeze")]
@@ -510,7 +509,7 @@ impl Object {
             });
         }
         let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
-        let vtable = match vtables.lock().unwrap().entry(TypeId::of::<T>()) {
+        match vtables.lock().unwrap().entry(TypeId::of::<T>()) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
@@ -542,8 +541,13 @@ impl Object {
                     fmt: delegate! { fmt(f) },
                     call: delegate! { call(vm, args) }
                 })))
-            },
-        };
+            }
+        }
+    }
+
+    pub fn new<T: Userdata + Subr + 'static>(obj: T) -> Object {
+        let layout = unsafe { ud_layout::<T>() };
+        let vtable = Object::register::<T>();
         let mem = unsafe {
             let p = alloc(layout) as *mut T;
             if p.is_null() {
