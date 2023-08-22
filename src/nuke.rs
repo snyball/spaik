@@ -1720,7 +1720,7 @@ impl PtrMap {
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{Fissile, spaik_export};
+    use spaik_proc_macros::{Fissile, export};
 
     use crate::Spaik;
 
@@ -1760,7 +1760,7 @@ mod tests {
         struct Data {
             x: String
         }
-        #[spaik_export]
+        #[export]
         impl Data {}
         let _data = Data { x: String::from("something") };
         let mut vm = Spaik::new_no_core();

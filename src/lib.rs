@@ -530,7 +530,7 @@ impl Default for Spaik {
 mod tests {
     use serde::{Deserialize, Serialize};
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{Fissile, spaik_export};
+    use spaik_proc_macros::{Fissile, export};
     use std::sync::atomic::{AtomicI32, Ordering};
 
     use crate::error::ErrorKind;
@@ -638,7 +638,7 @@ mod tests {
             x: f32,
             y: f32,
         }
-        #[spaik_export]
+        #[export]
         impl TestObj {}
 
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
@@ -647,7 +647,7 @@ mod tests {
             x: f32,
             thing: String,
         }
-        #[spaik_export]
+        #[export]
         impl TestObj2 {}
 
         fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
@@ -751,7 +751,7 @@ mod tests {
             x: f32,
             y: f32,
         }
-        #[spaik_export]
+        #[export]
         impl TestObj {}
 
         let mut vm = Spaik::new_no_core();

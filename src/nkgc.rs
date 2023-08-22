@@ -1889,7 +1889,7 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn virtual_destructors() {
-        use spaik_proc_macros::spaik_export;
+        use spaik_proc_macros::export;
 
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
@@ -1897,7 +1897,7 @@ mod tests {
             hello: Vec<u64>,
             thing: String,
         }
-        #[spaik_export]
+        #[export]
         impl TestObj {}
         let mut ar = Arena::new(1024);
         for i in 0..10 {

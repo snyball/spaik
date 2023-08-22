@@ -454,7 +454,7 @@ impl IntoLisp for Box<dyn Subr> {
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{Fissile, spaik_export};
+    use spaik_proc_macros::{Fissile, export};
 
     use crate::Spaik;
 
@@ -469,7 +469,7 @@ mod tests {
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         struct Lmao {}
 
-        #[spaik_export]
+        #[export]
         impl Lmao {
             fn foo(&self, x: i32, y: i32) -> i32 {
                 x + y
