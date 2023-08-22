@@ -78,7 +78,7 @@ pub use scratch::main as scratch_main;
 pub(crate) mod stylize;
 
 #[cfg(feature = "derive")]
-pub use spaik_proc_macros::{Fissile, kebabify};
+pub use spaik_proc_macros::{Fissile, kebabify, export};
 pub use nkgc::SPV;
 pub(crate) use nkgc::SymID;
 pub(crate) use nkgc::ObjRef;
