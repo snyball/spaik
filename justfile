@@ -19,8 +19,9 @@ test-wasm:
     cargo test --target wasm32-wasi
 
 build-wasm:
-    cargo build --profile wasm \
+    cargo +nightly build --profile wasm \
                 --target wasm32-unknown-unknown \
+                --features serde \
                 -Z build-std=std,panic_abort \
                 -Z build-std-features=panic_immediate_abort \
                 --no-default-features \
