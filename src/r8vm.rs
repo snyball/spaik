@@ -2257,7 +2257,7 @@ impl R8VM {
                         err!(TypeNError,
                              expect: vec![Builtin::List, Builtin::Vector],
                              got: args.bt_type_of())
-                    })().map_err(|e| e.bop(Builtin::Apply))?;;
+                    })().map_err(|e| e.bop(Builtin::Apply))?;
                     let nargs: u16 = match nargs.try_into() {
                         Ok(n) => n,
                         Err(e) => {
