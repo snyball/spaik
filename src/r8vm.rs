@@ -2223,11 +2223,22 @@ impl R8VM {
                 ZCALL(nargs) => ip = self.op_clzcall(ip, nargs)?,
                 APL() => {
                     let args = self.mem.pop().unwrap();
-                    let nargs = with_ref!(args, Cons(_) => {
-                        Ok(args.into_iter().map(|a| self.mem.push(a)).count())
-                    }, Vector(xs) => {
-                        Ok((*xs).iter().map(|a| self.mem.push(*a)).count())
-                    }).map_err(|e| e.bop(Builtin::Apply))?;
+                    let nargs = (|| -> Result<_> {
+                        match args {
+                            PV::Nil => return Ok(0),
+                            PV::Ref(p) => match to_fissile_ref(p) {
+                                NkRef::Cons(_) => return
+                                    Ok(args.into_iter().map(|a| self.mem.push(a)).count()),
+                                NkRef::Vector(xs) => return
+                                    Ok((*xs).iter().map(|a| self.mem.push(*a)).count()),
+                                _ => (),
+                            }
+                            _ => ()
+                        };
+                        err!(TypeNError,
+                             expect: vec![Builtin::List, Builtin::Vector],
+                             got: args.bt_type_of())
+                    })().map_err(|e| e.bop(Builtin::Apply))?;;
                     let nargs: u16 = match nargs.try_into() {
                         Ok(n) => n,
                         Err(e) => {
