@@ -32,6 +32,10 @@ struct LowerConst(SymID, PV);
 impl Visitor for LowerConst {
     fn visit(&mut self, elem: &mut AST2) -> crate::Result<()> {
         match elem.kind {
+            // Skip branches that shadow the lowered variable
+            M::Lambda(ref args, _) if args.1.iter().any(|(x, _)| *x == self.0) => (),
+            M::Let(ref decl, _) if decl.iter().any(|VarDecl(x, _, _)| *x == self.0) => (),
+
             M::Loop(ref mut body) => {
                 let mut modf = IsModified(self.0);
                 body.visit(&mut modf)?;
