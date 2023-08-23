@@ -322,7 +322,7 @@ impl R8Compiler {
                 }
             }
             if spec.has_body() {
-                self.unit().op(chasm!(TOP spec.nargs + spec.nopt));
+                self.unit().op(chasm!(TOP spec.nargs + spec.nopt + spec.env));
                 self.unit().op(chasm!(VLT));
             }
             if spec.has_env() {
