@@ -2226,11 +2226,30 @@ impl R8VM {
                     let nargs = (|| -> Result<_> {
                         match args {
                             PV::Nil => return Ok(0),
-                            PV::Ref(p) => match to_fissile_ref(p) {
-                                NkRef::Cons(_) => return
+                            #[cfg(feature = "math")] PV::Vec2(w) => {
+                                self.mem.push(PV::Real(w.x));
+                                self.mem.push(PV::Real(w.y));
+                                return Ok(2)
+                            }
+                            #[cfg(feature = "math")] PV::Vec3(w) => {
+                                self.mem.push(PV::Real(w.x));
+                                self.mem.push(PV::Real(w.y));
+                                self.mem.push(PV::Real(w.z));
+                                return Ok(3)
+                            }
+                            PV::Ref(p) => match to_fissile_mut(p) {
+                                NkMut::Cons(_) => return
                                     Ok(args.into_iter().map(|a| self.mem.push(a)).count()),
-                                NkRef::Vector(xs) => return
+                                NkMut::Vector(xs) => return
                                     Ok((*xs).iter().map(|a| self.mem.push(*a)).count()),
+                                NkMut::Iter(it) => {
+                                    let mut i = 0;
+                                    while let Some(a) = (*it).next() {
+                                        self.mem.push(a);
+                                        i += 1;
+                                    }
+                                    return Ok(i)
+                                }
                                 _ => (),
                             }
                             _ => ()
