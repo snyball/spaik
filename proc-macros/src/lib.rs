@@ -155,9 +155,7 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
             fn lisp_fmt(&self,
                         _visited: &mut #root::_deps::VisitSet,
                         f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "({}", stringify!(#name))?;
-                #( write!(f, " {} {:?}", #field_kws, self.#field_names)?; )*
-                write!(f, ")")
+                write!(f, "{:?}", self)
             }
         }
 
