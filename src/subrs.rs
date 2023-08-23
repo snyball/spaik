@@ -64,6 +64,10 @@ macro_rules! pv_convert {
             fn try_from(v: PV) -> Result<$from_t, Self::Error> {
                 if let PV::$pvt(x) = v {
                     Ok(x.try_into()?)
+                } else if let PV::Real(x) = v {
+                    Ok(x as $from_t)
+                } else if let PV::Int(x) = v {
+                    Ok(x as $from_t)
                 } else {
                     Err(Error::new(ErrorKind::TypeError {
                         expect: PV::$pvt(Default::default()).bt_type_of(),
@@ -93,8 +97,32 @@ pv_convert!(Int,
 pv_convert!(Real,
             f32);
 
-pv_convert!(Char,
-            char);
+impl IntoLisp for char {
+    fn into_pv(self,_: &mut Arena) -> Result<PV,Error>{
+        Ok(PV::Char(self.try_into()?))
+    }
+
+}
+impl TryFrom<PV>for char {
+    type Error = Error;
+    fn try_from(v:PV) -> Result<char,Self::Error>{
+        if let PV::Char(x) = v {
+            Ok(x.try_into()?)
+        } else {
+            Err(Error::new(ErrorKind::TypeError {
+                expect:PV::Char(Default::default()).bt_type_of(),got:v.bt_type_of(),
+            }))
+        }
+    }
+
+}
+impl TryFrom<PV>for ObjRef<char>{
+    type Error = Error;
+    #[inline(always)]
+    fn try_from(v:PV) -> Result<ObjRef<char>,Self::Error>{
+        Ok(ObjRef(v.try_into()?))
+    }
+}
 
 impl IntoLisp for () {
     fn into_pv(self, _: &mut Arena) -> Result<PV, Error> {
@@ -474,17 +502,19 @@ mod tests {
                 x + y
             }
 
-            fn bar(&self, x: i32, y: i32) -> i32 {
-                x + y
+            fn bar(&self, x: i32, y: i32, z: &str) -> String {
+                format!("answer: {} ({z})", x+y)
             }
 
-            fn baz(&self, x: i32, y: i32, z: &str) -> String {
+            fn baz(&self, x: f32, y: f32, z: &str) -> String {
                 format!("answer: {} ({z})", x+y)
             }
         }
 
         vm.set("lmao", Lmao{});
         assert_eq!(vm.eval("(lmao :foo 1 2)"), Ok(3));
+        assert_eq!(vm.eval(r#"(lmao :bar 8.8 8.8 "lmao")"#), Ok("answer: 16 (lmao)"));
         assert_eq!(vm.eval(r#"(lmao :baz 8 8 "lmao")"#), Ok("answer: 16 (lmao)"));
+        assert_eq!(vm.eval(r#"(lmao :baz 8.8 8.8 "lmao")"#), Ok("answer: 17.6 (lmao)"));
     }
 }
