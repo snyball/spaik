@@ -1,7 +1,6 @@
 //! Rust Subroutines for SPAIK LISP
 
 use fnv::FnvHashMap;
-use owo_colors::colors::xterm::Sundown;
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 
