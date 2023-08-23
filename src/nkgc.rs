@@ -291,7 +291,7 @@ macro_rules! num_op {
                 #[cfg(feature = "math")] (Vec3(x), Vec3(y)) => Vec3(*x $op *y),
                 (x, y) =>
                     return Err(error!(IfaceNotImplemented,
-                                      got: vec![x.type_of(), y.type_of()])
+                                      got: vec![x.type_of().into(), y.type_of().into()])
                                .bop(Builtin::$sym))
             })
         }
@@ -315,7 +315,7 @@ macro_rules! inplace_num_op {
                 #[cfg(feature = "math")] (Vec3(x), Int(y)) => *x $op_inplace *y as f32,
                 (x, y) =>
                     return Err(error!(IfaceNotImplemented,
-                                      got: vec![x.type_of(), y.type_of()])
+                                      got: vec![x.type_of().into(), y.type_of().into()])
                                .bop(Builtin::$sym))
             }
             Ok(())
@@ -329,8 +329,8 @@ macro_rules! cmp_op {
             use Ordering::*;
             match self.partial_cmp(o) {
                 None => return Err(error!(IfaceNotImplemented,
-                                          got: vec![self.type_of(), o.type_of()])
-                                   .op(Builtin::$sym.sym())),
+                                          got: vec![self.type_of().into(), o.type_of().into()])
+                                   .bop(Builtin::$sym)),
                 $(Some($ordering) => Ok(PV::Bool(true)),)*
                 _ => Ok(PV::Bool(false))
             }           

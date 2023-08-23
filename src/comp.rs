@@ -199,7 +199,7 @@ impl Visitor for ClzScoper<'_, '_> {
                 } else if let Some(bound) = self.outside.get_idx(var) {
                     self.lowered.insert((var, BoundVar::Local(bound)));
                 } else if var != Builtin::Nil.sym() && !self.fns.contains_key(&var) {
-                    return err_src!(elem.src.clone(), UndefinedVariable, var);
+                    return err_src!(elem.src.clone(), UndefinedVariable, var: var.into());
                 }
             }
             _ => ()
@@ -556,7 +556,7 @@ impl R8Compiler {
         if let Some(idx) = self.env.get(&var) {
             return Ok(BoundVar::Env(*idx as u32))
         }
-        err_src!(src.clone(), UndefinedVariable, var)
+        err_src!(src.clone(), UndefinedVariable, var: var.into())
     }
 
     fn asm_set_var_idx(&mut self, idx: &BoundVar) -> Result<()> {

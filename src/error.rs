@@ -1,8 +1,7 @@
 //! Structured Errors
 
-use crate::Builtin;
+use crate::{Builtin, Sym};
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
-use crate::nkgc::SymID;
 use crate::fmt::LispFmt;
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
@@ -52,7 +51,7 @@ pub struct SourceRef<'a> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum OpName {
-    OpSym(SymID),
+    OpSym(Sym),
     OpStr(&'static str),
     OpBt(Builtin),
 }
@@ -210,11 +209,11 @@ pub enum ErrorKind {
     STypeError { expect: String, got: String },
     UnexpectedDottedList,
     TypeError { expect: Builtin, got: Builtin },
-    NoSuchMethod { strucc: &'static str, method: SymID },
+    NoSuchMethod { strucc: &'static str, method: Sym },
     TypeNError { expect: Vec<Builtin>, got: Builtin },
     ArgTypeError { expect: Vec<Builtin>, got: Vec<Builtin> },
-    IfaceNotImplemented { got: Vec<SymID> },
-    EnumError { expect: Vec<SymID>, got: SymID },
+    IfaceNotImplemented { got: Vec<Sym> },
+    EnumError { expect: Vec<Sym>, got: Sym },
     ArgError { expect: ArgSpec, got_num: u32 },
     OutsideContext { op: Builtin, ctx: Builtin },
     SyntaxErrorMsg { msg: String },
@@ -225,18 +224,18 @@ pub enum ErrorKind {
     NotEnough { expect: usize,
                 got: usize },
     SomeError { msg: String },
-    UndefinedFunction { name: SymID },
-    UndefinedVariable { var: SymID },
-    ModuleLoadError { lib: SymID },
-    ModuleNotFound { lib: SymID },
+    UndefinedFunction { name: Sym },
+    UndefinedVariable { var: Sym },
+    ModuleLoadError { lib: Sym },
+    ModuleNotFound { lib: Sym },
     Unsupported { op: &'static str },
     Traceback { tb: Box<Traceback> },
     IndexError { idx: usize },
-    Exit { status: SymID },
+    Exit { status: Sym },
     IOError { kind: std::io::ErrorKind },
     MissingFeature { flag: &'static str },
-    CharSpecError { spec: SymID },
-    LibError { name: SymID },
+    CharSpecError { spec: Sym },
+    LibError { name: Sym },
     TrailingDelimiter { close: &'static str },
     UnclosedDelimiter { open: &'static str },
     TrailingModifiers { mods: String },
@@ -316,6 +315,12 @@ pub struct Error {
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt_error(self, f)
+    }
+}
+
+impl fmt::Debug for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_error(&Error::new(self.clone()), f)
     }
 }
 
@@ -579,8 +584,8 @@ impl Error {
         self
     }
 
-    pub fn see_also_sym(mut self, what: SymID, src: Source) -> Self {
-        self.inner.meta.amend(Meta::Related(Some(OpName::OpSym(what)), src));
+    pub fn see_also_sym(mut self, what: impl Into<Sym>, src: Source) -> Self {
+        self.inner.meta.amend(Meta::Related(Some(OpName::OpSym(what.into())), src));
         self
     }
 
@@ -594,7 +599,7 @@ impl Error {
         self
     }
 
-    pub fn fop(mut self, new_op: SymID) -> Error {
+    pub fn fop(mut self, new_op: Sym) -> Error {
         self.inner.meta.fallback(Meta::Op(OpName::OpSym(new_op)));
         self
     }
@@ -604,8 +609,8 @@ impl Error {
         self
     }
 
-    pub fn op(mut self, new_op: SymID) -> Error {
-        self.inner.meta.amend(Meta::Op(OpName::OpSym(new_op)));
+    pub fn op(mut self, new_op: impl Into<Sym>) -> Error {
+        self.inner.meta.amend(Meta::Op(OpName::OpSym(new_op.into())));
         self
     }
 

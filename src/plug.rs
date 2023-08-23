@@ -44,7 +44,7 @@ impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
             let msg = (*p).car;
             let cont = (*p).cdr;
             let msg = deserialize::from_pv(msg, &mem.symdb)?;
-            if cont.type_of() != Builtin::Continuation.sym() {
+            if cont.bt_type_of() != Builtin::Continuation {
                 return err!(TypeError,
                             expect: Builtin::Continuation,
                             got: cont.bt_type_of());

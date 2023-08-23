@@ -231,7 +231,7 @@ macro_rules! subr_args {
             _ => Err(error!(ArgError,
                             expect: ArgSpec::normal(count_args!($($arg),*)),
                             got_num: $args.len() as u32)
-                     .op($vm.sym_id($self.name())))
+                     .op($vm.sym($self.name())))
         }
     };
 }
@@ -347,7 +347,7 @@ mod sysfns {
 
         fn error(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             if let PV::Sym(name) = *x {
-                err!(LibError, name)
+                err!(LibError, name: name.into())
             } else {
                 Err(error!(TypeError,
                            expect: Builtin::Symbol,
@@ -849,7 +849,7 @@ macro_rules! call_with {
 macro_rules! symcall_with {
     ($vm:expr, $func:expr, $nargs:expr, $body:block) => {{
         let func = $vm.funcs.get(&$func.into()).ok_or("No such function")?;
-        func.args.check($nargs.try_into().unwrap()).map_err(|e| e.op($func.into()))?;
+        func.args.check($nargs.try_into().unwrap()).map_err(|e| e.op($func))?;
 
         let frame = $vm.frame;
 
@@ -1257,12 +1257,12 @@ impl R8VM {
             }
             path.clear();
         }
-        err!(ModuleNotFound, lib)
+        err!(ModuleNotFound, lib: lib.into())
     }
 
     pub fn var(&self, sym: SymID) -> Result<PV> {
         let idx = self.get_env_global(sym)
-                      .ok_or(error!(UndefinedVariable, var: sym))?;
+                      .ok_or(error!(UndefinedVariable, var: sym.into()))?;
         Ok(self.mem.get_env(idx))
     }
 
@@ -1501,7 +1501,7 @@ impl R8VM {
     {
         if let Ok(var) = self.var(name) {
             var.from_lisp(&mut self.mem)
-               .map_err(|e| e.amend(Meta::VarName(OpName::OpSym(name))))
+               .map_err(|e| e.amend(Meta::VarName(OpName::OpSym(name.into()))))
         } else {
             Ok(or_default)
         }
@@ -1663,6 +1663,10 @@ impl R8VM {
 
     pub fn sym_id(&mut self, name: &str) -> SymID {
         self.mem.symdb.put_ref(name).id()
+    }
+
+    pub fn sym(&mut self, name: &str) -> SymRef {
+        self.mem.symdb.put_ref(name)
     }
 
     /**
@@ -2181,7 +2185,7 @@ impl R8VM {
                             ip = self.op_clzcall(ip, nargs)?;
                         } else {
                             return Err(ErrorKind::UndefinedFunction {
-                                name: sym
+                                name: sym.into()
                             }.into())
                         }
                     };

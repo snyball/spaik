@@ -272,7 +272,7 @@ impl Spaik {
     {
         let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
-                         .ok_or(error!(UndefinedVariable, var: name))?;
+                         .ok_or(error!(UndefinedVariable, var: name.into()))?;
         self.vm.mem.get_env(idx)
                    .from_lisp(&mut self.vm.mem)
     }
@@ -340,7 +340,7 @@ impl Spaik {
     {
         let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
-                         .ok_or(error!(UndefinedVariable, var: name))?;
+                         .ok_or(error!(UndefinedVariable, var: name.into()))?;
         let ObjRef(x): ObjRef<*mut T> = self.vm.mem.get_env(idx)
                                                    .try_into()?;
         Ok(x)
@@ -364,7 +364,7 @@ impl Spaik {
     {
         let sym = var.as_sym(&mut self.vm);
         self.vm.globals.remove(&sym)
-                       .ok_or_else(|| error!(UndefinedVariable, var: sym))
+                       .ok_or_else(|| error!(UndefinedVariable, var: sym.into()))
                        .and_then(|i| with_ref_mut!(self.vm.mem.env[i],
                                                    Struct(s) => { (*s).take() }))
     }

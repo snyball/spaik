@@ -103,6 +103,20 @@ impl AsRef<str> for SymID {
     }
 }
 
+impl Into<SymRef> for SymID {
+    fn into(self) -> SymRef {
+        unsafe { SymRef::new(self.0) }
+    }
+}
+
+impl TryFrom<crate::PV> for SymRef {
+    type Error = crate::Error;
+
+    fn try_from(value: crate::PV) -> Result<Self, Self::Error> {
+        value.sym().map(|s| s.into())
+    }
+}
+
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 pub struct SymID(pub(crate) *mut Sym);
 
