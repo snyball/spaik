@@ -150,7 +150,7 @@ const TABLE_STYLE: &str = comfy_table::presets::UTF8_BORDERS_ONLY;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TraceFrame {
     pub src: Source,
-    pub func: SymID,
+    pub func: SymRef,
     pub args: Vec<PV>,
 }
 
@@ -1730,7 +1730,7 @@ impl R8VM {
             let args = self.mem.stack.drain(frame..frame+nargs).collect();
             let src = self.get_source(ip);
             frames.push(TraceFrame { args,
-                                     func: name,
+                                     func: name.into(),
                                      src });
 
             self.mem.stack.drain(frame..frame+nenv).for_each(drop);
