@@ -204,7 +204,7 @@ impl fmt::Display for SyntaxErrorKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum ErrorKind {
     SendError { obj_dbg: String },
     STypeError { expect: String, got: String },
@@ -308,12 +308,18 @@ impl From<ErrorKind> for RuntimeError {
 }
 
 /// Structural Error Type
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Error {
     inner: ErrorInner
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_error(self, f)
+    }
+}
+
+#[derive(Clone)]
 struct ErrorInner {
     meta: MetaSet,
     ty: ErrorKind,
@@ -662,11 +668,9 @@ impl fmt::Display for Error {
     }
 }
 
-impl error::Error for ErrorKind {}
-
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        Some(self.kind())
+        None
     }
 }
 
