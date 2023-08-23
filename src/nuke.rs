@@ -1261,12 +1261,7 @@ impl Nuke {
 
     pub unsafe fn destroy_the_world(&mut self) {
         for atom in self.iter_mut() {
-            unsafe {
-                if let Some(obj) = cast::<Object>(atom) {
-                    println!("{}", ObjPtr(obj))
-                }
-                destroy_atom(atom);
-            }
+            unsafe { destroy_atom(atom) }
         }
         self.last = self.fst_mut();
         self.free = self.offset(mem::size_of::<NkAtom>());
