@@ -16,10 +16,10 @@ enum TestResult {
 
 impl TestResult {
     pub fn new(res: SPV, vm: &mut R8VM) -> Option<TestResult> {
-        Some(match res.bt_op(vm) {
+        Some(match res.bt_op(&vm.mem) {
             Some(Builtin::KwPass) => TestResult::Pass,
             Some(Builtin::KwFail) => {
-                let args = res.args_vec(vm);
+                let args = res.args_vec(&mut vm.mem);
                 match &args[..] {
                     [expect, got] => TestResult::Fail { expect: expect.clone(),
                                                         got: got.clone() },
@@ -109,8 +109,8 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                                name.style_info(),
                                "✓".style_success()),
                 Some(TestResult::Fail { expect, got }) => {
-                    let expect = expect.to_string(&vm);
-                    let got = got.to_string(&vm);
+                    let expect = expect.to_string(&vm.mem);
+                    let got = got.to_string(&vm.mem);
 
                     vmprintln!(vm, "test {} ... [{}]",
                                name.style_error(),

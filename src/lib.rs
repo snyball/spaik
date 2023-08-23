@@ -526,6 +526,40 @@ impl Default for Spaik {
     }
 }
 
+pub struct Lambda(SPV);
+
+impl FromLisp<Lambda> for PV {
+    fn from_lisp(self, mem: &mut _deps::Arena) -> std::result::Result<Lambda, Error> {
+        (self.bt_type_of() == Builtin::Lambda)
+            .then(|| Lambda(mem.make_extref(self)))
+            .ok_or_else(|| error!(TypeError,
+                                  expect: Builtin::Lambda,
+                                  got: self.bt_type_of()))
+    }
+}
+
+impl IntoLisp for Lambda {
+    fn into_pv(self, mem: &mut _deps::Arena) -> std::result::Result<PV, Error> {
+        Ok(self.0.pv(mem))
+    }
+}
+
+impl Lambda {
+    pub fn call<R, A>(&self, vm: &mut Spaik, args: impl NArgs<A>) -> Result<R>
+        where PV: FromLisp<R>
+    {
+        vm.vm.napply_pv(self.0.pv(&vm.vm.mem), args)
+             .and_then(|pv| pv.from_lisp(&mut vm.vm.mem))
+    }
+
+    pub fn run<R, A>(&self, vm: &mut Spaik, args: impl NArgs<A>) -> Result<()>
+        where PV: FromLisp<R>
+    {
+        vm.vm.napply_pv(self.0.pv(&vm.vm.mem), args)?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
@@ -847,5 +881,14 @@ mod tests {
         vm.exec("(define (ayy-lmao x y) (+ x y))").unwrap();
         assert_eq!(vm.ayy_lmao(5, 5), Ok(10));
         assert!(vm.g(5, 5).is_err());
+    }
+
+    #[test]
+    fn take_lambda() {
+        let mut vm = Spaik::new_no_core();
+        let s: Lambda = vm.eval("(lambda (x) (+ x 1))").unwrap();
+        assert_eq!(s.call(&mut vm, (2,)), Ok(3));
+        let s: Result<Lambda> = vm.eval("1");
+        assert!(s.is_err());
     }
 }

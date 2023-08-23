@@ -2362,12 +2362,26 @@ impl R8VM {
         Ok(self.mem.make_extref(res))
     }
 
+    pub fn napply_pv<A>(&mut self, f: PV, args: impl NArgs<A>) -> Result<PV> {
+        let frame = self.frame;
+        self.frame = self.mem.stack.len();
+        self.mem.push(PV::UInt(0));
+        self.mem.push(PV::UInt(frame));
+        self.mem.push(f);
+        let pos = clzcall_pad_dip(args.nargs() as u16);
+        args.pusharg(&mut self.mem)?;
+        unsafe {
+            self.run_from_unwind(pos)?;
+        }
+        self.mem.pop()
+    }
+
     pub fn apply_spv(&mut self, f: SPV, args: impl AsArgs) -> Result<PV> {
         let frame = self.frame;
         self.frame = self.mem.stack.len();
         self.mem.push(PV::UInt(0));
         self.mem.push(PV::UInt(frame));
-        self.mem.push(f.pv(self));
+        self.mem.push(f.pv(&self.mem));
         let pos = clzcall_pad_dip(args.inner_nargs() as u16);
         args.inner_pusharg(&mut self.mem)?;
         unsafe {

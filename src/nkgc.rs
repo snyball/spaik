@@ -1834,21 +1834,21 @@ pub struct SPV {
 }
 
 impl SPV {
-    pub(crate) fn pv(&self, ar: &R8VM) -> PV {
-        ar.mem.extref[&self.id].1
+    pub(crate) fn pv(&self, ar: &Arena) -> PV {
+        ar.extref[&self.id].1
     }
 
-    pub fn to_string(&self, ar: &R8VM) -> String {
+    pub fn to_string(&self, ar: &Arena) -> String {
         let pv = self.pv(ar);
         pv.lisp_to_string()
     }
 
-    pub fn bt_op(&self, ar: &R8VM) -> Option<Builtin> {
+    pub fn bt_op(&self, ar: &Arena) -> Option<Builtin> {
         self.pv(ar).bt_op()
     }
 
-    pub fn args_vec(&self, ar: &mut R8VM) -> Vec<SPV> {
-        self.pv(ar).args().map(|v| ar.mem.make_extref(v)).collect()
+    pub fn args_vec(&self, ar: &mut Arena) -> Vec<SPV> {
+        self.pv(ar).args().map(|v| ar.make_extref(v)).collect()
     }
 }
 
