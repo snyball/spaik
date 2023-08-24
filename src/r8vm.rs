@@ -1854,16 +1854,10 @@ impl R8VM {
             let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
 
             let dip = self.ip_delta(ip);
-            let name = (*subr).name();
-            if self.debug_mode { println!("<subr>::{}:", name) }
             let res = (*subr).call(self, &args[..]);
-            invalid!(args); // (*subr).call
+            invalid!(args, subr); // (*subr).call
             self.mem.stack.drain(idx..).for_each(drop); // drain gang
             self.mem.push(res?);
-            if self.debug_mode {
-                println!("ret <subr>::{}", name);
-                self.dump_stack()?;
-            }
             Ok(self.ret_to(dip))
         }, Continuation(cont) => {
             ArgSpec::normal(1).check(nargs).map_err(|e| e.bop(Builtin::Continuation))?;
