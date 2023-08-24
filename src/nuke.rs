@@ -800,40 +800,32 @@ impl<T: Userdata> Drop for Gc<T> {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Continuation {
-    stack: Option<Vec<PV>>,
+    stack: Vec<PV>,
     pub frame: usize,
     pub dip: usize,
 }
 
 impl Continuation {
     pub fn new(stack: Vec<PV>, frame: usize, dip: usize) -> Continuation {
-        Continuation { stack: Some(stack), frame, dip }
+        Continuation { stack, frame, dip }
     }
 
-    pub fn take_stack(&mut self) -> Result<Vec<PV>, Error> {
-        self.stack.take()
-                  .ok_or_else(|| error!(Unsupported, op: "recursive-continuation"))
-    }
-
-    pub fn put_stack(&mut self, stak: Vec<PV>) {
-        self.stack = Some(stak)
+    pub fn inst(&self, s: &mut Vec<PV>) {
+        s.clear();
+        s.extend(self.stack.iter());
     }
 }
 
 impl Traceable for Continuation {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
-        if let Some(ref stack) = self.stack {
-            for pv in stack.iter() {
-                pv.trace(gray)
-            }
+        for pv in self.stack.iter() {
+            pv.trace(gray)
         }
     }
 
     fn update_ptrs(&mut self, reloc: &PtrMap) {
-        if let Some(ref mut stack) = self.stack {
-            for pv in stack.iter_mut() {
-                pv.update_ptrs(reloc)
-            }
+        for pv in self.stack.iter_mut() {
+            pv.update_ptrs(reloc)
         }
     }
 }
@@ -842,18 +834,16 @@ impl LispFmt for Continuation {
     fn lisp_fmt(&self,
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(ref stack) = self.stack {
-            writeln!(f, "stack:")?;
-            if stack.is_empty() {
-                writeln!(f, "    (empty)")?;
-            }
-            for (idx, val) in stack.iter().enumerate().rev() {
-                let (idx, frame) = (idx as i64, self.frame as i64);
-                write!(f, "{}", if idx == frame { " -> " } else { "    " })?;
-                write!(f, "{}: ", idx - frame)?;
-                val.lisp_fmt(visited, f)?;
-                writeln!(f)?;
-            }
+        writeln!(f, "stack:")?;
+        if self.stack.is_empty() {
+            writeln!(f, "    (empty)")?;
+        }
+        for (idx, val) in self.stack.iter().enumerate().rev() {
+            let (idx, frame) = (idx as i64, self.frame as i64);
+            write!(f, "{}", if idx == frame { " -> " } else { "    " })?;
+            write!(f, "{}: ", idx - frame)?;
+            val.lisp_fmt(visited, f)?;
+            writeln!(f)?;
         }
         Ok(())
     }

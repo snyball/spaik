@@ -1867,43 +1867,11 @@ impl R8VM {
             Ok(self.ret_to(dip))
         }, Continuation(cont) => {
             ArgSpec::normal(1).check(nargs).map_err(|e| e.bop(Builtin::Continuation))?;
-            let cont_stack = (*cont).take_stack()?;
-
             let pv = self.mem.pop().unwrap();
-            self.mem.stack.drain(idx..).for_each(drop); // drain gang
-
-            // push state
-            let dip = self.ip_delta(ip);
-            let frame = self.frame;
-            let stack = mem::replace(&mut self.mem.stack, cont_stack);
-            self.mem.conts.push(stack);
-
-            // call continuation
+            (*cont).inst(&mut self.mem.stack);
             self.mem.stack.push(pv);
             self.frame = (*cont).frame;
-            let res = unsafe { self.run_from_unwind((*cont).dip) };
-
-            // pop state
-            let mut stack = mem::replace(&mut self.mem.stack,
-                                         self.mem.conts.pop().unwrap());
-            self.frame = frame;
-
-            // handle error
-            let res = if let Err(e) = res {
-                Err(e.into())
-            } else if let Some(pv) = stack.pop() {
-                self.mem.push(pv);
-                Ok(self.ret_to(dip))
-            } else {
-                Err(error!(NotEnough,
-                           got: 0,
-                           expect: 1)
-                    .amend(Meta::Op(OpName::OpStr("continuation"))))
-            };
-
-            (*cont).put_stack(stack);
-
-            res
+            Ok(self.ret_to((*cont).dip))
         }, Struct(s) => {
             let top = self.mem.stack.len();
             let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
@@ -1953,7 +1921,6 @@ impl R8VM {
                     }
                     _ => ()
                 }
-                self.dump_stack().unwrap();
                 println!("  {}", op);
             }
 
@@ -2332,9 +2299,7 @@ impl R8VM {
                     return Ok(())
                 },
             }
-            if self.debug_mode {
-                self.dump_stack().unwrap();
-            }
+            if self.debug_mode { self.dump_stack().unwrap(); }
             self.mem.collect();
         };
 
