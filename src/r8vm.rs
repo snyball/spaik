@@ -319,8 +319,8 @@ mod sysfns {
                                       expect: vec![Builtin::Number, Builtin::Number],
                                       got: vec![x.bt_type_of(), y.bt_type_of()])
                                .bop(Builtin::Vec2));
-                let Some(x) = x.real() else { return e() };
-                let Some(y) = y.real() else { return e() };
+                let Ok(x) = x.real() else { return e() };
+                let Ok(y) = y.real() else { return e() };
                 Ok(PV::Vec2(glam::vec2(x, y)))
             })
         }
@@ -335,9 +335,9 @@ mod sysfns {
                                                 y.bt_type_of(),
                                                 z.bt_type_of()])
                                .bop(Builtin::Vec3));
-                let Some(x) = x.real() else { return e() };
-                let Some(y) = y.real() else { return e() };
-                let Some(z) = z.real() else { return e() };
+                let Ok(x) = x.real() else { return e() };
+                let Ok(y) = y.real() else { return e() };
+                let Ok(z) = z.real() else { return e() };
                 Ok(PV::Vec3(glam::vec3(x, y, z)))
             })
         }
@@ -354,10 +354,10 @@ mod sysfns {
                                                 z.bt_type_of(),
                                                 w.bt_type_of()])
                                .bop(Builtin::Vec4));
-                let Some(x) = x.real() else { return e() };
-                let Some(y) = y.real() else { return e() };
-                let Some(z) = z.real() else { return e() };
-                let Some(w) = w.real() else { return e() };
+                let Ok(x) = x.real() else { return e() };
+                let Ok(y) = y.real() else { return e() };
+                let Ok(z) = z.real() else { return e() };
+                let Ok(w) = w.real() else { return e() };
                 Ok(vm.mem.put_pv(glam::vec4(x, y, z, w)))
             })
         }
@@ -482,6 +482,67 @@ mod sysfns {
 
         fn pow(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
             x.pow(y)
+        }
+
+        fn cos(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map(|x| PV::Real(x.cos()))
+        }
+
+        fn sin(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map(|x| PV::Real(x.cos()))
+        }
+
+        fn log10(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map(|x| PV::Real(x.log10()))
+        }
+
+        fn ln(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map(|x| PV::Real(x.ln()))
+        }
+
+        fn logn(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1))
+                    .and_then(|x| Ok(PV::Real(x.log(y.real().map_err(|e| e.argn(2))?))))
+        }
+
+        fn acos(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.acos()))
+        }
+
+        fn asin(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.asin()))
+        }
+
+        fn cosh(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.cosh()))
+        }
+
+        fn acosh(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.acosh()))
+        }
+
+        fn sinh(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.sinh()))
+        }
+
+        fn asinh(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.asinh()))
+        }
+
+        fn atan(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.atan()))
+        }
+
+        fn atanh(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.atanh()))
+        }
+
+        fn tan(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.tan()))
+        }
+
+        fn tanh(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.tanh()))
         }
 
         fn modulo(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
@@ -1177,6 +1238,21 @@ impl R8VM {
         addfn!(vec2);
         addfn!(vec3);
         addfn!(vec4);
+        addfn!(cos);
+        addfn!(sin);
+        addfn!(log10);
+        addfn!(logn);
+        addfn!(acos);
+        addfn!(asin);
+        addfn!(cosh);
+        addfn!(acosh);
+        addfn!(sinh);
+        addfn!(asinh);
+        addfn!(atan);
+        addfn!(atanh);
+        addfn!(ln);
+        addfn!(tan);
+        addfn!(tanh);
 
         // Strings
         addfn!(string);

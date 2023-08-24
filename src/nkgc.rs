@@ -436,11 +436,14 @@ impl PV {
         if let PV::Ref(p) = *self { mem.tag(p, tag) }
     }
 
-    pub fn real(&self) -> Option<f32> {
+    pub fn real(&self) -> Result<f32, Error> {
         match self {
-            PV::Int(x) => Some(*x as f32),
-            PV::Real(x) => Some(*x),
-            _ => None
+            PV::Int(x) => Ok(*x as f32),
+            PV::Real(x) => Ok(*x),
+            _ => err!(TypeError,
+                      expect: Builtin::Number,
+                      got: self.bt_type_of())
+
         }
     }
 
