@@ -246,6 +246,9 @@
 (defun chr (s)
   (next (iter s)))
 
+(defmacro %chr (s)
+  (chr s))
+
 (defmacro m-map (m xs)
   (let ((p '()))
     (dolist (x xs)
@@ -269,7 +272,7 @@
 (defun keyword? (x)
   (and (symbol? x)
        (= (chr (string x))
-          (chr ":"))))
+          (%chr ":"))))
 
 (defun keyword-name (x)
   (let ((it (iter (string x))))
@@ -302,8 +305,8 @@
     (break nil)))
 
 (defmacro fmt (w &rest in)
-  (let* ((begin (chr "{"))
-         (end (chr "}"))
+  (let* ((begin (%chr "{"))
+         (end (%chr "}"))
          (in-sub false)
          (span (vec))
          (out '(concat)))
