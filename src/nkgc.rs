@@ -482,50 +482,61 @@ impl PV {
 
     pub fn make_iter(&self) -> Result<nuke::Iter, Error> {
         type IT = Box<dyn CloneIterator<Item = PV>>;
-        let it: Box<dyn CloneIterator<Item = PV>> = if *self == PV::Nil {
-            Box::new(PVIter { item: *self })
-        } else {
-            with_ref!(*self,
-                      Cons(_) => {
-                          let it: IT = Box::new(PVIter { item: *self });
-                          Ok(it)
-                      },
-                      // XXX: SAFETY: This is safe because strings are immutable,
-                      //              and std::slice::Iter maintains a pointer into
-                      //              the array that String refers to, not to the
-                      //              String struct itself, which may move.
-                      String(xs) => {
-                          #[derive(Clone)]
-                          struct Wrapper<T> where T: Iterator + Clone {
-                              it: T,
-                          }
-                          impl<T> Traceable for Wrapper<T> where T: Iterator + Clone {
-                              fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-                              fn update_ptrs(&mut self, _reloc: &PtrMap) {}
-                          }
-                          impl<T, V> Iterator for Wrapper<T> where T: Iterator<Item = V>  + Clone{
-                              type Item = V;
+        macro_rules! e {() => {
+            Err(error!(TypeNError,
+                       expect: vec![Builtin::Cons, Builtin::String, Builtin::Vector],
+                       got: self.bt_type_of()).bop(Builtin::Iter))
+        };}
+        let it: Box<dyn CloneIterator<Item = PV>> = match *self {
+            PV::Nil => Box::new(PVIter { item: *self }),
+            PV::Ref(p) => match to_fissile_ref(p) {
+                NkRef::Cons(_) => {
+                    let it: IT = Box::new(PVIter { item: *self });
+                    it
+                },
+                // XXX: SAFETY: This is safe because strings are immutable,
+                //              and std::slice::Iter maintains a pointer into
+                //              the array that String refers to, not to the
+                //              String struct itself, which may move.
+                NkRef::String(xs) => {
+                    #[derive(Clone)]
+                    struct Wrapper<T> where T: Iterator + Clone {
+                        p: *const NkAtom,
+                        it: T,
+                    }
+                    impl<T> Traceable for Wrapper<T> where T: Iterator + Clone {
+                        fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+                            gray.push(self.p as *mut NkAtom);
+                        }
+                        fn update_ptrs(&mut self, reloc: &PtrMap) {
+                            self.p = reloc.get(self.p);
+                        }
+                    }
+                    impl<T, V> Iterator for Wrapper<T> where T: Iterator<Item = V>  + Clone{
+                        type Item = V;
 
-                              fn next(&mut self) -> Option<Self::Item> {
-                                  self.it.next()
-                              }
-                          }
-                          unsafe {
-                              let it = (*xs).chars().map(PV::Char);
-                              let it: IT = Box::new(Wrapper{it});
-                              Ok(it)
-                          }
-                      },
-                      // XXX: SAFETY: This is safe because PVVecIter implements
-                      //              Traceable and will update the pointer on GC
-                      //              compacting. It does *not* refer directly to
-                      //              the internal array because it may be mutated
-                      //              and reallocated.
-                      Vector(_) => {
-                          let it: IT = Box::new(PVVecIter::new(*self));
-                          Ok(it)
-                      }
-            ).map_err(|e| e.bop(Builtin::Iter))?
+                        fn next(&mut self) -> Option<Self::Item> {
+                            self.it.next()
+                        }
+                    }
+                    unsafe {
+                        let it = (*xs).chars().map(PV::Char);
+                        let it: IT = Box::new(Wrapper{p, it});
+                        it
+                    }
+                },
+                // XXX: SAFETY: This is safe because PVVecIter implements
+                //              Traceable and will update the pointer on GC
+                //              compacting. It does *not* refer directly to
+                //              the internal array because it may be mutated
+                //              and reallocated.
+                NkRef::Vector(_) => {
+                    let it: IT = Box::new(PVVecIter::new(*self));
+                    it
+                }
+                _ => return e!(),
+            }
+            _ => return e!(),
         };
 
         Ok(nuke::Iter::new(*self, it))
