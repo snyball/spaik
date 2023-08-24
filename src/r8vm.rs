@@ -1136,6 +1136,7 @@ impl R8VM {
             addfn!("dump-fn-tbl", dump_fn_tbl);
             addfn!("dump-gc-stats", dump_gc_stats);
             addfn!("dump-stack", dump_stack);
+            #[cfg(debug_assertions)]
             addfn!("debug-mode", debug_mode);
             addfn!(disassemble);
         }
@@ -1897,6 +1898,7 @@ impl R8VM {
             }};
         }
         let mut orig = None;
+        #[cfg(debug_assertions)]
         if self.debug_mode {
             let sym = self.traceframe(offs as usize);
             orig = Some(sym);
@@ -1906,6 +1908,7 @@ impl R8VM {
             let op = *ip;
             ip = ip.offset(1);
 
+            #[cfg(debug_assertions)]
             if self.debug_mode {
                 match op {
                     VCALL(f, _) => println!("{}:", f),
@@ -2287,12 +2290,14 @@ impl R8VM {
                 }
 
                 HCF() => {
+                    #[cfg(debug_assertions)]
                     if self.debug_mode {
                         println!("hcf from {:?}", orig);
                     }
                     return Ok(())
                 },
             }
+            #[cfg(debug_assertions)]
             if self.debug_mode { self.dump_stack().unwrap(); }
             self.mem.collect();
         };
