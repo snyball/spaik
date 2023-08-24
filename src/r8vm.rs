@@ -183,8 +183,9 @@ fn tostring(x: PV) -> String {
 
 macro_rules! featurefn {
     ($ft:expr, $e:expr) => {{
+        #[allow(unused_mut)]
         #[cfg(feature = $ft)]
-        let funk = || -> Result<_> {
+        let mut funk = || -> Result<_> {
             $e
         };
         #[cfg(not(feature = $ft))]
@@ -338,6 +339,26 @@ mod sysfns {
                 let Some(y) = y.real() else { return e() };
                 let Some(z) = z.real() else { return e() };
                 Ok(PV::Vec3(glam::vec3(x, y, z)))
+            })
+        }
+
+        fn vec4(&mut self, vm: &mut R8VM, args: (x, y, z, w)) -> Result<PV> {
+            featurefn!("math", {
+                let e = || Err(error!(ArgTypeError,
+                                      expect: vec![Builtin::Number,
+                                                   Builtin::Number,
+                                                   Builtin::Number,
+                                                   Builtin::Number],
+                                      got: vec![x.bt_type_of(),
+                                                y.bt_type_of(),
+                                                z.bt_type_of(),
+                                                w.bt_type_of()])
+                               .bop(Builtin::Vec4));
+                let Some(x) = x.real() else { return e() };
+                let Some(y) = y.real() else { return e() };
+                let Some(z) = z.real() else { return e() };
+                let Some(w) = w.real() else { return e() };
+                Ok(vm.mem.put_pv(glam::vec4(x, y, z, w)))
             })
         }
 
@@ -1155,6 +1176,7 @@ impl R8VM {
         addfn!(pow);
         addfn!(vec2);
         addfn!(vec3);
+        addfn!(vec4);
 
         // Strings
         addfn!(string);
