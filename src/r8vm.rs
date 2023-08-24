@@ -1897,6 +1897,7 @@ impl R8VM {
                 self.mem.stack.push($rp);
             }};
         }
+        #[cfg(debug_assertions)]
         let mut orig = None;
         #[cfg(debug_assertions)]
         if self.debug_mode {
