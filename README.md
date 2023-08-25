@@ -22,7 +22,7 @@ let mut vm = Spaik::new();
 vm.exec(r#"(println "Hello, World!")"#)?;
 
 vm.set("f", |x: i32| x + 2); // Functions are first-class at the API boundary!
-assert_eq!(vm.eval("(f 2)"), 4)
+assert_eq!(vm.eval("(f 2)")?, 4)
 ```
 
 ### Loading Code
