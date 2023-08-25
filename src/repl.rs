@@ -87,6 +87,8 @@ impl REPL {
 
     #[cfg(feature = "readline")]
     pub fn readline_repl(&mut self) -> ! {
+        use crate::Ignore;
+
         let mut spaik_dir = dirs::data_local_dir().unwrap();
         spaik_dir.push("spaik");
         if let Err(e) = fs::create_dir_all(spaik_dir) {
@@ -101,7 +103,7 @@ impl REPL {
         let mut config_dir = dirs::config_dir().unwrap();
         config_dir.push("spaik");
         self.vm.add_load_path(config_dir.to_str().unwrap());
-        match self.vm.load("init") {
+        match self.vm.load::<Ignore>("init") {
             Ok(_) => (),
             Err(e) => {
                 vmprintln!(self.vm.vm, "{}", e);

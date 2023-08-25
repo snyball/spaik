@@ -397,7 +397,7 @@ impl PV {
     }
 
     pub fn type_of(&self) -> SymID {
-        self.bt_type_of().sym()
+        self.bt_type_of().sym_id()
     }
 
     pub fn str(&self) -> Cow<str> {
@@ -479,7 +479,7 @@ impl PV {
     pub fn set_op(&mut self, op: Builtin) {
         self.rf()
             .and_then(cast_mut::<Cons>)
-            .map(|cell| unsafe { (*cell).car = PV::Sym(op.sym()) })
+            .map(|cell| unsafe { (*cell).car = PV::Sym(op.sym_id()) })
             .unwrap();
     }
 

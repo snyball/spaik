@@ -101,7 +101,7 @@ macro_rules! fissile_types {
         impl From<NkT> for SymID {
             fn from(src: NkT) -> SymID {
                 let bt: Builtin = src.into();
-                bt.sym()
+                bt.sym_id()
             }
         }
 

@@ -73,7 +73,7 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let test = vm.sym_id("test");
     vm.eval(r#"(push sys/load-path "./lisp")"#).unwrap();
 
-    if let Err(e) = vm.load(test) {
+    if let Err(e) = vm.load_eval(test) {
         vmprintln!(vm, "{e}");
         return Err(e.into());
     }

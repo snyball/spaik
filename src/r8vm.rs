@@ -404,7 +404,7 @@ mod sysfns {
         fn exit(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             let status = args.first().copied()
                                      .unwrap_or_else(
-                                         || PV::Sym(Builtin::KwOk.sym()));
+                                         || PV::Sym(Builtin::KwOk.sym_id()));
             Err(Error::new(ErrorKind::Exit {
                 status: status.try_into()
                               .map_err(|e: Error| e.argn(1).bop(Builtin::Exit))?
@@ -477,7 +477,7 @@ mod sysfns {
         }
 
         fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV> {
-            Ok(PV::Sym(vm.load((*lib).try_into()?)?.id()))
+            vm.load_eval((*lib).try_into()?)
         }
 
         fn pow(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
@@ -1167,7 +1167,7 @@ impl R8VM {
             });
         }
 
-        vm.funcs.insert(Builtin::HaltFunc.sym(), Func {
+        vm.funcs.insert(Builtin::HaltFunc.sym_id(), Func {
             pos: 0,
             sz: 1,
             args: ArgSpec::none()
@@ -1344,9 +1344,9 @@ impl R8VM {
         self.funcs.get(&name)
     }
 
-    pub fn load(&mut self, lib: SymID) -> Result<SymRef> {
+    pub fn load_eval(&mut self, lib: SymID) -> Result<PV> {
         let mut path = String::new();
-        let it = self.var(Builtin::SysLoadPath.sym())?
+        let it = self.var(Builtin::SysLoadPath.sym_id())?
                      .make_iter()
                      .map_err(|e| e.bop(Builtin::SysLoad))?;
         for (i, p) in it.enumerate() {
@@ -1359,8 +1359,7 @@ impl R8VM {
             for ext in &[".sp", ".spk", ".lisp"] {
                 path.push_str(ext);
                 if let Ok(src) = fs::read_to_string(&path) {
-                    self.read_compile(&src, Some(Cow::from(path)))?;
-                    return Ok(Builtin::Unknown.sym_ref())
+                    return self.read_compile(&src, Some(Cow::from(path)));
                 }
                 path.drain(extd..).for_each(drop);
             }
@@ -1511,7 +1510,7 @@ impl R8VM {
                 }
                 _ => {
                     let sexpr_mod = sexpr_modifier_bt(text)
-                        .map(|b| b.sym())
+                        .map(|b| b.sym_id())
                         .or_else(|| {
                             self.reader_macros.get(text).copied()
                         });
@@ -1617,7 +1616,7 @@ impl R8VM {
     }
 
     fn macroexpand_pv(&mut self, mut v: PV, quasi: bool) -> Result<PV> {
-        let ind_lim = self.varor(Builtin::LimitsMacroexpandRecursion.sym(),
+        let ind_lim = self.varor(Builtin::LimitsMacroexpandRecursion.sym_id(),
                                  limits::MACROEXPAND_RECURSION)?;
 
         if quasi {
@@ -1827,7 +1826,7 @@ impl R8VM {
                            .expect("Unable to find function by binary search");
 
             let (nenv, nargs) = if func.pos + func.sz < ip {
-                name = Builtin::Unknown.sym();
+                name = Builtin::Unknown.sym_id();
                 (0, 0)
             } else {
                 let spec = func.args;
@@ -2053,7 +2052,7 @@ impl R8VM {
                     with_ref_mut!(it, Iter(it) => {
                         let elem = (*it).next()
                                         .unwrap_or_else(
-                                            || PV::Sym(Builtin::IterStop.sym()));
+                                            || PV::Sym(Builtin::IterStop.sym_id()));
                         self.mem.push(elem);
                         Ok(())
                     }).map_err(|e| e.bop(Builtin::Next))?;

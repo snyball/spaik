@@ -176,14 +176,14 @@ impl Builtin {
         BUILTIN_SYMBOLS[idx as usize]
     }
 
-    pub(crate) fn sym(&self) -> swym::SymID {
+    pub(crate) fn sym_id(&self) -> swym::SymID {
         let id: u8 = unsafe { mem::transmute(*self) };
         let idx: usize = id.into();
         let rf: &'static swym::Sym = &BUILTIN_SYMS[idx];
         swym::SymID::new(rf as *const swym::Sym as *mut swym::Sym)
     }
 
-    pub(crate) fn sym_ref(&self) -> swym::SymRef {
+    pub fn sym(&self) -> swym::SymRef {
         let id: u8 = unsafe { mem::transmute(*self) };
         let idx: usize = id.into();
         (&BUILTIN_SYMS[idx]).into()

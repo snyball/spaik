@@ -754,7 +754,7 @@ impl<'a> Excavator<'a> {
             Builtin::LoopWithEpilogue =>
                 self.wrap_two_args(|a0, a1| M::Bt2(Builtin::LoopWithEpilogue, a0, a1), args, src),
             Builtin::Next => self.bt_next(args, src),
-            _ => self.sapp(bt.sym(), args, src),
+            _ => self.sapp(bt.sym_id(), args, src),
         }.map_err(|e| e.fallback(Meta::Op(OpName::OpBt(bt))))
     }
 
@@ -841,7 +841,7 @@ impl<'a> Excavator<'a> {
                 },
                 _ => Ok(AST2 { src, kind: v.into() })
             }
-            PV::Sym(n) if n.as_ref().starts_with(':') || n == Builtin::Nil.sym() => {
+            PV::Sym(n) if n.as_ref().starts_with(':') || n == Builtin::Nil.sym_id() => {
                 Ok(AST2 { src, kind: v.into() })
             }
             PV::Sym(var) => Ok(AST2 { src, kind: M::Var(var) }),

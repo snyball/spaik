@@ -68,8 +68,8 @@ impl Env {
             vars: args,
             statics: FnvHashMap::default()
         };
-        env.defvar(Builtin::IP.sym());
-        env.defvar(Builtin::Frame.sym());
+        env.defvar(Builtin::IP.sym_id());
+        env.defvar(Builtin::Frame.sym_id());
         env
     }
 
@@ -92,7 +92,7 @@ impl Env {
 
     pub fn anon(&mut self) -> usize {
         let pos = self.vars.len();
-        self.vars.push(Builtin::Epsilon.sym());
+        self.vars.push(Builtin::Epsilon.sym_id());
         pos
     }
 
@@ -198,7 +198,7 @@ impl Visitor for ClzScoper<'_, '_> {
                 if self.env.get_idx(var).is_some() {
                 } else if let Some(bound) = self.outside.get_idx(var) {
                     self.lowered.insert((var, BoundVar::Local(bound)));
-                } else if var != Builtin::Nil.sym() && !self.fns.contains_key(&var) {
+                } else if var != Builtin::Nil.sym_id() && !self.fns.contains_key(&var) {
                     return err_src!(elem.src.clone(), UndefinedVariable, var: var.into());
                 }
             }
@@ -301,13 +301,13 @@ impl R8Compiler {
                     spec: ArgSpec) {
         let mut env = Env::none(name);
         if spec.has_env() {
-            env.defvar(Builtin::LambdaObject.sym());
+            env.defvar(Builtin::LambdaObject.sym_id());
         }
         for arg in args {
             env.defvar(arg);
         }
-        env.defvar(Builtin::IP.sym());
-        env.defvar(Builtin::Frame.sym());
+        env.defvar(Builtin::IP.sym_id());
+        env.defvar(Builtin::Frame.sym_id());
         self.estack.push(env);
         let start = self.unit().label("fn-begin");
         self.unit().mark(start);

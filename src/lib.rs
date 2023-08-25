@@ -391,9 +391,10 @@ impl Spaik {
     /// - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
     ///           `<name>` as either a string or symbol
     #[inline]
-    pub fn load(&mut self, lib: impl AsSym) -> Result<Sym> {
+    pub fn load<R>(&mut self, lib: impl AsSym) -> Result<R> where PV: FromLisp<R> {
         let lib = lib.as_sym(&mut self.vm);
-        self.vm.load(lib)
+        self.vm.load_eval(lib)
+               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
     }
 
     /// Load a SPAIK library from a string, this is useful both for embedding code
@@ -465,7 +466,7 @@ impl Spaik {
     /// Panics if the `sys/load-path` variable is not defined, or is not a
     /// vector.
     pub fn add_load_path(&mut self, path: impl AsRef<str>) {
-        let p = self.vm.var(Builtin::SysLoadPath.sym()).unwrap();
+        let p = self.vm.var(Builtin::SysLoadPath.sym_id()).unwrap();
         let s = self.vm.mem.put_pv(path.as_ref().to_string());
         with_ref_mut!(p, Vector(v) => {
             (*v).push(s);
@@ -890,5 +891,11 @@ mod tests {
         assert_eq!(s.call(&mut vm, (2,)), Ok(3));
         let s: Result<Lambda> = vm.eval("1");
         assert!(s.is_err());
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn math_types() {
+        let mut vm = Spaik::new_no_core();
     }
 }
