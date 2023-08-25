@@ -103,9 +103,9 @@ impl AsRef<str> for SymID {
     }
 }
 
-impl Into<SymRef> for SymID {
-    fn into(self) -> SymRef {
-        unsafe { SymRef::new(self.0) }
+impl From<SymID> for SymRef {
+    fn from(val: SymID) -> Self {
+        unsafe { SymRef::new(val.0) }
     }
 }
 

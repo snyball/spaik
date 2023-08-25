@@ -510,7 +510,7 @@ impl Object {
         }
         let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
         match vtables.lock().unwrap().entry(TypeId::of::<T>()) {
-            Entry::Occupied(vp) => *vp.get(),
+            Entry::Occupied(vp) => vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     type_name: type_name::<T>(),
@@ -585,10 +585,16 @@ impl Object {
         Ok(self.cast_mut()? as *const T)
     }
 
+    /// # Safety
+    ///
+    /// Must be the correct type, otherwise this is undefined behaviour.
     pub unsafe fn fastcast_mut<T: Userdata>(&mut self) -> *mut T {
         self.mem as *mut T
     }
 
+    /// # Safety
+    ///
+    /// Must be the correct type, otherwise this is undefined behaviour.
     pub unsafe fn fastcast<T: Userdata>(&self) -> *const T {
         self.mem as *const T
     }
@@ -635,7 +641,7 @@ impl Object {
     pub fn void_vtable() -> &'static VTable {
         let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
         match vtables.lock().unwrap().entry(TypeId::of::<Voided>()) {
-            Entry::Occupied(vp) => *vp.get(),
+            Entry::Occupied(vp) => vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     type_name: "void",

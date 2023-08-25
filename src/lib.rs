@@ -253,7 +253,7 @@ impl Spaik {
     #[inline]
     pub fn defun<A, R, F: IntoSubr<A, R>>(&mut self, func: F) {
         let t = type_name::<F>();
-        let (_, name) = t.rsplit_once(":").unwrap_or(("", t));
+        let (_, name) = t.rsplit_once(':').unwrap_or(("", t));
         let name = name.replace('_', "-");
         self.set(name.as_ref(), func.into_subr());
     }

@@ -1998,7 +1998,7 @@ impl R8VM {
         let mut orig = None;
         #[cfg(debug_assertions)]
         if self.debug_mode {
-            let sym = self.traceframe(offs as usize);
+            let sym = self.traceframe(offs);
             orig = Some(sym);
             println!("{}:", sym);
         }
@@ -2304,14 +2304,8 @@ impl R8VM {
                                     Ok(args.into_iter().map(|a| self.mem.push(a)).count()),
                                 NkMut::Vector(xs) => return
                                     Ok((*xs).iter().map(|a| self.mem.push(*a)).count()),
-                                NkMut::Iter(it) => {
-                                    let mut i = 0;
-                                    while let Some(a) = (*it).next() {
-                                        self.mem.push(a);
-                                        i += 1;
-                                    }
-                                    return Ok(i)
-                                }
+                                NkMut::Iter(it) => return
+                                    Ok((*it).by_ref().map(|a| self.mem.push(a)).count()),
                                 _ => (),
                             }
                             _ => ()

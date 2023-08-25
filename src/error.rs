@@ -399,7 +399,7 @@ pub trait IsOne {
 
 impl<T> IsOne for T where T: TryInto<i8> + Copy {
     fn is_one(&self) -> bool {
-        (*self).try_into().ok().and_then(|x: i8| Some(x == 1)).unwrap_or_default()
+        (*self).try_into().ok().map(|x: i8| x == 1).unwrap_or_default()
     }
 }
 

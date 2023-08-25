@@ -134,7 +134,7 @@ impl TryFrom<PV> for glam::Vec4 {
 
 impl IntoLisp for char {
     fn into_pv(self,_: &mut Arena) -> Result<PV,Error>{
-        Ok(PV::Char(self.try_into()?))
+        Ok(PV::Char(self))
     }
 
 }
@@ -142,7 +142,7 @@ impl TryFrom<PV>for char {
     type Error = Error;
     fn try_from(v:PV) -> Result<char,Self::Error>{
         if let PV::Char(x) = v {
-            Ok(x.try_into()?)
+            Ok(x)
         } else {
             Err(Error::new(ErrorKind::TypeError {
                 expect:PV::Char(Default::default()).bt_type_of(),got:v.bt_type_of(),
