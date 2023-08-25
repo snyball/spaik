@@ -22,23 +22,18 @@ let mut vm = Spaik::new();
 vm.exec(r#"(println "Hello, World!")"#)?;
 
 vm.set("f", |x: i32| x + 2); // Functions are first-class at the API boundary!
-assert_eq!(vm.eval("(f 2)")?, 4)
+assert_eq!(vm.eval("(f 2)"), Ok(4));
 
 // Optional linear-algebra types from glam
-vm.exec("(defun (funky x y) (* x (vec3 1 y 3)))")?;
-assert_eq!(vm.call("funky", (2, 4))?, glam::vec3(2.0, 8.0, 6.0)); // Call a spaik function
+vm.exec("(defun funky (x y) (* x (vec3 1 y 3)))")?;
+assert_eq!(vm.call("funky", (2, 4)), Ok(glam::vec3(2.0, 8.0, 6.0))); // Call a spaik function
 
 // Define interfaces more formally
-spaik::defuns!(trait MyInterface {
+defuns!(trait MyInterface {
     fn funky(x: f32, y: f32) -> glam::Vec3;
 });
 // This panics if the function `funky` does not match the spec
 assert_eq!(vm.funky(2.0, 4.0), glam::vec3(2.0, 8.0, 6.0));
-
-spaik::defuns!(trait MyCheckedInterface {
-    fn funky(x: f32, y: f32) -> Result<glam::Vec3, spaik::Error>;
-});
-assert_eq!(vm.funky(2.0, 4.0)?, glam::vec3(2.0, 8.0, 6.0));
 ```
 
 ### Loading Code

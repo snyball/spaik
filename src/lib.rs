@@ -902,4 +902,30 @@ mod tests {
         assert_eq!(vm.eval("(vec2 2 3)"), Ok(vec2(2.0, 3.0)));
         assert_eq!(vm.eval("(vec4 2 3 5 8)"), Ok(vec4(2.0, 3.0, 5.0, 8.0)));
     }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn readme() {
+        fn inner() -> Result<()> {
+            let mut vm = Spaik::new();
+            vm.exec(r#"(println "Hello, World!")"#)?;
+
+            vm.set("f", |x: i32| x + 2); // Functions are first-class at the API boundary!
+            assert_eq!(vm.eval("(f 2)"), Ok(4));
+
+            // Optional linear-algebra types from glam
+            vm.exec("(defun funky (x y) (* x (vec3 1 y 3)))")?;
+            assert_eq!(vm.call("funky", (2, 4)), Ok(glam::vec3(2.0, 8.0, 6.0))); // Call a spaik function
+
+            // Define interfaces more formally
+            defuns!(trait MyInterface {
+                fn funky(x: f32, y: f32) -> glam::Vec3;
+            });
+            // This panics if the function `funky` does not match the spec
+            assert_eq!(vm.funky(2.0, 4.0), glam::vec3(2.0, 8.0, 6.0));
+
+            Ok(())
+        }
+        inner().unwrap();
+    }
 }
