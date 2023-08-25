@@ -32,7 +32,9 @@ so you can of course load SPAIK scripts from the filesystem.
 
 ``` rust
 vm.add_load_path("my-spaik-programs");
-vm.load("stuff");
+vm.load::<Ignore>("stuff")?;
+let result: Lambda = vm.load("other-stuff")?;
+result.call(&mut vm, (1, 2, 3));
 ```
 
 The `add_load_path` method adds the given string to the global `sys/load-path`
