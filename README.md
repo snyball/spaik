@@ -49,7 +49,7 @@ path, because `(load ...)` also runs during compilation.
 ### Exporting functions to SPAIK
 
 You can simply `vm.set("name", func)`, or use the convenience-function
-`vm.defun(add_to)`, which is equivalent to `vm.set("add-to', add_to)`.
+`vm.defun(add_to)`, which is equivalent to `vm.set("add-to", add_to)`.
 
 ``` rust
 use spaik::prelude::*;
