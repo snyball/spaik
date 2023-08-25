@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize};
 use crate::r8vm::{R8VM, ArgSpec};
 use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
-use crate::{nuke::*, SymID};
+use crate::{nuke::*, SymID, Builtin};
 use crate::fmt::{LispFmt, VisitSet};
 use std::any::Any;
 use std::collections::hash_map::Entry;
@@ -96,6 +96,41 @@ pv_convert!(Int,
 
 pv_convert!(Real,
             f32);
+
+#[cfg(feature = "math")]
+impl TryFrom<PV> for glam::Vec2 {
+    type Error = Error;
+
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        if let PV::Vec2(v) = value {
+            Ok(v)
+        } else {
+            err!(TypeError, expect: Builtin::Vec3, got: value.bt_type_of())
+        }
+    }
+}
+
+#[cfg(feature = "math")]
+impl TryFrom<PV> for glam::Vec3 {
+    type Error = Error;
+
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        if let PV::Vec3(v) = value {
+            Ok(v)
+        } else {
+            err!(TypeError, expect: Builtin::Vec3, got: value.bt_type_of())
+        }
+    }
+}
+
+#[cfg(feature = "math")]
+impl TryFrom<PV> for glam::Vec4 {
+    type Error = Error;
+
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        with_ref!(value, Vec4(v) => { Ok(*v) })
+    }
+}
 
 impl IntoLisp for char {
     fn into_pv(self,_: &mut Arena) -> Result<PV,Error>{

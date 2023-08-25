@@ -107,8 +107,6 @@ use std::any::type_name;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use serde::de::DeserializeOwned;
-
 pub use crate::builtins::Builtin;
 pub use crate::nuke::Fissile;
 use crate::r8vm::R8VM;
@@ -477,7 +475,7 @@ impl Spaik {
     /// Move the VM off-thread and return a `SpaikPlug` handle for IPC.
     #[cfg(not(feature = "no-threading"))]
     pub fn fork<T>(mut self) -> SpaikPlug<T>
-        where T: DeserializeOwned + Send + Debug + Clone + 'static
+        where T: serde::de::DeserializeOwned + Send + Debug + Clone + 'static
     {
         use std::{sync::mpsc::channel, thread};
 
@@ -755,9 +753,9 @@ mod tests {
     #[test]
     fn test_load_path() {
         let mut vm = Spaik::new();
-        assert!(vm.load("self").is_err());
+        assert!(vm.load::<Ignore>("self").is_err());
         vm.add_load_path("lisp");
-        vm.load("self").unwrap();
+        vm.load::<Ignore>("self").unwrap();
         vm.add_load_path("/usr/share/spaik/lib");
         let path: Vec<String> = vm.get("sys/load-path").unwrap();
         assert_eq!(&path, &["lisp", "/usr/share/spaik/lib"]);
@@ -896,6 +894,12 @@ mod tests {
     #[cfg(feature = "math")]
     #[test]
     fn math_types() {
+        use glam::{vec3, vec2, vec4};
+
         let mut vm = Spaik::new_no_core();
+        let v: glam::Vec3 = vm.eval("(vec3 1 2 3)").unwrap();
+        assert_eq!(v, vec3(1.0, 2.0, 3.0));
+        assert_eq!(vm.eval("(vec2 2 3)"), Ok(vec2(2.0, 3.0)));
+        assert_eq!(vm.eval("(vec4 2 3 5 8)"), Ok(vec4(2.0, 3.0, 5.0, 8.0)));
     }
 }
