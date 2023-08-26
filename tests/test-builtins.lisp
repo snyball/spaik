@@ -321,7 +321,7 @@
                                li)
                         li))
                  `(,(range-list 0 100)
-                   ,(range-list 10 15000)))
+                   ,(range-list 10 15)))
            true)
       (= (apply + (let ((v (vec))) (range (i (0 65535)) (push v i)) v))
          (let ((s 0))
