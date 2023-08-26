@@ -1141,10 +1141,12 @@ pub struct Nuke {
 /// placed (Note that T is arbtrary and is not used in the calculation, see
 /// Layout::* for getting the alignment for a type.)
 fn align_mut<T>(p: *mut T, a: usize) -> *mut T {
-    (((p as isize) + (a as isize) - 1) & !((a as isize) - 1)) as *mut T
+    sptr::Strict::with_addr(p, (((p as isize) + (a as isize) - 1) & !((a as isize) - 1))
+                            as usize)
 }
 fn align<T>(p: *const T, a: usize) -> *const T {
-    (((p as isize) + (a as isize) - 1) & !((a as isize) - 1)) as *const T
+    sptr::Strict::with_addr(p, (((p as isize) + (a as isize) - 1) & !((a as isize) - 1))
+                            as usize)
 }
 
 /// Equivalent to memcpy from ANSI C, void* and all. In almost all cases this is
@@ -1332,7 +1334,8 @@ impl Nuke {
             let mut node = self.fst_mut();
             loop {
                 let old_addr = old_mem + (node as usize - self.mem as usize);
-                self.reloc.push(old_addr as *const NkAtom, node);
+                let np = sptr::Strict::with_addr(self.mem, old_addr);
+                self.reloc.push(np, node);
                 let old_next = (*node).next;
                 if old_next.is_null() {
                     self.last = node;
