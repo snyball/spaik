@@ -5,6 +5,7 @@ authors = ["Jonas Møller <jonas@nimda.no>"]
 edition = "2021"
 description = "Procedural macros for SPAIK"
 license = "BSD-2-Clause"
+repository = "https://github.com/snyball/spaik"
 
 [lib]
 name = "spaik_proc_macros"
