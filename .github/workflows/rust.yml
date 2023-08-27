@@ -27,6 +27,6 @@ jobs:
         rustup override set nightly
         cargo miri setup
     - name: Test with Miri
-      run: cargo miri test
+      run: cargo miri run --bin lisp-test
       env:
         MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows"
