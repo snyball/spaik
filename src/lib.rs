@@ -179,6 +179,12 @@ impl AsSym for SymID {
     }
 }
 
+impl AsSym for Sym {
+    fn as_sym(&self, _vm: &mut R8VM) -> SymID {
+        self.clone().id()
+    }
+}
+
 #[cfg(feature = "derive")]
 #[macro_export]
 macro_rules! defuns {
