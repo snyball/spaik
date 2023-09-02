@@ -51,7 +51,7 @@ pub mod plug;
 pub use plug::*;
 use r8vm::NArgs;
 use subrs::IntoSubr;
-pub use subrs::Lispify;
+pub use subrs::{Lispify, PList};
 pub use tokit::minify;
 pub(crate) mod tok;
 #[macro_use]

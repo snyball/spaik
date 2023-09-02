@@ -1,5 +1,7 @@
 //! Ser(de)serialization for runtime SPAIK values
 
+use std::marker::PhantomData;
+
 use serde::Deserialize;
 use serde::de::{
     self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess,
@@ -11,13 +13,12 @@ use crate::error::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 use crate::nkgc::PV;
-use crate::swym::SwymDb;
 
 pub struct Deserializer<'de> {
     // This string starts with the input data and characters are truncated off
     // the beginning as data is parsed.
     input: PV,
-    symdb: &'de SwymDb,
+    _phantom: PhantomData<&'de str>
 }
 
 impl<'de> Deserializer<'de> {
@@ -25,8 +26,8 @@ impl<'de> Deserializer<'de> {
     // That way basic use cases are satisfied by something like
     // `serde_json::from_str(...)` while advanced use cases that require a
     // deserializer can make one with `serde_json::Deserializer::from_str(...)`.
-    pub fn from_pv(input: PV, vm: &'de SwymDb) -> Self {
-        Deserializer { input, symdb: vm }
+    pub fn from_pv(input: PV) -> Self {
+        Deserializer { input, _phantom: Default::default() }
     }
 }
 
@@ -35,11 +36,11 @@ impl<'de> Deserializer<'de> {
 // depending on what Rust types the deserializer is able to consume as input.
 //
 // This basic deserializer supports only `from_str`.
-pub fn from_pv<'a, 'de: 'a, T>(s: PV, vm: &'de SwymDb) -> Result<T>
+pub fn from_pv<'a, 'de: 'a, T>(s: PV) -> Result<T>
 where
     T: Deserialize<'a>,
 {
-    let mut deserializer = Deserializer::from_pv(s, vm);
+    let mut deserializer = Deserializer::from_pv(s);
     let t = T::deserialize(&mut deserializer)?;
     Ok(t)
 }
@@ -415,8 +416,7 @@ impl<'de, 'a> SeqAccess<'de> for CommaSeparated<'a, 'de> {
             return Ok(None);
         }
         // Deserialize an array element.
-        let mut head = Deserializer { input: self.de.input.car().unwrap(),
-                                      symdb: self.de.symdb };
+        let mut head = Deserializer::from_pv(self.de.input.car().unwrap());
         let res = seed.deserialize(&mut head).map(Some);
         self.de.input = self.de.input.cdr().unwrap();
         res
@@ -437,8 +437,7 @@ impl<'de, 'a> MapAccess<'de> for CommaSeparated<'a, 'de> {
             return Ok(None);
         }
         // Deserialize an array element.
-        let mut head = Deserializer { input: self.de.input.car().unwrap(),
-                                      symdb: self.de.symdb };
+        let mut head = Deserializer::from_pv(self.de.input.car().unwrap());
         let res = seed.deserialize(&mut head).map(Some);
         self.de.input = self.de.input.cdr().unwrap();
         res
@@ -448,8 +447,7 @@ impl<'de, 'a> MapAccess<'de> for CommaSeparated<'a, 'de> {
     where
         V: DeserializeSeed<'de>,
     {
-        let mut head = Deserializer { input: self.de.input.car().unwrap(),
-                                      symdb: self.de.symdb };
+        let mut head = Deserializer::from_pv(self.de.input.car().unwrap());
         let res = seed.deserialize(&mut head);
         self.de.input = self.de.input.cdr().unwrap();
         res
@@ -514,10 +512,7 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
         V: Visitor<'de>,
     {
         let inner = self.de.input;
-        let mut nde = Deserializer {
-            input: inner.cdr().unwrap_or(PV::Nil),
-            symdb: self.de.symdb,
-        };
+        let mut nde = Deserializer::from_pv(inner.cdr().unwrap_or(PV::Nil));
         de::Deserializer::deserialize_seq(&mut nde, visitor)
     }
 
@@ -532,15 +527,10 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
         V: Visitor<'de>,
     {
         let inner = self.de.input;
-        let mut nde = Deserializer {
-            input: inner.cdr().unwrap_or(PV::Nil),
-            symdb: self.de.symdb,
-        };
+        let mut nde = Deserializer::from_pv(inner.cdr().unwrap_or(PV::Nil));
         de::Deserializer::deserialize_map(&mut nde, visitor)
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
 mod tests {
@@ -555,25 +545,25 @@ mod tests {
         let mut vm = R8VM::no_std();
 
         let s = vm.eval(r#" "test" "#).unwrap();
-        let out_s: String = from_pv(s, &vm.mem.symdb).unwrap();
+        let out_s: String = from_pv(s).unwrap();
         assert_eq!(out_s, "test");
 
         let s = vm.eval(r#" 123 "#).unwrap();
-        let out_s: u32 = from_pv(s, &vm.mem.symdb).unwrap();
+        let out_s: u32 = from_pv(s).unwrap();
         assert_eq!(out_s, 123);
 
         let s = vm.eval(r#" -123 "#).unwrap();
-        let out_s = from_pv::<u32>(s, &vm.mem.symdb);
+        let out_s = from_pv::<u32>(s);
         assert!(out_s.is_err());
 
         let sigma = 0.000001;
         let s = vm.eval(r#" 123.0 "#).unwrap();
-        let out_s: f32  = from_pv(s, &vm.mem.symdb).unwrap();
+        let out_s: f32  = from_pv(s).unwrap();
         assert!(out_s - 123.0 < sigma);
 
         let sigma = 0.000001;
         let s = vm.eval(r#" 123.0 "#).unwrap();
-        let out_s: f64  = from_pv(s, &vm.mem.symdb).unwrap();
+        let out_s: f64  = from_pv(s).unwrap();
         assert!(out_s - 123.0 < sigma);
     }
 
@@ -592,28 +582,28 @@ mod tests {
         }
 
         let s = vm.eval(r#" '(a 10 12) "#).unwrap();
-        let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
+        let u = from_pv::<U>(s).unwrap();
         assert_eq!(u, U::A(10, 12));
 
         let s = vm.eval(r#" '(b "brittany was here" 12) "#).unwrap();
-        let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
+        let u = from_pv::<U>(s).unwrap();
         assert_eq!(u, U::B("brittany was here".to_string(), 12));
 
         let s = vm.eval(r#" '(c :key "brittany was here" :key-2 12) "#).unwrap();
-        let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
+        let u = from_pv::<U>(s).unwrap();
         assert_eq!(u, U::C { key: "brittany was here".to_string(), key_2: 12 });
 
         let s = vm.eval(r#" ((lambda (x y) `(c :key ,y :key-2 ,x)) 123 "ayy lmao") "#)
                   .unwrap();
-        let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
+        let u = from_pv::<U>(s).unwrap();
         assert_eq!(u, U::C { key: "ayy lmao".to_string(), key_2: 123 });
 
         // let s = vm.eval(r#" '(d :sym (:id 1)) "#).unwrap();
-        // let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
+        // let u = from_pv::<U>(s).unwrap();
         // assert_eq!(u, U::D { sym: 1.into() });
 
         // let s = vm.eval(r#" `(d :sym (:id ,(sym-id 'ayy-lmao))) "#).unwrap();
-        // let u = from_pv::<U>(s, &vm.mem.symdb).unwrap();
+        // let u = from_pv::<U>(s).unwrap();
         // assert_eq!(u, U::D { sym: vm.sym_id("ayy-lmao") });
     }
 }

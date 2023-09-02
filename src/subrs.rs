@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize};
 use crate::r8vm::{R8VM, ArgSpec};
 use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind};
-use crate::{nuke::*, SymID, Builtin};
+use crate::{nuke::*, SymID, Builtin, deserialize};
 use crate::fmt::{LispFmt, VisitSet};
 use std::any::Any;
 use std::collections::hash_map::Entry;
@@ -15,6 +15,7 @@ use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::io::{Read, Cursor};
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 use std::sync::{OnceLock, Mutex};
 
 /// The `mem` parameter is necessary here, because some of the conversions
@@ -407,7 +408,6 @@ macro_rules! impl_funcable {
             }
         }
 
-
         impl<Funk, Rt, $($x),*> Lispify<($($x,)*), Rt, fn()> for Funk
             where Funk: IntoSubr<($($x,)*), Rt>
         {
@@ -513,14 +513,66 @@ impl IntoLisp for Box<dyn Subr> {
     }
 }
 
+#[derive(Debug)]
+pub struct PList<T>(T) where T: DeserializeOwned;
+
+impl<T> TryFrom<PV> for PList<T> where T: DeserializeOwned {
+    type Error = Error;
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        Ok(PList(deserialize::from_pv(value)?))
+    }
+}
+
+impl<T: DeserializeOwned> TryFrom<PV> for ObjRef<PList<T>> {
+    type Error = Error;
+    #[inline(always)]
+    fn try_from(v: PV) -> Result<ObjRef<PList<T>>, Self::Error> {
+        Ok(ObjRef(v.try_into()?))
+    }
+}
+
+impl<T: DeserializeOwned> Deref for PList<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: DeserializeOwned> DerefMut for PList<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     #[cfg(feature = "derive")]
     use spaik_proc_macros::{Fissile, export};
 
-    use crate::Spaik;
+    use crate::{Spaik, PList, nkgc::PV, FromLisp};
 
     use serde::{Serialize, Deserialize};
+
+    #[test]
+    fn from_plist() {
+        #[derive(Debug, Deserialize, Clone, Copy, PartialEq)]
+        #[serde(rename_all = "kebab-case")]
+        struct Lmao {
+            x: i32,
+            blah_blah: f32
+        }
+
+        let lmao: Arc<Mutex<Option<Lmao>>> = Arc::new(Mutex::new(None));
+        let lmao_2 = lmao.clone();
+        let mut vm = Spaik::new_no_core();
+        vm.set("f", move |x: PList<Lmao>| { *lmao.lock().unwrap() = Some(*x) });
+        vm.exec("(f '(:x 123 :blah-blah 1.2))").unwrap();
+        let lock = lmao_2.lock().unwrap();
+        assert_eq!(lock.clone(), Some(Lmao { x: 123, blah_blah: 1.2 }))
+    }
 
     #[cfg(feature = "derive")]
     #[test]

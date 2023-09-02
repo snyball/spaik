@@ -43,7 +43,7 @@ impl<T> FromLisp<Promise<T>> for PV where T: DeserializeOwned {
         with_ref!(self, Cons(p) => {
             let msg = (*p).car;
             let cont = (*p).cdr;
-            let msg = deserialize::from_pv(msg, &mem.symdb)?;
+            let msg = deserialize::from_pv(msg)?;
             if cont.bt_type_of() != Builtin::Continuation {
                 return err!(TypeError,
                             expect: Builtin::Continuation,
@@ -85,11 +85,11 @@ unsafe impl<T> Subr for send_message<T>
 {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
         let (msg, r, cont) = match args {
-            [x, y] => (deserialize::from_pv(*x, &vm.mem.symdb)
+            [x, y] => (deserialize::from_pv(*x)
                        .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
                        *x,
                        Some(vm.mem.make_extref(*y))),
-            [x] => (deserialize::from_pv(*x, &vm.mem.symdb)
+            [x] => (deserialize::from_pv(*x)
                     .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
                     *x,
                     None),
