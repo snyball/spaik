@@ -493,7 +493,7 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
     // If the `Visitor` expected this variant to be a unit variant, the input
     // should have been the plain string case handled in `deserialize_enum`.
     fn unit_variant(self) -> Result<()> {
-        unimplemented!("unit variant")
+        Ok(())
     }
 
     // Newtype variants are represented in JSON as `{ NAME: VALUE }` so
@@ -597,13 +597,25 @@ mod tests {
                   .unwrap();
         let u = from_pv::<U>(s).unwrap();
         assert_eq!(u, U::C { key: "ayy lmao".to_string(), key_2: 123 });
+    }
 
-        // let s = vm.eval(r#" '(d :sym (:id 1)) "#).unwrap();
-        // let u = from_pv::<U>(s).unwrap();
-        // assert_eq!(u, U::D { sym: 1.into() });
+    #[test]
+    fn unit_variants() {
+        #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
+        #[serde(rename_all = "kebab-case")]
+        enum Abc {
+            Qwerty,
+            Asdfgh,
+        }
 
-        // let s = vm.eval(r#" `(d :sym (:id ,(sym-id 'ayy-lmao))) "#).unwrap();
-        // let u = from_pv::<U>(s).unwrap();
-        // assert_eq!(u, U::D { sym: vm.sym_id("ayy-lmao") });
+        let mut vm = R8VM::no_std();
+        let s = vm.eval(r#" '(qwerty) "#).unwrap();
+        let u = from_pv::<Abc>(s).unwrap();
+        assert_eq!(u, Abc::Qwerty);
+
+        let mut vm = R8VM::no_std();
+        let s = vm.eval(r#" '(asdfgh) "#).unwrap();
+        let u = from_pv::<Abc>(s).unwrap();
+        assert_eq!(u, Abc::Asdfgh);
     }
 }
