@@ -514,7 +514,7 @@ impl IntoLisp for Box<dyn Subr> {
 }
 
 #[derive(Debug)]
-pub struct PList<T>(T) where T: DeserializeOwned;
+pub struct PList<T>(pub T) where T: DeserializeOwned;
 
 impl<T> TryFrom<PV> for PList<T> where T: DeserializeOwned {
     type Error = Error;
