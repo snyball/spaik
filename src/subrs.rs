@@ -106,7 +106,7 @@ impl TryFrom<PV> for glam::Vec2 {
         if let PV::Vec2(v) = value {
             Ok(v)
         } else {
-            err!(TypeError, expect: Builtin::Vec3, got: value.bt_type_of())
+            err!(TypeError, expect: Builtin::Vec2, got: value.bt_type_of())
         }
     }
 }
