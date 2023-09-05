@@ -523,6 +523,13 @@ impl<T> TryFrom<PV> for PList<T> where T: DeserializeOwned {
     }
 }
 
+impl<T> TryFrom<PV> for PList<T> where T: DeserializeOwned {
+    type Error = Error;
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        Ok(PList(deserialize::from_pv(value)?))
+    }
+}
+
 impl<T: DeserializeOwned> TryFrom<PV> for ObjRef<PList<T>> {
     type Error = Error;
     #[inline(always)]
