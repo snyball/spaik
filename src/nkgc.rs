@@ -160,6 +160,7 @@ pub enum PV {
     Real(Float),
     Bool(bool),
     Char(char),
+    Id(u64),
     #[cfg(feature = "math")]
     Vec2(Vec2),
     #[cfg(feature = "math")]
@@ -456,6 +457,7 @@ impl PV {
             Real(_) => Builtin::Float,
             Sym(_) => Builtin::Symbol,
             Char(_) => Builtin::Char,
+            Id(_) => Builtin::Id,
             #[cfg(feature = "math")] Vec2(_) => Builtin::Vec2,
             #[cfg(feature = "math")] Vec3(_) => Builtin::Vec3,
             Ref(p) => unsafe {
@@ -814,6 +816,7 @@ impl Hash for PV {
             PV::Nil => 0.hash(state),
             PV::Real(x) => x.to_ne_bytes().hash(state),
             PV::Char(x) => x.hash(state),
+            PV::Id(x) => x.hash(state),
             #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => { x.to_ne_bytes().hash(state);
                                          y.to_ne_bytes().hash(state) },
@@ -843,6 +846,7 @@ impl LispFmt for PV {
             PV::Real(a) => write!(f, "{a}"),
             PV::Sym(id) => write!(f, "{id}"),
             PV::Char(c) => write!(f, "(char {c})"),
+            PV::Id(c) => write!(f, "(id {c})"),
             #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => write!(f, "(vec2 {x} {y})"),
             #[cfg(feature = "math")]

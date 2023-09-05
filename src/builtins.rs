@@ -106,6 +106,7 @@ builtins! {
     (Symbol, "symbol"),
     (Label, "label"),
     (Char, "char"),
+    (Id, "id"),
     (CallCC, "call/cc"),
     (Integer, "integer"),
     (String, "string"),
