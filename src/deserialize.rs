@@ -295,12 +295,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         self,
         _name: &'static str,
         _len: usize,
-        _visitor: V,
+        visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_seq(CommaSeparated::new(self))
     }
 
     // Much like `deserialize_seq` but calls the visitors `visit_map` method
@@ -612,6 +612,26 @@ mod tests {
         let s = vm.eval(r#" '(qwerty) "#).unwrap();
         let u = from_pv::<Abc>(s).unwrap();
         assert_eq!(u, Abc::Qwerty);
+
+        let mut vm = R8VM::no_std();
+        let s = vm.eval(r#" '(asdfgh) "#).unwrap();
+        let u = from_pv::<Abc>(s).unwrap();
+        assert_eq!(u, Abc::Asdfgh);
+    }
+
+    #[test]
+    fn tuples() {
+        #[derive(Debug, Serialize, Deserialize, PartialEq)]
+        #[serde(rename_all = "kebab-case")]
+        enum Abc {
+            Qwerty { k: glam::Vec2 },
+            Asdfgh,
+        }
+
+        let mut vm = R8VM::no_std();
+        let s = vm.eval(r#" '(qwerty :k (1 0)) "#).unwrap();
+        let u = from_pv::<Abc>(s).unwrap();
+        assert_eq!(u, Abc::Qwerty { k: glam::vec2(1.0, 0.0) });
 
         let mut vm = R8VM::no_std();
         let s = vm.eval(r#" '(asdfgh) "#).unwrap();
