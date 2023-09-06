@@ -46,7 +46,7 @@ bincode = { version = "1.3.3", optional = true }
 comfy-table = { version = "5.0.0", optional = true, default-features = false, features = [] }
 dirs = { version = "4.0.0", optional = true }
 rustyline = { version = "6.2", optional = true }
-glam = { version = "0.21.3", features = ["mint", "serde"], optional = true }
+glam = { version = "0.24.1", features = ["mint", "serde"], optional = true }
 owo-colors = { version = "3.5.0", optional = true, features = ["supports-colors"] }
 mint = { version = "0.5.9", optional = true }
 sptr = "0.3.2"

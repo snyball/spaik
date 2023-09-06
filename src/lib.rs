@@ -124,6 +124,9 @@ pub mod prelude {
     pub use spaik_proc_macros::Fissile;
 }
 
+#[cfg(feature = "math")]
+pub use glam::{Vec2, Vec3, Vec4, vec2, vec3, vec4};
+
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 
