@@ -53,6 +53,18 @@ impl<T> RefIntoLisp for T
     }
 }
 
+macro_rules! impl_objref {
+    ($($from_t:ty),*) => {
+        $(impl TryFrom<PV> for ObjRef<$from_t> {
+            type Error = Error;
+            #[inline(always)]
+            fn try_from(v: PV) -> Result<ObjRef<$from_t>, Self::Error> {
+                Ok(ObjRef(v.try_into()?))
+            }
+        })*
+    };
+}
+
 macro_rules! pv_convert {
     ($pvt:ident, $($from_t:ty),*) => {
         $(impl IntoLisp for $from_t {
@@ -132,6 +144,29 @@ impl TryFrom<PV> for glam::Vec4 {
         with_ref!(value, Vec4(v) => { Ok(*v) })
     }
 }
+
+#[cfg(feature = "math")]
+impl IntoLisp for glam::Vec2 {
+    fn into_pv(self, _mem: &mut Arena) -> Result<PV, Error> {
+        Ok(PV::Vec2(self))
+    }
+}
+
+#[cfg(feature = "math")]
+impl IntoLisp for glam::Vec3 {
+    fn into_pv(self, _mem: &mut Arena) -> Result<PV, Error> {
+        Ok(PV::Vec3(self))
+    }
+}
+
+#[cfg(feature = "math")]
+impl IntoLisp for glam::Vec4 {
+    fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
+        Ok(mem.put_pv(self))
+    }
+}
+
+impl_objref!(glam::Vec2, glam::Vec3, glam::Vec4);
 
 impl IntoLisp for char {
     fn into_pv(self,_: &mut Arena) -> Result<PV,Error>{
@@ -603,5 +638,17 @@ mod tests {
         assert_eq!(vm.eval(r#"(lmao :bar 8.8 8.8 "lmao")"#), Ok("answer: 16 (lmao)"));
         assert_eq!(vm.eval(r#"(lmao :baz 8 8 "lmao")"#), Ok("answer: 16 (lmao)"));
         assert_eq!(vm.eval(r#"(lmao :baz 8.8 8.8 "lmao")"#), Ok("answer: 17.6 (lmao)"));
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn call_with_vec() {
+        let mut vm = Spaik::new_no_core();
+        vm.set("f", |v: glam::Vec2| { 3.0 * v });
+        assert_eq!(vm.eval("(f (vec2 1 2))"), Ok(glam::vec2(3.0, 6.0)));
+        vm.set("f", |v: glam::Vec3| { 3.0 * v });
+        assert_eq!(vm.eval("(f (vec3 1 2 3))"), Ok(glam::vec3(3.0, 6.0, 9.0)));
+        vm.set("f", |v: glam::Vec4| { 3.0 * v });
+        assert_eq!(vm.eval("(f (vec4 1 2 3 4))"), Ok(glam::vec4(3.0, 6.0, 9.0, 12.0)));
     }
 }
