@@ -2038,7 +2038,7 @@ impl R8VM {
     }
 
     #[inline(never)]
-    unsafe fn apl(&mut self, mut ip: *mut r8c::Op) -> Result<*mut r8c::Op> {
+    unsafe fn apl(&mut self, ip: *mut r8c::Op) -> Result<*mut r8c::Op> {
         let args = self.mem.pop().unwrap();
         let nargs = (|| -> Result<_> {
             match args {
@@ -2207,7 +2207,8 @@ impl R8VM {
                                 (*v).get(idx as usize).ok_or(error!(IndexError, idx: idx as usize)).copied(),
                             (PV::Ref(_), NkRef::Table(_)) => err!(KeyReference, key: idx.to_string()),
                             (idx, NkRef::Table(hm)) =>
-                                (*hm).get(&idx).copied().ok_or(error!(KeyError, idx: idx.to_string())),
+                                Ok((*hm).get(&idx).copied().unwrap_or(PV::Nil)),
+                                               //.ok_or(error!(KeyError, idx: idx.to_string())),
                             _ => Err(err())
                         }
                         #[cfg(feature = "math")] (PV::Int(0), PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
