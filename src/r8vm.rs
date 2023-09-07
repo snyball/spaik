@@ -2147,19 +2147,24 @@ impl R8VM {
                     let op = Builtin::Set;
                     let len = self.mem.stack.len();
                     let args = &mut self.mem.stack[len - 3..];
-                    let idx = match args[2] {
-                        PV::Int(x) => x as usize,
-                        x => return Err(error!(TypeError,
-                                               expect: Builtin::Integer,
-                                               got: x.bt_type_of()).bop(op).argn(2))
-                    };
                     with_ref_mut!(args[1], Vector(v) => {
-                        if idx >= (*v).len() {
-                            err!(IndexError, idx)
-                        } else {
-                            *(*v).get_unchecked_mut(idx) = args[0];
-                            Ok(())
-                        }
+                        TryInto::<usize>::try_into(args[2])
+                            .map_err(|_| {
+                                error!(TypeError,
+                                       expect: Builtin::Integer,
+                                       got: args[2].bt_type_of()).bop(op).argn(2)
+                            })
+                            .and_then(|idx| {
+                            if idx >= (*v).len() {
+                                err!(IndexError, idx)
+                            } else {
+                                *(*v).get_unchecked_mut(idx) = args[0];
+                                Ok(())
+                            }
+                        })
+                    }, Table(t) => {
+                        (*t).insert(args[2], args[0]);
+                        Ok(())
                     }).map_err(|e| e.bop(Builtin::Set))?;
                     self.mem.stack.truncate(len - 3);
                 }
