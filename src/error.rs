@@ -231,6 +231,8 @@ pub enum ErrorKind {
     Unsupported { op: &'static str },
     Traceback { tb: Box<Traceback> },
     IndexError { idx: usize },
+    KeyError { idx: String },
+    KeyReference { key: String },
     Exit { status: Sym },
     IOError { kind: std::io::ErrorKind },
     MissingFeature { flag: &'static str },
@@ -559,6 +561,10 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "No Such Method: ({strucc} {method})")?,
         VoidVariable =>
             write!(f, "Variable is void")?,
+        KeyError { idx } =>
+            write!(f, "No such key: {idx}")?,
+        KeyReference { key } =>
+            write!(f, "Reference types cannot be used as keys: {key}")?,
     }
 
     if let Some(src) = meta.src() {

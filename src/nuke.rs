@@ -908,7 +908,7 @@ fissile_types! {
     (String, Builtin::String, std::string::String),
     (PV, Builtin::Ref, crate::nkgc::PV),
     (Vector, Builtin::Vector, Vec<PV>),
-    (HashMap, Builtin::Table, FnvHashMap<PV, PV>),
+    (Table, Builtin::Table, FnvHashMap<PV, PV>),
     (Vec4, Builtin::Vec4, glam::Vec4),
     (Mat2, Builtin::Mat2, glam::Mat2),
     (Mat3, Builtin::Mat3, glam::Mat3),
@@ -1133,7 +1133,7 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
             let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
             NkAtom::make_raw_ref(mem.put(nxs))
         },
-        NkRef::HashMap(hm) => unsafe {
+        NkRef::Table(hm) => unsafe {
             let nxs = (*hm).iter().map(|(k, v)| (*k, v.deep_clone(mem)))
                                   .collect::<FnvHashMap<_, _>>();
             NkAtom::make_raw_ref(mem.put(nxs))

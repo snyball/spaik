@@ -1934,7 +1934,6 @@ impl R8VM {
         let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
             Err((ip, e)) => {
-                dbg!(&e);
                 Err(self.unwind_traceback(ip, e))
             },
         };
@@ -2110,35 +2109,37 @@ impl R8VM {
                 }
                 VGET() => {
                     let op = Builtin::Get;
-                    let idx = match self.mem.pop()? {
-                        PV::Int(x) => x as usize,
-                        x => return Err(error!(TypeError,
-                                               expect: Builtin::Integer,
-                                               got: x.bt_type_of()).bop(op).argn(2))
-                    };
+                    let idx = self.mem.pop()?;
                     let vec = self.mem.pop()?;
-                    let elem = {
-                        let err = || Error::new(ErrorKind::TypeNError {
-                            expect: vec![Builtin::Vector,
-                                         Builtin::Vec2,
-                                         Builtin::Vec3],
-                            got: vec.bt_type_of(),
-                        });
-                        match (idx, vec) {
-                            (_, PV::Ref(p)) => match to_fissile_ref(p) {
-                                NkRef::Vector(v) => (*v).get(idx).ok_or(error!(IndexError, idx)).copied(),
-                                _ => Err(err())
-                            }
-                            #[cfg(feature = "math")] (0, PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
-                            #[cfg(feature = "math")] (1, PV::Vec2(glam::Vec2 { y, .. })) => Ok(PV::Real(y)),
-                            #[cfg(feature = "math")] (_, PV::Vec2(_)) => err!(IndexError, idx),
-                            #[cfg(feature = "math")] (0, PV::Vec3(glam::Vec3 { x, .. })) => Ok(PV::Real(x)),
-                            #[cfg(feature = "math")] (1, PV::Vec3(glam::Vec3 { y, .. })) => Ok(PV::Real(y)),
-                            #[cfg(feature = "math")] (2, PV::Vec3(glam::Vec3 { z, .. })) => Ok(PV::Real(z)),
-                            #[cfg(feature = "math")] (_, PV::Vec3(_)) => err!(IndexError, idx),
+                    let err = || Error::new(ErrorKind::TypeNError {
+                        expect: vec![Builtin::Vector,
+                                     Builtin::Vec2,
+                                     Builtin::Vec3],
+                        got: vec.bt_type_of(),
+                    });
+                    let ierr = |x: PV| Err(error!(TypeError,
+                                                  expect: Builtin::Integer,
+                                                  got: x.bt_type_of()).bop(op).argn(2));
+                    let elem = match (idx, vec) {
+                        (idx, PV::Ref(p)) => match (idx, to_fissile_ref(p)) {
+                            (PV::Int(idx), NkRef::Vector(v)) =>
+                                (*v).get(idx as usize).ok_or(error!(IndexError, idx: idx as usize)).copied(),
+                            (PV::Ref(_), NkRef::Table(_)) => err!(KeyReference, key: idx.to_string()),
+                            (idx, NkRef::Table(hm)) =>
+                                (*hm).get(&idx).copied().ok_or(error!(KeyError, idx: idx.to_string())),
                             _ => Err(err())
                         }
-                    }.map_err(|e| e.bop(op))?;
+                        #[cfg(feature = "math")] (PV::Int(0), PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
+                        #[cfg(feature = "math")] (PV::Int(1), PV::Vec2(glam::Vec2 { y, .. })) => Ok(PV::Real(y)),
+                        #[cfg(feature = "math")] (PV::Int(x), PV::Vec2(_)) => err!(IndexError, idx: x as usize),
+                        #[cfg(feature = "math")] (x, PV::Vec2(_)) => ierr(x),
+                        #[cfg(feature = "math")] (PV::Int(0), PV::Vec3(glam::Vec3 { x, .. })) => Ok(PV::Real(x)),
+                        #[cfg(feature = "math")] (PV::Int(1), PV::Vec3(glam::Vec3 { y, .. })) => Ok(PV::Real(y)),
+                        #[cfg(feature = "math")] (PV::Int(2), PV::Vec3(glam::Vec3 { z, .. })) => Ok(PV::Real(z)),
+                        #[cfg(feature = "math")] (PV::Int(x), PV::Vec3(_)) => err!(IndexError, idx: x as usize),
+                        #[cfg(feature = "math")] (x, PV::Vec3(_)) => ierr(x),
+                        _ => Err(err())
+                    }.map_err(|e| e.bop(Builtin::Get))?;
                     self.mem.push(elem);
                 }
                 VSET() => {
@@ -2167,6 +2168,7 @@ impl R8VM {
                     let len = with_ref!(li,
                                         Vector(v) => { Ok((*v).len()) },
                                         String(s) => { Ok((*s).len()) },
+                                        Table(s) => { Ok((*s).len()) },
                                         Cons(_) => { Ok(li.iter().count()) })
                         .map_err(|e| e.bop(Builtin::Len))?;
                     self.mem.push(PV::Int(len as Int));
