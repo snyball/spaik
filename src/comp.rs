@@ -167,14 +167,15 @@ struct LoopCtx {
 type VarSet = FnvHashSet<(SymID, BoundVar)>;
 type FnSet = FnvHashMap<SymID, Func>;
 
-struct ClzScoper<'a, 'b> {
+struct ClzScoper<'a, 'b, 'c> {
     env: Env,
     outside: &'a Env,
     fns: &'b FnSet,
     lowered: VarSet,
+    globals: &'c FnvHashMap<SymID, usize>,
 }
 
-impl Visitor for ClzScoper<'_, '_> {
+impl Visitor for ClzScoper<'_, '_, '_> {
     fn visit(&mut self, elem: &mut AST2) -> Result<()> {
         match elem.kind {
             M::SymApp(op, _) => if let Some(var) = self.outside.get_idx(op) {
@@ -196,6 +197,7 @@ impl Visitor for ClzScoper<'_, '_> {
             }
             M::Var(var) => {
                 if self.env.get_idx(var).is_some() {
+                } else if self.globals.get(&var).is_some() {
                 } else if let Some(bound) = self.outside.get_idx(var) {
                     self.lowered.insert((var, BoundVar::Local(bound)));
                 } else if var != Builtin::Nil.sym_id() && !self.fns.contains_key(&var) {
@@ -208,8 +210,9 @@ impl Visitor for ClzScoper<'_, '_> {
     }
 }
 
-impl ClzScoper<'_, '_> {
+impl ClzScoper<'_, '_, '_> {
     pub fn scope<'a, 'b>(args: Vec<SymID>,
+                         globals: &FnvHashMap<SymID, usize>,
                          outside: &Env,
                          fns: &'b FnSet,
                          body: impl Iterator<Item = &'a mut AST2>) -> Result<VarSet> {
@@ -218,6 +221,7 @@ impl ClzScoper<'_, '_> {
             env: Env::new(None, args),
             fns,
             outside,
+            globals
         };
         for part in body {
             scoper.visit(part)?;
@@ -692,6 +696,7 @@ impl R8Compiler {
         let mut args: Vec<_> = names.iter().map(|(s,_)| *s).collect();
         let Some(outside) = self.estack.last() else { unimplemented!() };
         let lowered = ClzScoper::scope(args.clone(),
+                                       &self.env,
                                        outside,
                                        &self.fns,
                                        prog.iter_mut())?;
