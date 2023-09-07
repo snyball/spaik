@@ -848,6 +848,12 @@ pub struct Func {
     pub(crate) args: ArgSpec,
 }
 
+impl AsRef<Func> for Func {
+    fn as_ref(&self) -> &Func {
+        self
+    }
+}
+
 #[cfg(feature = "no-threading")]
 pub trait OutStream: io::Write + Debug {}
 #[cfg(feature = "no-threading")]
@@ -2493,7 +2499,7 @@ impl R8VM {
         }))
     }
 
-    pub fn callfn<A>(&mut self, funk: Func, args: impl NArgs<A>) -> Result<PV> {
+    pub fn callfn<A>(&mut self, funk: &Func, args: impl NArgs<A>) -> Result<PV> {
         let pos = funk.pos;
         funk.args.check(args.nargs() as u16)?;
         Ok(call_with!(self, pos, args.nargs(), {

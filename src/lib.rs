@@ -459,10 +459,10 @@ impl Spaik {
     ///
     /// Use `Spaik::run` if don't care about the result.
     #[inline]
-    pub fn callfn<R, A>(&mut self, f: Func, args: impl NArgs<A>) -> Result<R>
+    pub fn callfn<R, A>(&mut self, f: impl AsRef<Func>, args: impl NArgs<A>) -> Result<R>
         where PV: FromLisp<R>
     {
-        self.vm.callfn(f, args)
+        self.vm.callfn(f.as_ref(), args)
                .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
     }
 
