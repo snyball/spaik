@@ -167,6 +167,8 @@ pub struct Spaik {
     vm: R8VM
 }
 
+unsafe impl Send for Spaik {}
+
 pub trait AsFn {
     fn as_fn(&self, vm: &mut R8VM) -> Option<Func>;
 }
