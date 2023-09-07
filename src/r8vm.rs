@@ -2008,6 +2008,35 @@ impl R8VM {
         })
     }
 
+    #[inline(never)]
+    fn vcall(&mut self, mut ip: *mut r8c::Op, idx: u32, nargs: u16) -> Result<*mut r8c::Op> {
+        let sym = self.mem.env[idx as usize].sym().unwrap();
+        match self.funcs.get(&sym) {
+            Some(func) => {
+                func.args.check(nargs).map_err(|e| e.op(sym))?;
+                let pos = func.pos;
+                // FIXME: This does not pass in miri because of aliasing
+                // (*ip.sub(1)) = CALL(pos as u32, nargs);
+                self.call_pre(ip);
+                self.frame = self.mem.stack.len() - 2 - (nargs as usize);
+                ip = self.ret_to(pos);
+            },
+            None => if let Some(idx) = self.get_env_global(sym) {
+                let var = self.mem.get_env(idx);
+                let sidx = self.mem.stack.len() - nargs as usize;
+                // FIXME: This can be made less clunky by modifying
+                // op_clzcall so that it takes the callable as a parameter.
+                self.mem.stack.insert(sidx, var);
+                ip = self.op_clzcall(ip, nargs)?;
+            } else {
+                return Err(ErrorKind::UndefinedFunction {
+                    name: sym.into()
+                }.into())
+            }
+        };
+        Ok(ip)
+    }
+
     /**
      * Start running code from a point in program memory.
      *
@@ -2279,32 +2308,7 @@ impl R8VM {
                     let d = cmp::min((mul as isize) * n, max as isize);
                     ip = ip.offset(d);
                 }
-                VCALL(idx, nargs) => {
-                    let sym = self.mem.env[idx as usize].sym().unwrap();
-                    match self.funcs.get(&sym) {
-                        Some(func) => {
-                            func.args.check(nargs).map_err(|e| e.op(sym))?;
-                            let pos = func.pos;
-                            // FIXME: This does not pass in miri because of aliasing
-                            // (*ip.sub(1)) = CALL(pos as u32, nargs);
-                            self.call_pre(ip);
-                            self.frame = self.mem.stack.len() - 2 - (nargs as usize);
-                            ip = self.ret_to(pos);
-                        },
-                        None => if let Some(idx) = self.get_env_global(sym) {
-                            let var = self.mem.get_env(idx);
-                            let sidx = self.mem.stack.len() - nargs as usize;
-                            // FIXME: This can be made less clunky by modifying
-                            // op_clzcall so that it takes the callable as a parameter.
-                            self.mem.stack.insert(sidx, var);
-                            ip = self.op_clzcall(ip, nargs)?;
-                        } else {
-                            return Err(ErrorKind::UndefinedFunction {
-                                name: sym.into()
-                            }.into())
-                        }
-                    };
-                }
+                VCALL(idx, nargs) => ip = self.vcall(ip, idx, nargs)?,
                 CALL(pos, nargs) => {
                     self.call_pre(ip);
                     self.frame = self.mem.stack.len() - 2 - (nargs as usize);
