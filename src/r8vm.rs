@@ -247,6 +247,8 @@ macro_rules! std_subrs {
 mod sysfns {
     use std::{fmt::Write, borrow::Cow, io::BufWriter, fs};
 
+    use fnv::FnvHashMap;
+
     use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success};
     use super::{R8VM, tostring, ArgSpec};
 
@@ -590,6 +592,28 @@ mod sysfns {
             }
         }
         fn name(&self) -> &'static str { "make-symbol" }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct make_table;
+
+    unsafe impl Subr for make_table {
+        fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
+            let mut hm = FnvHashMap::default();
+            let mut it = args.iter();
+            loop {
+                let Some(k) = it.next() else { break };
+                let Some(v) = it.next() else {
+                    return Err(error!(ArgError,
+                                      expect: ArgSpec::normal((args.len()+1) as u16),
+                                      got_num: args.len() as u32)
+                               .bop(Builtin::MakeTable))
+                };
+                hm.insert(*k, *v);
+            }
+            Ok(vm.mem.put_pv(hm))
+        }
+        fn name(&self) -> &'static str { "make-table" }
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -1200,6 +1224,7 @@ impl R8VM {
         addfn!(read);
         addfn!(macroexpand);
         addfn!("make-symbol", make_symbol);
+        addfn!("make-table", make_table);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
         addfn!("type-of", type_of);

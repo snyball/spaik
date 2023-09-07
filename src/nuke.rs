@@ -908,6 +908,7 @@ fissile_types! {
     (String, Builtin::String, std::string::String),
     (PV, Builtin::Ref, crate::nkgc::PV),
     (Vector, Builtin::Vector, Vec<PV>),
+    (HashMap, Builtin::Table, FnvHashMap<PV, PV>),
     (Vec4, Builtin::Vec4, glam::Vec4),
     (Mat2, Builtin::Mat2, glam::Mat2),
     (Mat3, Builtin::Mat3, glam::Mat3),
@@ -916,6 +917,38 @@ fissile_types! {
     (Iter, Builtin::Struct, crate::nuke::Iter),
     (Continuation, Builtin::Continuation, crate::nuke::Continuation),
     (Subroutine, Builtin::Subr, Box<dyn crate::subrs::Subr>)
+}
+
+impl Traceable for FnvHashMap<PV, PV> {
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
+        for (_k, v) in self.iter() {
+            // XXX: Keys cannot be references, so they do not need to be traced
+            v.trace(gray);
+        }
+    }
+
+    fn update_ptrs(&mut self, reloc: &PtrMap) {
+        for (_k, v) in self.iter_mut() {
+            // XXX: Keys cannot be references, so they do not need to be traced
+            v.update_ptrs(reloc);
+        }
+    }
+}
+
+impl LispFmt for FnvHashMap<PV, PV> {
+    fn lisp_fmt(&self,
+                visited: &mut VisitSet,
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(table")?;
+        for (k, v) in self.iter() {
+            write!(f, " (")?;
+            k.lisp_fmt(visited, f)?;
+            write!(f, " . ")?;
+            v.lisp_fmt(visited, f)?;
+            write!(f, ")")?;
+        }
+        write!(f, ")")
+    }
 }
 
 #[cfg(not(feature = "math"))]
@@ -1098,6 +1131,11 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         NkRef::PV(_p) => todo!(),
         NkRef::Vector(xs) => unsafe {
             let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
+            NkAtom::make_raw_ref(mem.put(nxs))
+        },
+        NkRef::HashMap(hm) => unsafe {
+            let nxs = (*hm).iter().map(|(k, v)| (*k, v.deep_clone(mem)))
+                                  .collect::<FnvHashMap<_, _>>();
             NkAtom::make_raw_ref(mem.put(nxs))
         },
         #[cfg(feature = "math")]

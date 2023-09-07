@@ -827,11 +827,7 @@ impl Hash for PV {
             PV::Vec3(Vec3 { x, y, z }) => { x.to_ne_bytes().hash(state);
                                             y.to_ne_bytes().hash(state);
                                             z.to_ne_bytes().hash(state) },
-            PV::Ref(r) => if unsafe { atom_kind(r) } == NkT::String {
-                unsafe { fastcast::<String>(r).hash(state) }
-            } else {
-                unimplemented!("Hash only implemented for string references");
-            }
+            PV::Ref(_) => unimplemented!("Hash is unimplemented for references"),
         }
     }
 }
@@ -1817,15 +1813,7 @@ impl Arena {
                         bincode::serialize_into(&mut out, &*x).unwrap(),
                     NkRef::Continuation(x) =>
                         bincode::serialize_into(&mut out, &*x).unwrap(),
-                    NkRef::Iter(_) => todo!(),
-                    NkRef::Subroutine(_) => todo!(),
-                    NkRef::Struct(_s) => {
-                        todo!()
-                        // bincode::serialize_into(&mut out, Intr {
-                        //     op: Builtin::Struct,
-                        //     arg: PV::UInt(),
-                        // }).unwrap()
-                    },
+                    s => todo!("{s:?}")
                 }
                 // bincode::serialize_into(out, *obj);
             }
