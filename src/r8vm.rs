@@ -2149,19 +2149,15 @@ impl R8VM {
                     let args = &mut self.mem.stack[len - 3..];
                     with_ref_mut!(args[1], Vector(v) => {
                         TryInto::<usize>::try_into(args[2])
-                            .map_err(|_| {
-                                error!(TypeError,
-                                       expect: Builtin::Integer,
-                                       got: args[2].bt_type_of()).bop(op).argn(2)
-                            })
-                            .and_then(|idx| {
-                            if idx >= (*v).len() {
+                            .map_err(|_| error!(TypeError,
+                                                expect: Builtin::Integer,
+                                                got: args[2].bt_type_of()).bop(op).argn(2))
+                            .and_then(|idx| if idx >= (*v).len() {
                                 err!(IndexError, idx)
                             } else {
                                 *(*v).get_unchecked_mut(idx) = args[0];
                                 Ok(())
-                            }
-                        })
+                            })
                     }, Table(t) => {
                         (*t).insert(args[2], args[0]);
                         Ok(())
@@ -2171,8 +2167,8 @@ impl R8VM {
                 LEN() => {
                     let li = self.mem.pop()?;
                     let len = with_ref!(li,
-                                        Vector(v) => { Ok((*v).len()) },
-                                        String(s) => { Ok((*s).len()) },
+                                        Vector(v) => Ok((*v).len()),
+                                        String(s) => Ok((*s).len()),
                                         Table(s) => { Ok((*s).len()) },
                                         Cons(_) => { Ok(li.iter().count()) })
                         .map_err(|e| e.bop(Builtin::Len))?;
