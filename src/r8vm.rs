@@ -478,6 +478,11 @@ mod sysfns {
             })
         }
 
+        fn del(&mut self, vm: &mut R8VM, args: (tbl, key)) -> Result<PV> {
+            with_ref_mut!(*tbl, Table(hm) => { Ok((*hm).remove(key)) })
+                .map(|e| e.unwrap_or_default())
+        }
+
         fn load(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV> {
             vm.load_eval((*lib).try_into()?)
         }
@@ -1233,7 +1238,6 @@ impl R8VM {
         addfn!(read);
         addfn!(macroexpand);
         addfn!("make-symbol", make_symbol);
-        addfn!("make-table", make_table);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
         addfn!("type-of", type_of);
@@ -1256,6 +1260,10 @@ impl R8VM {
             addfn!("debug-mode", debug_mode);
             addfn!(disassemble);
         }
+
+        // Tables
+        addfn!("make-table", make_table);
+        addfn!(del);
 
         // Control-Flow
         addfn!(panic);
