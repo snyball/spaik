@@ -160,6 +160,9 @@ pub enum PV {
     Real(Float),
     Bool(bool),
     Char(char),
+    #[cfg(feature = "shipyard")]
+    Id(shipyard::EntityId),
+    #[cfg(not(feature = "shipyard"))]
     Id(u64),
     #[cfg(feature = "math")]
     Vec2(Vec2),
@@ -846,7 +849,7 @@ impl LispFmt for PV {
             PV::Real(a) => write!(f, "{a}"),
             PV::Sym(id) => write!(f, "{id}"),
             PV::Char(c) => write!(f, "(char {c})"),
-            PV::Id(c) => write!(f, "(id {c})"),
+            PV::Id(c) => write!(f, "(id {c:?})"),
             #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => write!(f, "(vec2 {x} {y})"),
             #[cfg(feature = "math")]

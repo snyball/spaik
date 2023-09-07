@@ -110,6 +110,29 @@ pv_convert!(Int,
 pv_convert!(Real,
             f32);
 
+#[cfg(feature = "shipyard")]
+impl TryFrom<PV> for shipyard::EntityId {
+    type Error = Error;
+
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        if let PV::Id(v) = value {
+            Ok(v)
+        } else {
+            err!(TypeError, expect: Builtin::Id, got: value.bt_type_of())
+        }
+    }
+}
+
+#[cfg(feature = "shipyard")]
+impl_objref!(shipyard::EntityId);
+
+#[cfg(feature = "shipyard")]
+impl IntoLisp for shipyard::EntityId {
+    fn into_pv(self, _mem: &mut Arena) -> Result<PV, Error> {
+        Ok(PV::Id(self))
+    }
+}
+
 #[cfg(feature = "math")]
 impl TryFrom<PV> for glam::Vec2 {
     type Error = Error;
@@ -587,7 +610,7 @@ mod tests {
     #[cfg(feature = "derive")]
     use spaik_proc_macros::{Fissile, export};
 
-    use crate::{Spaik, PList, nkgc::PV, FromLisp};
+    use crate::{Spaik, PList};
 
     use serde::{Serialize, Deserialize};
 
