@@ -49,6 +49,7 @@ pub(crate) mod builtins;
 pub(crate) mod string_parse;
 pub mod plug;
 pub use plug::*;
+pub use r8vm::Func;
 use r8vm::NArgs;
 use subrs::IntoSubr;
 pub use subrs::{Lispify, PList};
@@ -166,6 +167,25 @@ pub struct Spaik {
     vm: R8VM
 }
 
+pub trait AsFn {
+    fn as_fn(&self, vm: &mut R8VM) -> Option<Func>;
+}
+
+impl AsFn for Func {
+    #[inline(always)]
+    fn as_fn(&self, _vm: &mut R8VM) -> Option<Func> {
+        Some(*self)
+    }
+}
+
+impl<T> AsFn for T where T: AsSym {
+    #[inline(always)]
+    fn as_fn(&self, vm: &mut R8VM) -> Option<Func> {
+        let s = self.as_sym(vm);
+        vm.get_func(s).copied()
+    }
+}
+
 pub trait AsSym {
     fn as_sym(&self, vm: &mut R8VM) -> SymID;
 }
@@ -277,6 +297,14 @@ impl Spaik {
         self.vm.mem.get_env(idx)
                    .from_lisp(&mut self.vm.mem)
     }
+
+    /// Return a function by `name`, or an error if it does not exist.
+    #[inline]
+    pub fn getfn(&mut self, name: impl AsSym) -> Result<Func> {
+        let name = name.as_sym(&mut self.vm);
+        self.vm.get_func(name).copied().ok_or(error!(UndefinedFunction, name: name.into()))
+    }
+
 
     /// Get a reference to a user-defined object type stored in the vm.
     ///
@@ -424,6 +452,17 @@ impl Spaik {
     {
         let sym = sym.as_sym(&mut self.vm);
         self.vm.ncall(sym, args)
+               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
+    }
+
+    /// Call a function by-name an args and return the result.
+    ///
+    /// Use `Spaik::run` if don't care about the result.
+    #[inline]
+    pub fn callfn<R, A>(&mut self, f: Func, args: impl NArgs<A>) -> Result<R>
+        where PV: FromLisp<R>
+    {
+        self.vm.callfn(f, args)
                .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
     }
 
@@ -930,5 +969,13 @@ mod tests {
             Ok(())
         }
         inner().unwrap();
+    }
+
+    #[test]
+    fn callfn() {
+        let mut vm = Spaik::new();
+        vm.exec("(define (f x) (+ x 2))").unwrap();
+        let f = vm.getfn("f").unwrap();
+        assert_eq!(vm.callfn(f, (2,)), Ok(4));
     }
 }

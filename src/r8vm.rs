@@ -843,9 +843,9 @@ impl ArgSpec {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Func {
-    pub pos: usize,
-    pub sz: usize,
-    pub args: ArgSpec,
+    pub(crate) pos: usize,
+    pub(crate) sz: usize,
+    pub(crate) args: ArgSpec,
 }
 
 #[cfg(feature = "no-threading")]
@@ -2489,6 +2489,14 @@ impl R8VM {
 
     pub fn ncall<A>(&mut self, sym: SymID, args: impl NArgs<A>) -> Result<PV> {
         Ok(symcall_with!(self, sym, args.nargs(), {
+            args.pusharg(&mut self.mem)?
+        }))
+    }
+
+    pub fn callfn<A>(&mut self, funk: Func, args: impl NArgs<A>) -> Result<PV> {
+        let pos = funk.pos;
+        funk.args.check(args.nargs() as u16)?;
+        Ok(call_with!(self, pos, args.nargs(), {
             args.pusharg(&mut self.mem)?
         }))
     }
