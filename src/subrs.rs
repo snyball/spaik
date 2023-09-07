@@ -10,6 +10,7 @@ use crate::error::{Error, ErrorKind};
 use crate::{nuke::*, SymID, Builtin, deserialize};
 use crate::fmt::{LispFmt, VisitSet};
 use std::any::Any;
+use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
@@ -310,6 +311,34 @@ impl<T> TryFrom<PV> for Vec<T>
         })
     }
 }
+
+impl<K, V> TryFrom<PV> for HashMap<K, V>
+    where K: std::hash::Hash + Eq + TryFrom<PV, Error=Error>,
+          V: TryFrom<PV, Error=Error>
+{
+    type Error = Error;
+    fn try_from(v: PV) -> Result<HashMap<K, V>, Self::Error> {
+        with_ref!(v, Table(v) => {
+            (*v).iter().map(|(&k, &v)| Ok((k.try_into()?, v.try_into()?)))
+                    .collect::<Result<_, _>>()
+        })
+    }
+}
+
+impl<K, V> IntoLisp for HashMap<K, V>
+    where K: std::hash::Hash + Eq + IntoLisp,
+          V: IntoLisp
+{
+    fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
+        let arr = self.into_iter()
+                      .map(|(k, v)| -> Result<_, Error> {
+                          Ok((k.into_pv(mem)?, v.into_pv(mem)?))
+                      })
+                      .collect::<Result<FnvHashMap<PV, PV>, _>>()?;
+        Ok(mem.put_pv(arr))
+    }
+}
+
 
 /// NOTE: This is safe because while the `String` is shifted around by the
 /// GC mark-sweep phase, the actual allocated string contents are not.
