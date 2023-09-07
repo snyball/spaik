@@ -2037,6 +2037,49 @@ impl R8VM {
         Ok(ip)
     }
 
+    #[inline(never)]
+    unsafe fn apl(&mut self, mut ip: *mut r8c::Op) -> Result<*mut r8c::Op> {
+        let args = self.mem.pop().unwrap();
+        let nargs = (|| -> Result<_> {
+            match args {
+                PV::Nil => return Ok(0),
+                #[cfg(feature = "math")] PV::Vec2(w) => {
+                    self.mem.push(PV::Real(w.x));
+                    self.mem.push(PV::Real(w.y));
+                    return Ok(2)
+                }
+                #[cfg(feature = "math")] PV::Vec3(w) => {
+                    self.mem.push(PV::Real(w.x));
+                    self.mem.push(PV::Real(w.y));
+                    self.mem.push(PV::Real(w.z));
+                    return Ok(3)
+                }
+                PV::Ref(p) => match to_fissile_mut(p) {
+                    NkMut::Cons(_) => return
+                        Ok(args.into_iter().map(|a| self.mem.push(a)).count()),
+                    NkMut::Vector(xs) => return
+                        Ok((*xs).iter().map(|a| self.mem.push(*a)).count()),
+                    NkMut::Iter(it) => return
+                        Ok((*it).by_ref().map(|a| self.mem.push(a)).count()),
+                    _ => (),
+                }
+                _ => ()
+            };
+            err!(TypeNError,
+                 expect: vec![Builtin::List, Builtin::Vector],
+                 got: args.bt_type_of())
+        })().map_err(|e| e.bop(Builtin::Apply))?;
+        let nargs: u16 = match nargs.try_into() {
+            Ok(n) => n,
+            Err(e) => {
+                self.mem.popn(nargs);
+                self.mem.push(PV::Nil);
+                return Err(e.into());
+            }
+        };
+        self.op_clzcall(ip, nargs)
+    }
+
     /**
      * Start running code from a point in program memory.
      *
@@ -2328,47 +2371,7 @@ impl R8VM {
                     self.mem.push(rv);
                 }
                 ZCALL(nargs) => ip = self.op_clzcall(ip, nargs)?,
-                APL() => {
-                    let args = self.mem.pop().unwrap();
-                    let nargs = (|| -> Result<_> {
-                        match args {
-                            PV::Nil => return Ok(0),
-                            #[cfg(feature = "math")] PV::Vec2(w) => {
-                                self.mem.push(PV::Real(w.x));
-                                self.mem.push(PV::Real(w.y));
-                                return Ok(2)
-                            }
-                            #[cfg(feature = "math")] PV::Vec3(w) => {
-                                self.mem.push(PV::Real(w.x));
-                                self.mem.push(PV::Real(w.y));
-                                self.mem.push(PV::Real(w.z));
-                                return Ok(3)
-                            }
-                            PV::Ref(p) => match to_fissile_mut(p) {
-                                NkMut::Cons(_) => return
-                                    Ok(args.into_iter().map(|a| self.mem.push(a)).count()),
-                                NkMut::Vector(xs) => return
-                                    Ok((*xs).iter().map(|a| self.mem.push(*a)).count()),
-                                NkMut::Iter(it) => return
-                                    Ok((*it).by_ref().map(|a| self.mem.push(a)).count()),
-                                _ => (),
-                            }
-                            _ => ()
-                        };
-                        err!(TypeNError,
-                             expect: vec![Builtin::List, Builtin::Vector],
-                             got: args.bt_type_of())
-                    })().map_err(|e| e.bop(Builtin::Apply))?;
-                    let nargs: u16 = match nargs.try_into() {
-                        Ok(n) => n,
-                        Err(e) => {
-                            self.mem.popn(nargs);
-                            self.mem.push(PV::Nil);
-                            return Err(e.into());
-                        }
-                    };
-                    ip = self.op_clzcall(ip, nargs)?;
-                }
+                APL() => ip = self.apl(ip)?,
                 CCONT(dip) => {
                     let dip = self.ip_delta(ip) as isize + dip as isize;
                     let mut stack_dup = self.mem.stack.clone();
