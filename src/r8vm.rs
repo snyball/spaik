@@ -2210,13 +2210,12 @@ impl R8VM {
                                                   expect: Builtin::Integer,
                                                   got: x.bt_type_of()).bop(op).argn(2));
                     let elem = match (idx, vec) {
-                        (idx, PV::Ref(p)) => match (idx, to_fissile_ref(p)) {
-                            (PV::Int(idx), NkRef::Vector(v)) =>
-                                (*v).get(idx as usize).ok_or(error!(IndexError, idx: idx as usize)).copied(),
-                            (PV::Ref(_), NkRef::Table(_)) => err!(KeyReference, key: idx.to_string()),
-                            (idx, NkRef::Table(hm)) =>
-                                Ok((*hm).get(&idx).copied().unwrap_or(PV::Nil)),
-                                               //.ok_or(error!(KeyError, idx: idx.to_string())),
+                        (idx, PV::Ref(p)) => match (idx, atom_kind(p)) {
+                            (PV::Int(idx), NkT::Vector) =>
+                                (*fastcast::<Vec<PV>>(p)).get(idx as usize).ok_or(error!(IndexError, idx: idx as usize)).copied(),
+                            (PV::Ref(_), NkT::Table) => err!(KeyReference, key: idx.to_string()),
+                            (idx, NkT::Table) =>
+                                Ok((*fastcast::<FnvHashMap<PV, PV>>(p)).get(&idx).copied().unwrap_or_default()),
                             _ => Err(err())
                         }
                         #[cfg(feature = "math")] (PV::Int(0), PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
