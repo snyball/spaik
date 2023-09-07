@@ -10,8 +10,10 @@ use std::fmt::{Debug, Display};
 use fnv::FnvHashSet;
 use serde::{Deserialize, Serialize};
 
+use crate::AsSym;
 use crate::nuke::GcRc;
 use crate::nuke::memcpy;
+use crate::r8vm::R8VM;
 
 pub struct Sym {
     rc: GcRc,
@@ -64,6 +66,18 @@ impl SymRef {
         let p = self.0;
         drop(self);
         SymID(p)
+    }
+}
+
+impl AsSym for &SymRef {
+    fn as_sym(&self, _vm: &mut R8VM) -> SymID {
+        SymID(self.0)
+    }
+}
+
+impl AsSym for SymRef {
+    fn as_sym(&self, _vm: &mut R8VM) -> SymID {
+        SymID(self.0)
     }
 }
 

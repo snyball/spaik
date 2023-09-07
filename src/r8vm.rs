@@ -603,6 +603,9 @@ mod sysfns {
             let mut it = args.iter();
             loop {
                 let Some(k) = it.next() else { break };
+                if k.is_ref() {
+                    return err!(KeyReference, key: k.to_string());
+                }
                 let Some(v) = it.next() else {
                     return Err(error!(ArgError,
                                       expect: ArgSpec::normal((args.len()+1) as u16),
@@ -2159,8 +2162,12 @@ impl R8VM {
                                 Ok(())
                             })
                     }, Table(t) => {
-                        (*t).insert(args[2], args[0]);
-                        Ok(())
+                        if args[2].is_ref() {
+                            err!(KeyReference, key: args[2].to_string())
+                        } else {
+                            (*t).insert(args[2], args[0]);
+                            Ok(())
+                        }
                     }).map_err(|e| e.bop(Builtin::Set))?;
                     self.mem.stack.truncate(len - 3);
                 }

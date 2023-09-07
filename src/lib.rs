@@ -182,12 +182,6 @@ impl AsSym for SymID {
     }
 }
 
-impl AsSym for Sym {
-    fn as_sym(&self, _vm: &mut R8VM) -> SymID {
-        self.clone().id()
-    }
-}
-
 #[cfg(feature = "derive")]
 #[macro_export]
 macro_rules! defuns {
@@ -264,7 +258,7 @@ impl Spaik {
         let t = type_name::<F>();
         let (_, name) = t.rsplit_once(':').unwrap_or(("", t));
         let name = name.replace('_', "-");
-        self.set(name.as_ref(), func.into_subr());
+        self.set(&name[..], func.into_subr());
     }
 
     pub fn set<A, R, N>(&mut self, var: impl AsSym, obj: impl Lispify<A, R, N>) {
