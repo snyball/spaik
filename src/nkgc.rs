@@ -197,6 +197,9 @@ impl PartialEq for PV {
             (Self::Real(l0), Self::Real(r0)) => l0 == r0,
             (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
             (Self::Char(l0), Self::Char(r0)) => l0 == r0,
+            (Self::Id(x), Self::Id(y)) => x == y,
+            #[cfg(feature = "math")] (Self::Vec2(x), Self::Vec2(y)) => x == y,
+            #[cfg(feature = "math")] (Self::Vec3(x), Self::Vec3(y)) => x == y,
             (Self::Ref(l), Self::Ref(r)) => unsafe {
                 let tl = atom_kind(*l);
                 if tl == NkT::String && tl == atom_kind(*r) {
