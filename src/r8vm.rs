@@ -17,7 +17,7 @@ use crate::{
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
-    chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
+    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, Lambda};
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
 #[cfg(feature = "freeze")]
@@ -1964,56 +1964,73 @@ impl R8VM {
                   nargs: u16) -> Result<*mut r8c::Op> {
         let idx = self.mem.stack.len() - nargs as usize - 1;
         let lambda_pv = self.mem.stack[idx];
-        with_ref_mut!(lambda_pv, Lambda(lambda) => {
-            (*lambda).args.check(nargs).map_err(|e| e.bop(Builtin::GreekLambda))?;
-            let has_env = (*lambda).args.has_env();
-            if !has_env {
-                self.mem.stack.drain(idx..(idx+1)).for_each(drop); // drain gang
+        let err = move || err!(TypeNError,
+                               expect: vec![Builtin::Lambda,
+                                            Builtin::Subr,
+                                            Builtin::Continuation,
+                                            Builtin::Struct],
+                               got: lambda_pv.bt_type_of());
+        let PV::Ref(p) = lambda_pv else { return err() };
+        match unsafe { atom_kind(p) } {
+            NkT::Lambda => unsafe {
+                let lambda = fastcast::<nkgc::Lambda>(p);
+                (*lambda).args.check(nargs).map_err(|e| e.bop(Builtin::GreekLambda))?;
+                let has_env = (*lambda).args.has_env();
+                if !has_env {
+                    self.mem.stack.drain(idx..(idx+1)).for_each(drop); // drain gang
+                }
+                self.call_pre(ip);
+                self.frame = self.mem.stack.len()
+                    - 2
+                    - nargs as usize
+                    - has_env as usize;
+                Ok(self.ret_to((*lambda).pos))
             }
-            self.call_pre(ip);
-            self.frame = self.mem.stack.len()
-                       - 2
-                       - nargs as usize
-                       - has_env as usize;
-            Ok(self.ret_to((*lambda).pos))
-        }, Subroutine(subr) => {
-            // FIXME: This has been disabled pending a review, it is unsound
-            //        for quite a few sysfn subrs.
-            // SAFETY: The Subr trait is marked unsafe, read the associated
-            //         safety documentation in Subr as to why this is safe. The
-            //         alternative is to clone the stack slice, which is too
-            //         expensive for us to do it for *every* Lisp->Rust call.
-            //let args = unsafe {
-            //    let delta = (self.mem.stack.len() - nargs as usize) as isize;
-            //    let ptr = self.mem.stack.as_ptr().offset(delta);
-            //    slice::from_raw_parts(ptr, nargs as usize)
-            //};
-            // FIXME: Avoid having to always clone
-            let top = self.mem.stack.len();
-            let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
+            NkT::Subroutine => unsafe {
+                let subr = fastcast_mut::<Box<dyn Subr>>(p);
+                // FIXME: This has been disabled pending a review, it is unsound
+                //        for quite a few sysfn subrs.
+                // SAFETY: The Subr trait is marked unsafe, read the associated
+                //         safety documentation in Subr as to why this is safe. The
+                //         alternative is to clone the stack slice, which is too
+                //         expensive for us to do it for *every* Lisp->Rust call.
+                //let args = unsafe {
+                //    let delta = (self.mem.stack.len() - nargs as usize) as isize;
+                //    let ptr = self.mem.stack.as_ptr().offset(delta);
+                //    slice::from_raw_parts(ptr, nargs as usize)
+                //};
+                // FIXME: Avoid having to always clone
+                let top = self.mem.stack.len();
+                let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
 
-            let dip = self.ip_delta(ip);
-            let res = (*subr).call(self, &args[..]);
-            invalid!(args, subr); // (*subr).call
-            self.mem.stack.drain(idx..).for_each(drop); // drain gang
-            self.mem.push(res?);
-            Ok(self.ret_to(dip))
-        }, Continuation(cont) => {
-            ArgSpec::normal(1).check(nargs).map_err(|e| e.bop(Builtin::Continuation))?;
-            let pv = self.mem.pop().unwrap();
-            (*cont).inst(&mut self.mem.stack);
-            self.mem.stack.push(pv);
-            self.frame = (*cont).frame;
-            Ok(self.ret_to((*cont).dip))
-        }, Struct(s) => {
-            let top = self.mem.stack.len();
-            let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
-            let dip = self.ip_delta(ip);
-            let res = (*s).call(self, &args[..]);
-            self.mem.stack.drain(idx..).for_each(drop); // drain gang
-            self.mem.push(res?);
-            Ok(self.ret_to(dip))
-        })
+                let dip = self.ip_delta(ip);
+                let res = (*subr).call(self, &args[..]);
+                invalid!(args, subr); // (*subr).call
+                self.mem.stack.drain(idx..).for_each(drop); // drain gang
+                self.mem.push(res?);
+                Ok(self.ret_to(dip))
+            }
+            NkT::Continuation => unsafe {
+                let cont = fastcast::<Continuation>(p);
+                ArgSpec::normal(1).check(nargs).map_err(|e| e.bop(Builtin::Continuation))?;
+                let pv = self.mem.pop().unwrap();
+                (*cont).inst(&mut self.mem.stack);
+                self.mem.stack.push(pv);
+                self.frame = (*cont).frame;
+                Ok(self.ret_to((*cont).dip))
+            }
+            NkT::Struct => unsafe {
+                let s = fastcast_mut::<Object>(p);
+                let top = self.mem.stack.len();
+                let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
+                let dip = self.ip_delta(ip);
+                let res = (*s).call(self, &args[..]);
+                self.mem.stack.drain(idx..).for_each(drop); // drain gang
+                self.mem.push(res?);
+                Ok(self.ret_to(dip))
+            }
+            _ => return err()
+        }
     }
 
     #[inline(never)]
