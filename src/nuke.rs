@@ -1659,16 +1659,16 @@ impl Iterator for NukeIter {
 
 type NkSz = u16;
 
-const META_COLOR_MASK: u8 = 0x03;
-const META_TYPE_MASK: u8 = 0xfc;
+pub const META_COLOR_MASK: u8 = 0x03;
+pub const META_TYPE_MASK: u8 = 0xfc;
 
-pub struct AtomMeta(u8);
+pub struct AtomMeta(pub u8);
 
 #[repr(C)]
 pub struct NkAtom {
     next: *mut NkAtom,
     sz: NkSz,
-    meta: AtomMeta,
+    pub(crate) meta: AtomMeta,
 }
 
 impl AtomMeta {

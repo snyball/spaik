@@ -1971,7 +1971,7 @@ impl R8VM {
                                             Builtin::Struct],
                                got: lambda_pv.bt_type_of());
         let PV::Ref(p) = lambda_pv else { return err() };
-        match unsafe { atom_kind(p) } {
+        match unsafe { mem::transmute(((*p).meta.0 & META_TYPE_MASK) >> 2) } {
             NkT::Lambda => unsafe {
                 let lambda = fastcast::<nkgc::Lambda>(p);
                 (*lambda).args.check(nargs).map_err(|e| e.bop(Builtin::GreekLambda))?;
