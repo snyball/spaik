@@ -1994,14 +1994,14 @@ impl R8VM {
                 //         safety documentation in Subr as to why this is safe. The
                 //         alternative is to clone the stack slice, which is too
                 //         expensive for us to do it for *every* Lisp->Rust call.
-                let args = unsafe {
-                   let delta = (self.mem.stack.len() - nargs as usize) as isize;
-                   let ptr = self.mem.stack.as_ptr().offset(delta);
-                   std::slice::from_raw_parts(ptr, nargs as usize)
-                };
+                //let args = unsafe {
+                //    let delta = (self.mem.stack.len() - nargs as usize) as isize;
+                //    let ptr = self.mem.stack.as_ptr().offset(delta);
+                //    slice::from_raw_parts(ptr, nargs as usize)
+                //};
                 // FIXME: Avoid having to always clone
-                // let top = self.mem.stack.len();
-                // let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
+                let top = self.mem.stack.len();
+                let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
 
                 let dip = self.ip_delta(ip);
                 let res = (*subr).call(self, &args[..]);
