@@ -505,15 +505,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             writeln!(f, "Traceback:")?;
             for TraceFrame { src, func, args } in tb.frames.iter() {
                 write!(f, "  - ({func}")?;
-                let mut it = args.iter().peekable();
-                if it.peek().is_some() {
-                    write!(f, " ")?;
-                }
-                while let Some(arg) = it.next() {
-                    write!(f, "{}", arg.lisp_to_string())?;
-                    if it.peek().is_some() {
-                        write!(f, " ")?;
-                    }
+                for arg in args.iter() {
+                    write!(f, " {}", arg)?;
                 }
                 write!(f, ")")?;
                 writeln!(f, " {}", src)?;
