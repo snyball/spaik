@@ -190,6 +190,7 @@ impl IntoLisp for glam::Vec4 {
     }
 }
 
+#[cfg(feature = "math")]
 impl_objref!(glam::Vec2, glam::Vec3, glam::Vec4);
 
 impl IntoLisp for char {

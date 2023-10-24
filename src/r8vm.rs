@@ -2225,6 +2225,7 @@ impl R8VM {
                                      Builtin::Vec3],
                         got: vec.bt_type_of(),
                     });
+                    #[cfg(feature = "math")]
                     let ierr = |x: PV| Err(error!(TypeError,
                                                   expect: Builtin::Integer,
                                                   got: x.bt_type_of()).bop(op).argn(2));

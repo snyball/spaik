@@ -958,6 +958,7 @@ fissile_types! {
     (Intr, Builtin::Intr, crate::nuke::Intr),
     (Lambda, Builtin::Lambda, crate::nkgc::Lambda),
     (String, Builtin::String, std::string::String),
+    (Table, Builtin::Table, FnvHashMap<PV, PV>),
     (PV, Builtin::Ref, crate::nkgc::PV),
     (Vector, Builtin::Vector, Vec<PV>),
     (Struct, Builtin::Struct, crate::nuke::Object),
