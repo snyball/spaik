@@ -2,7 +2,6 @@
 
 use crate::{Builtin, Sym};
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
-use crate::fmt::LispFmt;
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::mem::{discriminant, replace};
