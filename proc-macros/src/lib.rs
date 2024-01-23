@@ -130,6 +130,89 @@ pub fn spaiklib(_attr: TokenStream, _item: TokenStream) -> TokenStream {
     quote!().into()
 }
 
+#[proc_macro_derive(Record)]
+pub fn derive_record(item: TokenStream) -> TokenStream {
+    let root = crate_root();
+    let input = parse_macro_input!(item as DeriveInput);
+    let name = input.ident.clone();
+    let data = input.data.clone();
+    let fields = match data {
+        Data::Struct(DataStruct {
+            fields: syn::Fields::Named(FieldsNamed { named, .. }), ..
+        }) => named,
+        _ => unimplemented!()
+    }.into_iter();
+    let field_names = fields.clone().map(|f| f.ident.clone().expect("Identifier"));
+    let field_kws = fields.clone().map(|f| format!(":{}", f.ident.expect("Identifier")));
+    let field_try_set = field_names.clone().enumerate().map(|(i, f)| {
+        let f_s = format!("{f}");
+        quote! {
+            args[#i].try_into()
+                    .map_err(|e: Error| e.arg_name(OpName::OpStr(#f_s)))?
+        }
+    });
+    let field_inits = fields.clone().map(|_| quote! { None });
+    let argn: usize = fields.clone().count();
+    let argn_u16: u16 = argn.try_into().expect("too many arguments");
+    let sp_name = format!("{name}").to_case(Case::Kebab);
+    let make_s = format!("<ζ>::make-{sp_name}");
+    let macro_s = format!("<ξζ>::make-{sp_name}");
+    let name_s = format!("{sp_name}");
+    let out = quote! {
+        impl #root::FieldAccess for #name {} // TODO
+        impl #root::MethodCall for #name {} // TODO
+        impl #root::Record for #name {
+            fn record_macro() -> impl #root::Subr {
+                use #root::_deps::*;
+                #[derive(Default)]
+                struct Construct {
+                    keys: Vec<SymRef>,
+                    make_fn: Option<SymRef>,
+                }
+                unsafe impl #root::Subr for Construct {
+                    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
+                        if self.keys.is_empty() {
+                            self.keys = (&[#(#field_kws),*]).into_iter().map(|key| {
+                                vm.sym(key)
+                            }).collect();
+                        }
+                        let name = self.make_fn.get_or_insert_with(|| vm.sym(#make_s));
+                        let mut out: [Option<PV>; #argn] = [#(#field_inits),*];
+                        into_init(vm, #name_s, name, args, &self.keys[..], &mut out)
+                    }
+
+                    fn name(&self) -> &'static str {
+                        #macro_s
+                    }
+                }
+                Construct::default()
+            }
+
+            fn record_constructor() -> impl #root::Subr {
+                use #root::_deps::*;
+                struct Construct;
+                unsafe impl #root::Subr for Construct {
+                    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
+                        ArgSpec::normal(#argn_u16).check(args.len().try_into()?)?;
+                        let common_err = |e: Error| e.sop(#name_s);
+                        let make_obj = || Ok(Object::new(#name {
+                            #(#field_names : #field_try_set),*
+                        }));
+                        Ok(vm.mem.put_pv(make_obj().map_err(common_err)?))
+                    }
+
+                    fn name(&self) -> &'static str {
+                        #make_s
+                    }
+                }
+                Construct
+            }
+        }
+    };
+
+    out.into()
+}
+
 #[proc_macro_derive(Fissile)]
 pub fn derive_fissile(item: TokenStream) -> TokenStream {
     let root = crate_root();

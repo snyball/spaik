@@ -88,6 +88,7 @@ pub use nuke::Gc;
 pub type Str = Arc<str>;
 pub use nuke::Userdata;
 pub use swym::SymRef as Sym;
+pub use records::{FieldAccess, MethodCall, Record};
 
 /** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)
@@ -102,6 +103,8 @@ pub mod _deps {
     pub use crate::nuke::{NkAtom, PtrMap, Object};
     pub use crate::fmt::LispFmt;
     pub use crate::fmt::VisitSet;
+    pub use crate::records::into_init;
+    pub use crate::error::{Error, Result};
 }
 
 use std::any::type_name;
