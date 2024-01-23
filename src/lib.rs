@@ -100,7 +100,7 @@ pub mod _deps {
     pub use crate::r8vm::{R8VM, ArgSpec};
     pub use crate::nkgc::SymID;
     pub use crate::nkgc::{PV, ObjRef, Arena, Traceable};
-    pub use crate::nuke::{NkAtom, PtrMap, Object};
+    pub use crate::nuke::{NkAtom, PtrMap, Object, cast_mut_err};
     pub use crate::fmt::LispFmt;
     pub use crate::fmt::VisitSet;
     pub use crate::records::into_init;

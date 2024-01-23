@@ -161,6 +161,16 @@ pub fn derive_record(item: TokenStream) -> TokenStream {
     let out = quote! {
         impl #root::FieldAccess for #name {} // TODO
         impl #root::MethodCall for #name {} // TODO
+        impl TryFrom<#root::PV> for #name {
+            type Error = #root::error::Error;
+            fn try_from(pv: #root::_deps::PV) -> std::result::Result<Self, Self::Error> {
+                let p = pv.ref_inner()?;
+                unsafe {
+                    let obj = #root::_deps::cast_mut_err::<#root::_deps::Object>(p)?;
+                    (*obj).take()
+                }
+            }
+        }
         impl #root::Record for #name {
             fn record_macro() -> impl #root::Subr {
                 use #root::_deps::*;

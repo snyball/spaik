@@ -561,10 +561,10 @@ impl PV {
         PVIterSrc { item: *self, src, nk }
     }
 
-    pub fn ref_inner(&self) -> Option<*mut NkAtom> {
+    pub fn ref_inner(&self) -> Result<*mut NkAtom, Error> {
         match self {
-            PV::Ref(p) => Some(*p),
-            _ => None
+            PV::Ref(p) => Ok(*p),
+            _ => err!(TypeError, expect: Builtin::Ref, got: self.bt_type_of())
         }
     }
 

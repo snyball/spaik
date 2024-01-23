@@ -243,6 +243,7 @@ pub enum ErrorKind {
     TrailingEscape,
     NoSuchEscapeChar { chr: char },
     NoSuchField { record: String, field: String },
+    UnsupportedOperation { op: OpName },
     DuplicateField { record: String, field: String },
     RecordMissingFields { record: String, fields: Vec<String> },
     UnterminatedString,
@@ -554,6 +555,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Syntax Error: No such escape character {chr:?}")?,
         NoSuchField { field, record } =>
             write!(f, "No such field: Record type {record} does not contain {field}")?,
+        UnsupportedOperation { op } =>
+            write!(f, "Unsupported operation: {}", op)?,
         DuplicateField { field, record } =>
             write!(f, "Duplicate field: Record type {record} initializer has duplicated field {field}")?,
         RecordMissingFields { fields, record } =>

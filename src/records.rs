@@ -1,8 +1,11 @@
+use std::any::{Any, TypeId};
+
 use spaik_proc_macros::Record;
 
 use crate::error::OpName;
+use crate::nuke::Object;
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
-use crate::{Result, Fissile, Userdata, Error};
+use crate::{Result, Fissile, Userdata, Error, FromLisp, nuke};
 
 #[derive(Debug, Record, Fissile, Clone, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
@@ -60,13 +63,13 @@ pub fn into_init(vm: &mut R8VM,
 
 pub trait FieldAccess {
     fn field_access(&mut self, args: &[PV]) -> crate::Result<Option<PV>> {
-        Ok(Some(PV::Nil))
+        err!(UnsupportedOperation, op: OpName::OpStr("field access"))
     }
 }
 
 pub trait MethodCall {
     fn call_method(&mut self, args: &[PV]) -> crate::Result<Option<PV>> {
-        Ok(Some(PV::Nil))
+        err!(UnsupportedOperation, op: OpName::OpStr("method call"))
     }
 }
 
@@ -101,6 +104,9 @@ mod tests {
         vm.exec(r##"(define g (q :x 1 :y 2 :z "z"))"##).unwrap();
         let mut x: Gc<Example> = vm.eval("g").unwrap();
         let x = x.with(|x| x.clone());
-        assert_eq!(x, Example { x: 1.0, y: 2.0, z: "z".to_string() })
+        let y: Example = vm.eval("g").unwrap();
+        assert_eq!(x, Example { x: 1.0, y: 2.0, z: "z".to_string() });
+        assert_eq!(y, x);
+        vm.exec("(println g)");
     }
 }
