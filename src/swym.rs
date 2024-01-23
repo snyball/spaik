@@ -11,6 +11,7 @@ use fnv::FnvHashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::AsSym;
+use crate::nkgc::PV;
 use crate::nuke::GcRc;
 use crate::nuke::memcpy;
 use crate::r8vm::R8VM;
@@ -44,6 +45,17 @@ unsafe impl Send for Sym {}
 unsafe impl Sync for Sym {}
 
 pub struct SymRef(*mut Sym);
+unsafe impl Send for SymRef {}
+
+impl SymRef {
+    pub fn eq_pv(&self, pv: PV) -> bool {
+        pv.sym().map(|sym| sym.0 == self.0).unwrap_or_default()
+    }
+
+    pub(crate) fn inner(&self) -> *mut Sym {
+        self.0
+    }
+}
 
 impl Hash for SymRef {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {

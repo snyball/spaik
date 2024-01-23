@@ -242,6 +242,9 @@ pub enum ErrorKind {
     TrailingModifiers { mods: String },
     TrailingEscape,
     NoSuchEscapeChar { chr: char },
+    NoSuchField { record: String, field: String },
+    DuplicateField { record: String, field: String },
+    RecordMissingFields { record: String, fields: Vec<String> },
     UnterminatedString,
     MacroexpandRecursionLimit { lim: usize },
     SyntaxError(SyntaxErrorKind),
@@ -549,6 +552,12 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Syntax Error: Trailing escape character")?,
         NoSuchEscapeChar { chr } =>
             write!(f, "Syntax Error: No such escape character {chr:?}")?,
+        NoSuchField { field, record } =>
+            write!(f, "No such field: Record type {record} does not contain {field}")?,
+        DuplicateField { field, record } =>
+            write!(f, "Duplicate field: Record type {record} initializer has duplicated field {field}")?,
+        RecordMissingFields { fields, record } =>
+            write!(f, "Missing fields: Record type {record} initializer is missing fields")?,
         NoSuchMethod { strucc, method } =>
             write!(f, "No Such Method: ({strucc} {method})")?,
         VoidVariable =>

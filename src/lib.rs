@@ -77,6 +77,7 @@ pub(crate) mod scratch;
 /// SPAIK scratchpad for use in development of SPAIK itself.
 pub use scratch::main as scratch_main;
 pub(crate) mod stylize;
+pub mod records;
 
 #[cfg(feature = "derive")]
 pub use spaik_proc_macros::{Fissile, kebabify, export};

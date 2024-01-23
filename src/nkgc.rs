@@ -1343,6 +1343,10 @@ impl Arena {
         self.stack.push(PV::Sym(v));
     }
 
+    pub fn push_symref(&mut self, v: &SymRef) {
+        self.stack.push(PV::Sym(SymID(v.inner())));
+    }
+
     pub fn push_env(&mut self, v: PV) -> usize {
         let idx = self.env.len();
         self.env.push(v);
