@@ -631,6 +631,11 @@ impl Error {
         self
     }
 
+    pub fn arg_name(mut self, n: OpName) -> Error {
+        self.inner.meta.amend(Meta::OpArgName(n));
+        self
+    }
+
     pub fn cause(&self) -> &Error {
         match self.kind() {
             ErrorKind::Traceback { tb } => {
