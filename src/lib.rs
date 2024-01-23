@@ -287,8 +287,8 @@ impl Spaik {
         let make_bx: Box<dyn Subr> = Box::new(T::record_constructor());
         self.set(T::record_constructor().name(), make_bx);
         let macro_fn_name = format!("<ξ>::{}", T::kebab_type_name());
-        self.exec(dbg!(format!("(define ({} &body <ζ>::body) (apply {} <ζ>::body))",
-                          macro_fn_name, T::record_macro().name())))
+        self.exec(format!("(define ({} &body <ζ>::body) (apply {} <ζ>::body))",
+                          macro_fn_name, T::record_macro().name()))
             .expect("error in auto-generated code");
         let macro_name = T::kebab_type_name().as_sym(&mut self.vm);
         let macro_fn_name = (&macro_fn_name[..]).as_sym(&mut self.vm);
