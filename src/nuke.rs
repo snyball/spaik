@@ -669,6 +669,7 @@ impl Object {
 
     pub fn void(&mut self) {
         self.type_id = TypeId::of::<Voided>();
+        unsafe { (self.vt.drop)(self.mem) };
         self.vt = Self::void_vtable();
         self.mem = null_mut();
     }
