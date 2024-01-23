@@ -73,13 +73,17 @@ pub trait MethodCall {
     }
 }
 
-unsafe impl<T> Subr for T where T: FieldAccess + MethodCall + Send + 'static {
+pub trait KebabTypeName {
+    fn kebab_type_name() -> &'static str;
+}
+
+unsafe impl<T> Subr for T where T: FieldAccess + MethodCall + Send + KebabTypeName + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> std::result::Result<PV, Error> {
         todo!()
     }
 
     fn name(&self) -> &'static str {
-        todo!()
+        Self::kebab_type_name()
     }
 }
 
@@ -90,7 +94,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn record_macro_output() {
+    fn record_macro_manual() {
         let mut vm = Spaik::new_no_core();
         let macro_bx: Box<dyn Subr> = Box::new(Example::record_macro());
         vm.set("m", macro_bx);
@@ -102,6 +106,19 @@ mod tests {
         vm.exec("(define (mm &body b) (apply m b))").unwrap();
         vm.exec("(set-macro! q mm)").unwrap();
         vm.exec(r##"(define g (q :x 1 :y 2 :z "z"))"##).unwrap();
+        let mut x: Gc<Example> = vm.eval("g").unwrap();
+        let x = x.with(|x| x.clone());
+        let y: Example = vm.eval("g").unwrap();
+        assert!(vm.eval::<bool>("(void? g)").unwrap());
+        assert_eq!(x, Example { x: 1.0, y: 2.0, z: "z".to_string() });
+        assert_eq!(y, x);
+    }
+
+    #[test]
+    fn record_macro_auto() {
+        let mut vm = Spaik::new_no_core();
+        vm.record::<Example>();
+        vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
         let mut x: Gc<Example> = vm.eval("g").unwrap();
         let x = x.with(|x| x.clone());
         let y: Example = vm.eval("g").unwrap();

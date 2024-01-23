@@ -158,9 +158,13 @@ pub fn derive_record(item: TokenStream) -> TokenStream {
     let make_s = format!("<ζ>::make-{sp_name}");
     let macro_s = format!("<ξζ>::make-{sp_name}");
     let name_s = format!("{sp_name}");
+    let name_s_2 = name_s.clone();
     let out = quote! {
         impl #root::FieldAccess for #name {} // TODO
         impl #root::MethodCall for #name {} // TODO
+        impl #root::KebabTypeName for #name {
+            fn kebab_type_name() -> &'static str { #name_s_2 }
+        }
         impl TryFrom<#root::PV> for #name {
             type Error = #root::error::Error;
             fn try_from(pv: #root::_deps::PV) -> std::result::Result<Self, Self::Error> {

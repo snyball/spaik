@@ -88,7 +88,7 @@ pub use nuke::Gc;
 pub type Str = Arc<str>;
 pub use nuke::Userdata;
 pub use swym::SymRef as Sym;
-pub use records::{FieldAccess, MethodCall, Record};
+pub use records::{FieldAccess, MethodCall, Record, KebabTypeName};
 
 /** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)
@@ -110,6 +110,7 @@ pub mod _deps {
 use std::any::type_name;
 
 use std::fmt::Debug;
+use std::fmt::format;
 use std::sync::Arc;
 
 pub use crate::builtins::Builtin;
@@ -277,6 +278,21 @@ impl Spaik {
     #[inline]
     pub fn register(&mut self, func: impl Subr) {
         self.set(func.name(), func.into_subr());
+    }
+
+    /// Register a record (struct) with the vm
+    pub fn record<T: Record + Userdata + KebabTypeName>(&mut self) {
+        let macro_bx: Box<dyn Subr> = Box::new(T::record_macro());
+        self.set(T::record_macro().name(), macro_bx);
+        let make_bx: Box<dyn Subr> = Box::new(T::record_constructor());
+        self.set(T::record_constructor().name(), make_bx);
+        let macro_fn_name = format!("<ξ>::{}", T::kebab_type_name());
+        self.exec(dbg!(format!("(define ({} &body <ζ>::body) (apply {} <ζ>::body))",
+                          macro_fn_name, T::record_macro().name())))
+            .expect("error in auto-generated code");
+        let macro_name = T::kebab_type_name().as_sym(&mut self.vm);
+        let macro_fn_name = (&macro_fn_name[..]).as_sym(&mut self.vm);
+        self.vm.set_macro(macro_name, macro_fn_name);
     }
 
     #[inline]
