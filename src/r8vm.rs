@@ -249,7 +249,7 @@ mod sysfns {
 
     use fnv::FnvHashMap;
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided}};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(args: IT, sep: S) -> String
@@ -577,6 +577,17 @@ mod sysfns {
 
         fn panic(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             panic!("{}", tostring(*x))
+        }
+
+        fn is_void(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            let Ok(p) = x.ref_inner() else { return Ok(false.into()) };
+            unsafe {
+                if cast_mut::<Void>(p).is_some() { return Ok(true.into()) }
+                let Some(obj) = cast_mut::<crate::nuke::Object>(p) else {
+                    return Ok(false.into())
+                };
+                Ok((*obj).cast::<Voided>().is_ok().into())
+            }
         }
     }
 
@@ -1244,6 +1255,7 @@ impl R8VM {
         addfn!("sym-id", sym_id);
         addfn!("sys/set-macro", set_macro);
         addfn!("sys/set-macro-character", set_macro_character);
+        addfn!("void?", is_void);
 
         // Debug
         #[cfg(feature = "extra")] {

@@ -478,7 +478,7 @@ static VTABLES: OnceLock<Mutex<FnvHashMap<TypeId, &'static VTable>>> = OnceLock:
 static THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, ThawFn>>> = OnceLock::new();
 
 #[repr(C)]
-struct Voided;
+pub struct Voided;
 
 // static VT_VOID: &'static VTable = VTable {
 //     type_name: "void",

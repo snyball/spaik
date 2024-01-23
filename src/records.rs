@@ -63,13 +63,13 @@ pub fn into_init(vm: &mut R8VM,
 
 pub trait FieldAccess {
     fn field_access(&mut self, args: &[PV]) -> crate::Result<Option<PV>> {
-        err!(UnsupportedOperation, op: OpName::OpStr("field access"))
+        Ok(None)
     }
 }
 
 pub trait MethodCall {
     fn call_method(&mut self, args: &[PV]) -> crate::Result<Option<PV>> {
-        err!(UnsupportedOperation, op: OpName::OpStr("method call"))
+        Ok(None)
     }
 }
 
@@ -105,8 +105,8 @@ mod tests {
         let mut x: Gc<Example> = vm.eval("g").unwrap();
         let x = x.with(|x| x.clone());
         let y: Example = vm.eval("g").unwrap();
+        assert!(vm.eval::<bool>("(void? g)").unwrap());
         assert_eq!(x, Example { x: 1.0, y: 2.0, z: "z".to_string() });
         assert_eq!(y, x);
-        vm.exec("(println g)");
     }
 }
