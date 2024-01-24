@@ -620,6 +620,7 @@ mod tests {
         assert_eq!(u, Abc::Asdfgh);
     }
 
+    #[cfg(feature="math")]
     #[test]
     fn tuples() {
         #[derive(Debug, Serialize, Deserialize, PartialEq)]

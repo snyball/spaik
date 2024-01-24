@@ -163,7 +163,7 @@ pub enum PV {
     #[cfg(feature = "shipyard")]
     Id(shipyard::EntityId),
     #[cfg(not(feature = "shipyard"))]
-    Id(u64),
+    Id(usize),
     #[cfg(feature = "math")]
     Vec2(Vec2),
     #[cfg(feature = "math")]

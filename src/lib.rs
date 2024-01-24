@@ -77,6 +77,7 @@ pub(crate) mod scratch;
 /// SPAIK scratchpad for use in development of SPAIK itself.
 pub use scratch::main as scratch_main;
 pub(crate) mod stylize;
+#[cfg(feature = "derive")]
 pub mod records;
 
 #[cfg(feature = "derive")]
@@ -88,6 +89,7 @@ pub use nuke::Gc;
 pub type Str = Arc<str>;
 pub use nuke::Userdata;
 pub use swym::SymRef as Sym;
+#[cfg(feature = "derive")]
 pub use records::{FieldAccess, MethodCall, Record, KebabTypeName};
 
 /** This is NOT a public interface.
@@ -103,6 +105,7 @@ pub mod _deps {
     pub use crate::nuke::{NkAtom, PtrMap, Object, cast_mut_err};
     pub use crate::fmt::LispFmt;
     pub use crate::fmt::VisitSet;
+    #[cfg(feature = "derive")]
     pub use crate::records::into_init;
     pub use crate::error::{Error, Result};
 }
@@ -281,6 +284,7 @@ impl Spaik {
     }
 
     /// Register a record (struct) with the vm
+    #[cfg(feature = "derive")]
     pub fn record<T: Record + Userdata + KebabTypeName>(&mut self) {
         let macro_bx: Box<dyn Subr> = Box::new(T::record_macro());
         self.set(T::record_macro().name(), macro_bx);

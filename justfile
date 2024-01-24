@@ -8,6 +8,7 @@ install-tools:
     command -v cargo-hack &>/dev/null || cargo install cargo-hack
     rustup component add miri
     rustup target add wasm32-unknown-unknown
+    rustup target add wasm32-wasi
     rustup target add x86_64-unknown-linux-musl
     rustup target add x86_64-unknown-linux-gnu
 
@@ -16,7 +17,7 @@ test:
     cargo test --no-default-features
 
 test-wasm:
-    cargo test --target wasm32-wasi -- --nocapture
+    cargo test --target wasm32-wasi --no-default-features --features serde -- --nocapture
 
 build-wasm:
     cargo +nightly build --profile wasm \
