@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, DataEnum, ItemTrait};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, ItemTrait};
 use convert_case::{Case, Casing};
 
 fn crate_root() -> proc_macro2::TokenStream {
@@ -232,15 +232,6 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
-    let data = input.data.clone();
-    let fields = match data {
-        Data::Struct(DataStruct {
-            fields: syn::Fields::Named(FieldsNamed { named, .. }), ..
-        }) => named,
-        _ => unimplemented!()
-    }.into_iter();
-    let field_names = fields.clone().map(|f| f.ident.clone().expect("Identifier"));
-    let field_kws = fields.map(|f| format!(":{}", f.ident.expect("Identifier")));
 
     let out = quote! {
         impl #root::_deps::Traceable for #name {
@@ -272,7 +263,6 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn export(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    use convert_case::{Case, Casing};
     let root = crate_root();
     let input = parse_macro_input!(item as ItemImpl);
     let name = input.self_ty.clone();

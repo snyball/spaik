@@ -129,10 +129,12 @@ macro_rules! fissile_types {
             $(|x| { unsafe { drop_in_place(x as *mut $path) } }),+
         ];
 
+        #[allow(dead_code)]
         const ALIGNMENTS: [usize; count_args!($($t),+)] = [
             $(align_of::<$path>()),+
         ];
 
+        #[allow(dead_code)]
         const SIZES: [usize; count_args!($($t),+)] = [
             $(size_of::<$path>()),+
         ];
