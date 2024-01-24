@@ -490,7 +490,7 @@ impl TypePath {
 
 static VTABLES: OnceLock<Mutex<FnvHashMap<TypeId, &'static VTable>>> = OnceLock::new();
 static THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, ThawFn>>> = OnceLock::new();
-#[cfg(any(test, feature = "cleanup-vtables"))]
+#[cfg(all(not(miri), any(test, feature = "cleanup-vtables")))]
 pub static NUM_VMS: Mutex<i32> = Mutex::new(0);
 
 pub fn get_vtables() -> &'static Mutex<FnvHashMap<TypeId, &'static VTable>> {
