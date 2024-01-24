@@ -24,7 +24,7 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
-    - name: Run tests on wasm
+    - name: Run tests on WebAssembly
       run: |
         curl https://wasmtime.dev/install.sh -sSf | bash
         just test-wasm
@@ -34,7 +34,11 @@ jobs:
         rustup toolchain install nightly --component miri
         rustup override set nightly
         cargo miri setup
-    - name: Test with Miri
-      run: cargo miri run --bin lisp-test
+    - name: Run tests on Miri
+      run: cargo miri test
+      env:
+        MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows"
+    - name: Run tests on Miri 32-Bit
+      run: cargo miri test --target i686-unknown-linux-gnu
       env:
         MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows"
