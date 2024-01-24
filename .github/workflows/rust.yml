@@ -18,7 +18,7 @@ jobs:
     - uses: actions/checkout@v3
     - name: Setup
       run: |
-        snap install --edge just --classic
+        sudo snap install --edge just --classic
     - name: Build
       run: cargo build --verbose
     - name: Run tests
