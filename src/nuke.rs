@@ -498,14 +498,14 @@ pub fn get_vtables() -> &'static Mutex<FnvHashMap<TypeId, &'static VTable>> {
 }
 
 pub fn vm_begin() {
-    #[cfg(any(test, feature = "cleanup-vtables"))] {
+    #[cfg(all(not(miri), any(test, feature = "cleanup-vtables")))] {
         let mut num = NUM_VMS.lock().unwrap();
         *num = *num + 1;
     }
 }
 
 pub fn vm_end() {
-    #[cfg(any(test, feature = "cleanup-vtables"))] {
+    #[cfg(all(not(miri), any(test, feature = "cleanup-vtables")))] {
         let mut num_vms = NUM_VMS.lock().unwrap();
         *num_vms = *num_vms - 1;
         if *num_vms > 0 { return }
