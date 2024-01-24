@@ -491,6 +491,19 @@ impl TypePath {
 static VTABLES: OnceLock<Mutex<FnvHashMap<TypeId, &'static VTable>>> = OnceLock::new();
 static THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, ThawFn>>> = OnceLock::new();
 
+pub fn get_vtables() -> &'static Mutex<FnvHashMap<TypeId, &'static VTable>> {
+    VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()))
+}
+
+#[allow(dead_code)]
+pub fn clear_vtables() {
+    let mut vts = get_vtables().lock().unwrap();
+    for (_id, vt) in vts.drain() {
+        unsafe { drop(Box::from_raw(vt as *const VTable as *mut VTable)) }
+    }
+    vts.shrink_to_fit();
+}
+
 #[repr(C)]
 pub struct Voided;
 
@@ -522,7 +535,7 @@ impl Object {
                 Ok(Object::new(obj))
             });
         }
-        let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let vtables = get_vtables();
         match vtables.lock().unwrap().entry(TypeId::of::<T>()) {
             Entry::Occupied(vp) => vp.get(),
             Entry::Vacant(entry) => {
@@ -618,7 +631,7 @@ impl Object {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
         let type_id = TypeId::of::<&mut T>();
-        let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let vtables = get_vtables();
         let vt = match vtables.lock().unwrap().entry(type_id) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
@@ -653,7 +666,7 @@ impl Object {
     }
 
     pub fn void_vtable() -> &'static VTable {
-        let vtables = VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let vtables = get_vtables();
         match vtables.lock().unwrap().entry(TypeId::of::<Voided>()) {
             Entry::Occupied(vp) => vp.get(),
             Entry::Vacant(entry) => {
