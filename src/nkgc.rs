@@ -1414,13 +1414,13 @@ impl Arena {
         let self_ptr = self as *mut Arena;
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let (head, mut cell) = self.alloc::<Cons>();
-        let orig_cell = cell;
+        let (mut head, mut cell) = self.alloc::<Cons>();
+        let orig_head = head;
         for item in self.stack[idx..top - 1 - dot as usize].iter() {
-            let (head, next) = unsafe { (*self_ptr).alloc::<Cons>() };
-            unsafe {ptr::write(cell, Cons::new(*item, PV::Ref(head)))}
-            self.tags.insert(NkAtom::make_raw_ref(cell),
-                             srcs.next().expect("Not enough sources for list"));
+            let (nhead, next) = unsafe { (*self_ptr).alloc::<Cons>() };
+            unsafe {ptr::write(cell, Cons::new(*item, PV::Ref(nhead)))}
+            self.tags.insert(head, srcs.next().expect("Not enough sources for list"));
+            head = nhead;
             cell = next;
         }
         unsafe {
@@ -1431,7 +1431,7 @@ impl Arena {
             }))
         }
         self.stack.truncate(idx);
-        self.stack.push(PV::Ref(head));
+        self.stack.push(PV::Ref(orig_head));
     }
 
     pub fn list_dot(&mut self,

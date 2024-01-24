@@ -703,6 +703,7 @@ mod tests {
         assert_eq!(vm.eval("(f (vec4 1 2 3 4))"), Ok(glam::vec4(3.0, 6.0, 9.0, 12.0)));
     }
 
+    #[cfg(feature = "math")]
     #[test]
     fn call_with_vec4() {
         logging::setup_logging();
