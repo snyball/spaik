@@ -1,11 +1,11 @@
-use std::any::{Any, TypeId};
+
 
 use spaik_proc_macros::Record;
 
 use crate::error::OpName;
-use crate::nuke::Object;
+
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
-use crate::{Result, Fissile, Userdata, Error, FromLisp, nuke};
+use crate::{Result, Fissile, Userdata, Error};
 
 #[derive(Debug, Record, Fissile, Clone, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
@@ -62,13 +62,13 @@ pub fn into_init(vm: &mut R8VM,
 }
 
 pub trait FieldAccess {
-    fn field_access(&mut self, args: &[PV]) -> crate::Result<Option<PV>> {
+    fn field_access(&mut self, _args: &[PV]) -> crate::Result<Option<PV>> {
         Ok(None)
     }
 }
 
 pub trait MethodCall {
-    fn call_method(&mut self, args: &[PV]) -> crate::Result<Option<PV>> {
+    fn call_method(&mut self, _args: &[PV]) -> crate::Result<Option<PV>> {
         Ok(None)
     }
 }
@@ -78,7 +78,7 @@ pub trait KebabTypeName {
 }
 
 unsafe impl<T> Subr for T where T: FieldAccess + MethodCall + Send + KebabTypeName + 'static {
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> std::result::Result<PV, Error> {
+    fn call(&mut self, _vm: &mut R8VM, _args: &[PV]) -> std::result::Result<PV, Error> {
         todo!()
     }
 
@@ -134,7 +134,7 @@ mod tests {
         let mut vm = Spaik::new_no_core();
         vm.record::<Example>();
         vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
-        let gx: Gc<Example> = vm.eval("g").unwrap();
+        let _gx: Gc<Example> = vm.eval("g").unwrap();
         assert!(matches!(vm.eval::<Example>("g").map_err(|e| e.kind().clone()),
                          Err(crate::error::ErrorKind::CannotMoveSharedReference { nref: 2, .. }))) ;
     }

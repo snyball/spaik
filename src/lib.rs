@@ -114,7 +114,7 @@ pub mod _deps {
 use std::any::type_name;
 
 use std::fmt::Debug;
-use std::fmt::format;
+
 use std::sync::Arc;
 
 pub use crate::builtins::Builtin;

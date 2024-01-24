@@ -564,7 +564,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         CannotMoveSharedReference { vt, nref} =>
             write!(f, "Borrow Check Error: cannot move out of shared reference to {}, {} other reference{} exist",
                    vt.type_name, nref - 1, plurs(nref - 1))?,
-        RecordMissingFields { fields, record } =>
+        RecordMissingFields { fields: _, record } =>
             write!(f, "Missing fields: Record type {record} initializer is missing fields")?,
         NoSuchMethod { strucc, method } =>
             write!(f, "No Such Method: ({strucc} {method})")?,
