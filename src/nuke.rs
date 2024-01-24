@@ -129,11 +129,11 @@ macro_rules! fissile_types {
             $(|x| { unsafe { drop_in_place(x as *mut $path) } }),+
         ];
 
-        const ALIGNMENT: [usize; count_args!($($t),+)] = [
+        const ALIGNMENTS: [usize; count_args!($($t),+)] = [
             $(align_of::<$path>()),+
         ];
 
-        const SIZE: [usize; count_args!($($t),+)] = [
+        const SIZES: [usize; count_args!($($t),+)] = [
             $(size_of::<$path>()),+
         ];
 
@@ -1033,9 +1033,9 @@ impl NkAtom {
     #[allow(clippy::cast_ptr_alignment)]
     #[inline]
     pub fn make_raw_ref<T: Fissile>(p: *mut T) -> *mut NkAtom {
-        const DELTA: isize = -(mem::size_of::<NkAtom>() as isize);
+        assert!(mem::size_of::<NkAtom>() <= ALIGNMENT);
         unsafe {
-            (p as *mut u8).offset(DELTA) as *mut NkAtom
+            (p as *mut u8).offset(-(ALIGNMENT as isize)) as *mut NkAtom
         }
     }
 
@@ -1072,14 +1072,14 @@ impl NkAtom {
 pub unsafe fn fastcast<T>(atom: *const NkAtom) -> *const T {
     const DELTA: isize = mem::size_of::<NkAtom>() as isize;
     let p = (atom as *const u8).offset(DELTA);
-    align(p, align_of::<T>()) as *mut T
+    align(p, ALIGNMENT) as *mut T
 }
 
 #[inline]
 pub unsafe fn fastcast_mut<T>(atom: *mut NkAtom) -> *mut T {
     const DELTA: isize = mem::size_of::<NkAtom>() as isize;
     let p = (atom as *mut u8).offset(DELTA);
-    align_mut(p, align_of::<T>()) as *mut T
+    align_mut(p, ALIGNMENT) as *mut T
 }
 
 #[inline]
@@ -1191,6 +1191,8 @@ pub struct Nuke {
     start_time: SystemTime,
 }
 
+const ALIGNMENT: usize = 16;
+
 /// Modern computers really don't like it if you put a pointer in a memory
 /// address that is not a multiple of the word size. In other words, the CPU
 /// expects that ptr % sizeof(ptr) == 0, where sizeof(ptr) will be 4, and 8
@@ -1258,7 +1260,7 @@ impl Nuke {
         assert!(sz >= 128, "Nuke too small");
 
         let layout = unsafe {
-            Layout::from_size_align_unchecked(sz, align_of::<NkAtom>())
+            Layout::from_size_align_unchecked(sz, ALIGNMENT)
         };
 
         let mut nk = Nuke {
@@ -1307,7 +1309,7 @@ impl Nuke {
                 self.reloc.push(node, npos);
                 memmove(npos, node, sz);
             }
-            start = align_mut(start.add(sz), align_of::<NkAtom>());
+            start = align_mut(start.add(sz), ALIGNMENT);
             if next_node.is_null() {
                 break;
             } else {
@@ -1370,7 +1372,7 @@ impl Nuke {
             }
 
             (*npos).set_color(Color::White);
-            start = align_mut(start.add(sz), align_of::<NkAtom>());
+            start = align_mut(start.add(sz), ALIGNMENT);
 
             if next_node.is_null() {
                 (*npos).next = ptr::null_mut();
@@ -1392,8 +1394,7 @@ impl Nuke {
         log::trace!("growing heap ...");
 
         let new_sz = (self.sz << 1).max(self.sz + fit);
-        let layout = Layout::from_size_align_unchecked(self.sz,
-                                                       align_of::<NkAtom>());
+        let layout = Layout::from_size_align_unchecked(self.sz, ALIGNMENT);
         let old_mem = self.mem as usize;
         let mem = realloc(self.mem, layout, new_sz);
         if mem.is_null() {
@@ -1445,7 +1446,7 @@ impl Nuke {
                 nk.reloc.push(node, mem);
                 new_node = mem as *mut NkAtom;
                 let nmem = mem.add(sz);
-                mem = align_mut(nmem, align_of::<NkAtom>());
+                mem = align_mut(nmem, ALIGNMENT);
                 (*new_node).next = mem as *mut NkAtom;
                 node = (*node).next;
             }
@@ -1495,7 +1496,7 @@ impl Nuke {
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut NkAtom, *mut T, Option<RelocateToken>) {
         log::trace!("allocating object {:?} ...", T::type_of());
 
-        let max_padding = align_of::<T>() - 1;
+        let max_padding = ALIGNMENT - 1;
         let max_sz = size_of::<T>() + size_of::<NkAtom>() + max_padding;
         let ret = if self.will_overflow(max_sz) {
             self.make_room(max_sz)
@@ -1503,14 +1504,12 @@ impl Nuke {
             None
         };
 
-        let cur = align_mut(self.free as *mut NkAtom,
-                            align_of::<NkAtom>());
+        let cur = align_mut(self.free as *mut NkAtom, ALIGNMENT);
         let cur_diff = cur as usize - self.free as usize;
-        assert_eq!(cur_diff, 0); // FIXME: Remove me later
         self.used += cur_diff;
 
         let p = (cur as *mut u8).add(mem::size_of::<NkAtom>()) as *mut T;
-        let pa = align_mut(p, align_of::<T>());
+        let pa = align_mut(p, ALIGNMENT);
         let pdiff = pa as usize - p as usize;
         let full_sz = mem::size_of::<T>()
                     + mem::size_of::<NkAtom>()
@@ -1537,7 +1536,7 @@ impl Nuke {
 
     #[inline]
     pub fn size_of<T: Fissile>() -> usize {
-        mem::size_of::<T>() + mem::size_of::<NkAtom>() + mem::align_of::<T>() - 1
+        mem::size_of::<T>() + mem::size_of::<NkAtom>() + ALIGNMENT - 1
     }
 
     pub fn will_overflow(&mut self, sz: usize) -> bool {
@@ -1601,8 +1600,7 @@ impl Drop for Nuke {
     fn drop(&mut self) {
         unsafe {
             self.destroy_the_world();
-            let layout = Layout::from_size_align_unchecked(self.sz,
-                                                           align_of::<NkAtom>());
+            let layout = Layout::from_size_align_unchecked(self.sz, ALIGNMENT);
             dealloc(self.mem, layout);
         }
     }
