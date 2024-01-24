@@ -1,5 +1,3 @@
-
-
 use spaik_proc_macros::Record;
 
 use crate::error::OpName;

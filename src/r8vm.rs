@@ -12,7 +12,7 @@ use crate::{
     comp::SourceList,
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
     fmt::LispFmt,
-    nuke::*,
+    nuke::{*, self},
     nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int},
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},

@@ -490,13 +490,40 @@ impl TypePath {
 
 static VTABLES: OnceLock<Mutex<FnvHashMap<TypeId, &'static VTable>>> = OnceLock::new();
 static THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, ThawFn>>> = OnceLock::new();
+#[cfg(any(test, feature = "cleanup-vtables"))]
+pub static NUM_VMS: Mutex<i32> = Mutex::new(0);
 
 pub fn get_vtables() -> &'static Mutex<FnvHashMap<TypeId, &'static VTable>> {
     VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()))
 }
 
+pub fn vm_begin() {
+    #[cfg(any(test, feature = "cleanup-vtables"))] {
+        let mut num = NUM_VMS.lock().unwrap();
+        *num = *num + 1;
+    }
+}
+
+pub fn vm_end() {
+    #[cfg(any(test, feature = "cleanup-vtables"))] {
+        let mut num_vms = NUM_VMS.lock().unwrap();
+        *num_vms = *num_vms - 1;
+        if *num_vms > 0 { return }
+        log::info!("clearing vtables ...");
+        let mut vts = get_vtables().lock().unwrap();
+        for (_id, vt) in vts.drain() {
+            unsafe { drop(Box::from_raw(vt as *const VTable as *mut VTable)) }
+        }
+        vts.shrink_to_fit();
+    }
+}
+
+/// # Safety
+///
+/// The only safe place to run this function is before any VMs are constructed,
+/// and after all VMs have been destroyed.
 #[allow(dead_code)]
-pub fn clear_vtables() {
+pub unsafe fn clear_vtables() {
     let mut vts = get_vtables().lock().unwrap();
     for (_id, vt) in vts.drain() {
         unsafe { drop(Box::from_raw(vt as *const VTable as *mut VTable)) }
@@ -1271,6 +1298,7 @@ impl Drop for RelocateToken {
 impl Nuke {
     pub fn new(sz: usize) -> Nuke {
         log::trace!("new heap ...");
+        vm_begin();
 
         assert!(sz >= 128, "Nuke too small");
 
@@ -1615,6 +1643,7 @@ impl Drop for Nuke {
             self.destroy_the_world();
             let layout = Layout::from_size_align_unchecked(self.sz, ALIGNMENT);
             dealloc(self.mem, layout);
+            vm_end();
         }
     }
 }

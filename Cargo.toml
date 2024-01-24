@@ -35,6 +35,7 @@ freeze = ["bincode", "serde"]
 no-threading = []
 serde = ["dep:serde"]
 shipyard = ["dep:shipyard"]
+cleanup-vtables = []
 
 [dependencies]
 fnv = "1.0"
