@@ -2,6 +2,6 @@
 
 WASMTIME=wasmtime
 if ! command -v "$WASMTIME"; then
-    WASMTIME="$HOME/.wasm/bin/wasmtime"
+    WASMTIME="$HOME/.wasmtime/bin/wasmtime"
 fi
 exec "$WASMTIME" --dir . "$@"
