@@ -16,7 +16,7 @@ test:
     cargo test --no-default-features
 
 test-wasm:
-    cargo test --target wasm32-wasi
+    cargo test --target wasm32-wasi -- --nocapture
 
 build-wasm:
     cargo +nightly build --profile wasm \
