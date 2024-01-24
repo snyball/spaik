@@ -497,6 +497,10 @@ pub fn get_vtables() -> &'static Mutex<FnvHashMap<TypeId, &'static VTable>> {
     VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()))
 }
 
+pub fn get_thaw_fns() -> &'static Mutex<FnvHashMap<TypePath, ThawFn>> {
+    THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()))
+}
+
 pub fn vm_begin() {
     #[cfg(all(not(miri), any(test, feature = "cleanup-vtables")))] {
         let mut num = NUM_VMS.lock().unwrap();
@@ -515,6 +519,9 @@ pub fn vm_end() {
             unsafe { drop(Box::from_raw(vt as *const VTable as *mut VTable)) }
         }
         vts.shrink_to_fit();
+        let mut thaw_fns = get_thaw_fns().lock().unwrap();
+        thaw_fns.drain().for_each(drop);
+        thaw_fns.shrink_to_fit();
     }
 }
 
