@@ -1509,8 +1509,6 @@ impl Nuke {
     }
 
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut NkAtom, *mut T, Option<RelocateToken>) {
-        log::trace!("allocating object {:?} ...", T::type_of());
-
         let max_padding = ALIGNMENT - 1;
         let max_sz = size_of::<T>() + size_of::<NkAtom>() + max_padding;
         let ret = if self.will_overflow(max_sz) {
