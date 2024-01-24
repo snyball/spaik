@@ -96,7 +96,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        visitor.visit_bool(self.input.try_into()?)
+        visitor.visit_bool(self.input.into())
     }
 
     // The `parse_signed` function is generic over the integer type `T` so here

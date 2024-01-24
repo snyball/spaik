@@ -2043,7 +2043,7 @@ impl R8VM {
                 self.mem.push(res?);
                 Ok(self.ret_to(dip))
             }
-            _ => return err()
+            _ => err()
         }
     }
 

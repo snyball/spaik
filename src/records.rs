@@ -29,8 +29,8 @@ pub fn into_init(vm: &mut R8VM,
                  out: &mut [Option<PV>]) -> Result<PV>
 {
     'outer: for pair in args.chunks(2) {
-        match pair {
-            &[k, v] => for (i, key) in keys.iter().enumerate() {
+        match *pair {
+            [k, v] => for (i, key) in keys.iter().enumerate() {
                 if key.eq_pv(k) {
                     if out[i].is_some() {
                         return err!(DuplicateField, record: name.to_string(),
@@ -41,7 +41,7 @@ pub fn into_init(vm: &mut R8VM,
                 }
             }
             // FIXME: Better error message
-            &[_] => return err!(UnclosedDelimiter, open: ":key"),
+            [_] => return err!(UnclosedDelimiter, open: ":key"),
             _ => unreachable!(),
         }
         return err!(NoSuchField, record: name.to_string(), field: pair[0].to_string())
