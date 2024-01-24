@@ -91,6 +91,7 @@ pub use nuke::Userdata;
 pub use swym::SymRef as Sym;
 #[cfg(feature = "derive")]
 pub use records::{FieldAccess, MethodCall, Record, KebabTypeName};
+pub mod logging;
 
 /** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)

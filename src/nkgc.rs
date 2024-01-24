@@ -1386,12 +1386,11 @@ impl Arena {
         let self_ptr = self as *mut Arena;
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let mut cell = self.alloc::<Cons>();
-        let orig_cell = cell;
+        let (head, mut cell) = self.alloc::<Cons>();
         for item in self.stack[idx..top - 1].iter() {
-            let next = unsafe { (*self_ptr).alloc::<Cons>() };
+            let (head, next) = unsafe { (*self_ptr).alloc::<Cons>() };
             unsafe {
-                ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))
+                ptr::write(cell, Cons::new(*item, PV::Ref(head)))
             }
             cell = next;
         }
@@ -1399,7 +1398,7 @@ impl Arena {
             ptr::write(cell, Cons::new(self.stack[top - 1], PV::Nil))
         }
         self.stack.truncate(idx);
-        self.stack.push(NkAtom::make_ref(orig_cell));
+        self.stack.push(PV::Ref(head));
     }
 
     pub fn list_dot_srcs(&mut self,
@@ -1415,11 +1414,11 @@ impl Arena {
         let self_ptr = self as *mut Arena;
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let mut cell = self.alloc::<Cons>();
+        let (head, mut cell) = self.alloc::<Cons>();
         let orig_cell = cell;
         for item in self.stack[idx..top - 1 - dot as usize].iter() {
-            let next = unsafe { (*self_ptr).alloc::<Cons>() };
-            unsafe {ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))}
+            let (head, next) = unsafe { (*self_ptr).alloc::<Cons>() };
+            unsafe {ptr::write(cell, Cons::new(*item, PV::Ref(head)))}
             self.tags.insert(NkAtom::make_raw_ref(cell),
                              srcs.next().expect("Not enough sources for list"));
             cell = next;
@@ -1432,7 +1431,7 @@ impl Arena {
             }))
         }
         self.stack.truncate(idx);
-        self.stack.push(NkAtom::make_ref(orig_cell));
+        self.stack.push(PV::Ref(head));
     }
 
     pub fn list_dot(&mut self,
@@ -1447,11 +1446,11 @@ impl Arena {
         let self_ptr = self as *mut Arena;
         let top = self.stack.len();
         let idx = top - (n as usize);
-        let mut cell = unsafe { (*self_ptr).alloc::<Cons>() };
+        let (head, mut cell) = unsafe { (*self_ptr).alloc::<Cons>() };
         let orig_cell = cell;
         for item in self.stack[idx..top - 1 - dot as usize].iter() {
-            let next = unsafe { (*self_ptr).alloc::<Cons>() };
-            unsafe {ptr::write(cell, Cons::new(*item, NkAtom::make_ref(next)))}
+            let (head, next) = unsafe { (*self_ptr).alloc::<Cons>() };
+            unsafe {ptr::write(cell, Cons::new(*item, PV::Ref(head)))}
             cell = next;
         }
         unsafe {
@@ -1462,7 +1461,7 @@ impl Arena {
             }))
         }
         self.stack.truncate(idx);
-        self.stack.push(NkAtom::make_ref(orig_cell));
+        self.stack.push(PV::Ref(head));
     }
 
     pub fn make_extref(&mut self, v: PV) -> SPV {
@@ -1549,12 +1548,12 @@ impl Arena {
     pub fn cons(&mut self) {
         let top = self.stack.len();
         let args = &self.stack[top - 2..];
-        let mem = self.put(Cons {
+        let mem = self.put_pv(Cons {
             car: args[0],
             cdr: args[1],
         });
         self.stack.truncate(top - 2);
-        self.stack.push(NkAtom::make_ref(mem));
+        self.stack.push(mem);
     }
 
     #[inline]
@@ -1633,42 +1632,42 @@ impl Arena {
     }
 
     pub fn put_pv<T>(&mut self, v: T) -> PV where T: Fissile {
-        let p = self.put(v);
-        NkAtom::make_ref(p)
+        let (hp, _) = self.put(v);
+        PV::Ref(hp)
     }
 
-    pub fn put<T>(&mut self, v: T) -> *mut T where T: Fissile {
+    pub fn put<T>(&mut self, v: T) -> (*mut NkAtom, *mut T) where T: Fissile {
         self.state = match self.state {
             GCState::Sleep(bytes) => GCState::Sleep(bytes - Nuke::size_of::<T>() as i32),
             x => x
         };
         unsafe {
-            let (ptr, grow) = self.nuke.alloc::<T>();
+            let (headp, ptr, grow) = self.nuke.alloc::<T>();
             ptr::write(ptr, v);
             if let Some(tok) = grow {
                 self.update_ptrs(tok);
             }
-            ptr
+            (headp, ptr)
         }
     }
 
-    fn alloc<T: Fissile>(&mut self) -> *mut T {
+    fn alloc<T: Fissile>(&mut self) -> (*mut NkAtom, *mut T) {
         self.state = match self.state {
             GCState::Sleep(bytes) => GCState::Sleep(bytes - Nuke::size_of::<T>() as i32),
             x => x
         };
         unsafe {
-            let (ptr, grow) = self.nuke.alloc::<T>();
+            let (headp, ptr, grow) = self.nuke.alloc::<T>();
             if let Some(tok) = grow {
                 self.update_ptrs(tok);
             }
-            ptr
+            (headp, ptr)
         }
     }
 
     pub fn push_new<T: Fissile>(&mut self, v: T) {
-        let ptr = self.put(v);
-        self.stack.push(NkAtom::make_ref(ptr));
+        let pv = self.put_pv(v);
+        self.stack.push(pv);
     }
 
     #[inline]

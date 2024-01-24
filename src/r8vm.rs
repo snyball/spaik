@@ -2208,8 +2208,8 @@ impl R8VM {
                     let vec = self.mem.stack
                                       .drain(len-(n as usize)..)
                                       .collect::<Vec<_>>();
-                    let ptr = self.mem.put(vec);
-                    self.mem.push(NkAtom::make_ref(ptr));
+                    let ptr = self.mem.put_pv(vec);
+                    self.mem.push(ptr);
                 }
                 VPUSH() => {
                     let vec = self.mem.pop()?;

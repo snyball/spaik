@@ -129,6 +129,14 @@ macro_rules! fissile_types {
             $(|x| { unsafe { drop_in_place(x as *mut $path) } }),+
         ];
 
+        const ALIGNMENT: [usize; count_args!($($t),+)] = [
+            $(align_of::<$path>()),+
+        ];
+
+        const SIZE: [usize; count_args!($($t),+)] = [
+            $(size_of::<$path>()),+
+        ];
+
         #[inline]
         pub fn update_ptr_atom(atom: *mut NkAtom, reloc: &PtrMap) {
             with_atom_mut!(atom, {(*atom).update_ptrs(reloc)},
@@ -1105,8 +1113,8 @@ pub unsafe fn destroy_atom(atom: *mut NkAtom) {
 pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
     macro_rules! clone {
         ($x:expr) => {{
-            let p = mem.put(unsafe { (*$x).clone() });
-            NkAtom::make_raw_ref(p)
+            let (rf, _) = mem.put(unsafe { (*$x).clone() });
+            rf
         }};
     }
     match to_fissile_ref(atom) {
@@ -1115,8 +1123,8 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
             unsafe {
                 let car = (*cns).car.deep_clone(mem);
                 let cdr = (*cns).cdr.deep_clone(mem);
-                let p = mem.put(Cons { car, cdr });
-                NkAtom::make_raw_ref(p)
+                let (rf, _) = mem.put(Cons { car, cdr });
+                rf
             }
         },
         NkRef::Intr(intr) => {
@@ -1125,7 +1133,8 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
                     op: (*intr).op,
                     arg: (*intr).arg.deep_clone(mem),
                 };
-                NkAtom::make_raw_ref(mem.put(intr))
+                let (rf, _) = mem.put(intr);
+                rf
             }
         }
         NkRef::Lambda(_l) => todo!(),
@@ -1133,12 +1142,14 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         NkRef::PV(_p) => todo!(),
         NkRef::Vector(xs) => unsafe {
             let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
-            NkAtom::make_raw_ref(mem.put(nxs))
+            let (rf, _) = mem.put(nxs);
+            rf
         },
         NkRef::Table(hm) => unsafe {
             let nxs = (*hm).iter().map(|(k, v)| (*k, v.deep_clone(mem)))
                                   .collect::<FnvHashMap<_, _>>();
-            NkAtom::make_raw_ref(mem.put(nxs))
+            let (rf, _) = mem.put(nxs);
+            rf
         },
         #[cfg(feature = "math")]
         NkRef::Vec4(v4) => clone!(v4),
@@ -1232,6 +1243,8 @@ impl Drop for RelocateToken {
 
 impl Nuke {
     pub fn new(sz: usize) -> Nuke {
+        log::trace!("new heap ...");
+
         assert!(sz >= 128, "Nuke too small");
 
         let layout = unsafe {
@@ -1270,6 +1283,8 @@ impl Nuke {
     }
 
     pub unsafe fn compact(&mut self) -> RelocateToken {
+        log::trace!("compacting heap ...");
+
         let mut node = self.fst_mut();
         let mut npos;
         let mut start = node as *mut u8;
@@ -1298,6 +1313,8 @@ impl Nuke {
     }
 
     pub unsafe fn destroy_the_world(&mut self) {
+        log::trace!("☢️💥");
+
         for atom in self.iter_mut() {
             unsafe { destroy_atom(atom) }
         }
@@ -1309,6 +1326,8 @@ impl Nuke {
     }
 
     pub unsafe fn sweep_compact(&mut self) -> RelocateToken {
+        log::trace!("sweep-compacting heap ...");
+
         let mut node = self.fst_mut();
         let mut npos;
         let mut start = node as *mut u8;
@@ -1360,6 +1379,8 @@ impl Nuke {
     }
 
     pub unsafe fn grow_realloc(&mut self, fit: usize) -> Option<RelocateToken> {
+        log::trace!("growing heap ...");
+
         let new_sz = (self.sz << 1).max(self.sz + fit);
         let layout = Layout::from_size_align_unchecked(self.sz,
                                                        align_of::<NkAtom>());
@@ -1433,6 +1454,8 @@ impl Nuke {
     }
 
     pub unsafe fn make_room(&mut self, fit: usize) -> Option<RelocateToken> {
+        log::trace!("making room in heap ...");
+
         if self.used + fit > self.sz {
             self.grow_realloc(fit)
         } else {
@@ -1459,7 +1482,9 @@ impl Nuke {
         }
     }
 
-    pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut T, Option<RelocateToken>) {
+    pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut NkAtom, *mut T, Option<RelocateToken>) {
+        log::trace!("allocating object {:?} ...", T::type_of());
+
         let max_padding = align_of::<T>() - 1;
         let max_sz = size_of::<T>() + size_of::<NkAtom>() + max_padding;
         let ret = if self.will_overflow(max_sz) {
@@ -1497,7 +1522,7 @@ impl Nuke {
 
         (*last).next = cur;
 
-        (pa, ret)
+        (cur, pa, ret)
     }
 
     #[inline]

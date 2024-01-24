@@ -567,8 +567,7 @@ pub trait Lispify<A, R, N> {
 
 impl<T> IntoLisp for &mut T where T: Userdata + Subr {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
-        let p = mem.put(Object::from_ref(self));
-        let rf = NkAtom::make_raw_ref(p);
+        let (rf, p) = mem.put(Object::from_ref(self));
         mem.push_borrow(rf);
         Ok(PV::Ref(rf))
     }
@@ -596,8 +595,7 @@ impl LispFmt for Box<dyn Subr> {
 
 impl IntoLisp for Box<dyn Subr> {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
-        let p = mem.put(self);
-        Ok(NkAtom::make_ref(p))
+        Ok(mem.put_pv(self))
     }
 }
 
@@ -640,7 +638,7 @@ mod tests {
     #[cfg(feature = "derive")]
     use spaik_proc_macros::{Fissile, export};
 
-    use crate::{Spaik, PList};
+    use crate::{Spaik, PList, logging};
 
     use serde::{Serialize, Deserialize};
 
@@ -701,6 +699,15 @@ mod tests {
         assert_eq!(vm.eval("(f (vec2 1 2))"), Ok(glam::vec2(3.0, 6.0)));
         vm.set("f", |v: glam::Vec3| { 3.0 * v });
         assert_eq!(vm.eval("(f (vec3 1 2 3))"), Ok(glam::vec3(3.0, 6.0, 9.0)));
+        vm.set("f", |v: glam::Vec4| { 3.0 * v });
+        assert_eq!(vm.eval("(f (vec4 1 2 3 4))"), Ok(glam::vec4(3.0, 6.0, 9.0, 12.0)));
+    }
+
+    #[test]
+    fn call_with_vec4() {
+        logging::setup_logging();
+        log::trace!("Making VM ...");
+        let mut vm = Spaik::new_no_core();
         vm.set("f", |v: glam::Vec4| { 3.0 * v });
         assert_eq!(vm.eval("(f (vec4 1 2 3 4))"), Ok(glam::vec4(3.0, 6.0, 9.0, 12.0)));
     }
