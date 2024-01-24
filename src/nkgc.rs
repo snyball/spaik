@@ -782,10 +782,10 @@ impl PV {
     cmp_op!(lte, Lte, Less, Equal);
     cmp_op!(gte, Gte, Greater, Equal);
 
-    pub fn deep_clone(&self, mem: &mut Arena) -> PV {
+    pub fn deep_clone(self, mem: &mut Arena) -> PV {
         match self {
-            PV::Ref(p) => PV::Ref(clone_atom(*p, mem)),
-            x => *x,
+            PV::Ref(p) => PV::Ref(clone_atom(p, mem)),
+            x => x,
         }
     }
 }
