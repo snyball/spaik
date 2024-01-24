@@ -292,10 +292,10 @@ impl Iterator for Iter {
 
 /// Rust doesn't expose its vtables via any stable API, so we need to recreate
 /// what we need for `Object` here.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct VTable {
     /// Result of `Any::type_name`
-    type_name: &'static str,
+    pub type_name: &'static str,
     /// Get reference count
     get_rc: unsafe fn(*const u8) -> u32,
     /// `Traceable::trace`
@@ -365,6 +365,10 @@ impl GcRc {
 
     pub fn is_owned(&self) -> bool {
         self.0.load(atomic::Ordering::SeqCst) == 1
+    }
+
+    pub fn num_refs(&self) -> u32 {
+        self.0.load(atomic::Ordering::SeqCst)
     }
 }
 
@@ -685,8 +689,14 @@ impl Object {
     pub fn take<T: 'static>(&mut self) -> Result<T, Error> {
         let mut obj: MaybeUninit<T> = MaybeUninit::uninit();
         unsafe {
+            let rc_mem = self.mem as *mut RcMem<T>;
+            if !(*rc_mem).rc.is_owned() {
+                return err!(CannotMoveSharedReference, vt: self.vt,
+                            nref: (*rc_mem).rc.num_refs())
+            }
             ptr::copy(self.cast()?, obj.as_mut_ptr(), 1);
             self.type_id = TypeId::of::<Voided>();
+            dealloc(self.mem, ud_layout::<T>());
             self.vt = Self::void_vtable();
             self.mem = null_mut();
             Ok(obj.assume_init())

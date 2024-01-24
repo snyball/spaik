@@ -1,5 +1,6 @@
 //! Structured Errors
 
+use crate::nuke::VTable;
 use crate::{Builtin, Sym};
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use std::backtrace::Backtrace;
@@ -245,6 +246,7 @@ pub enum ErrorKind {
     NoSuchField { record: String, field: String },
     UnsupportedOperation { op: OpName },
     DuplicateField { record: String, field: String },
+    CannotMoveSharedReference { vt: &'static VTable, nref: u32 },
     RecordMissingFields { record: String, fields: Vec<String> },
     UnterminatedString,
     MacroexpandRecursionLimit { lim: usize },
@@ -559,6 +561,9 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Unsupported operation: {}", op)?,
         DuplicateField { field, record } =>
             write!(f, "Duplicate field: Record type {record} initializer has duplicated field {field}")?,
+        CannotMoveSharedReference { vt, nref} =>
+            write!(f, "Borrow Check Error: cannot move out of shared reference to {}, {} other reference{} exist",
+                   vt.type_name, nref - 1, plurs(nref - 1))?,
         RecordMissingFields { fields, record } =>
             write!(f, "Missing fields: Record type {record} initializer is missing fields")?,
         NoSuchMethod { strucc, method } =>

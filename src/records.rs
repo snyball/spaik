@@ -106,8 +106,9 @@ mod tests {
         vm.exec("(define (mm &body b) (apply m b))").unwrap();
         vm.exec("(set-macro! q mm)").unwrap();
         vm.exec(r##"(define g (q :x 1 :y 2 :z "z"))"##).unwrap();
-        let mut x: Gc<Example> = vm.eval("g").unwrap();
-        let x = x.with(|x| x.clone());
+        let mut gx: Gc<Example> = vm.eval("g").unwrap();
+        let x = gx.with(|x| x.clone());
+        drop(gx);
         let y: Example = vm.eval("g").unwrap();
         assert!(vm.eval::<bool>("(void? g)").unwrap());
         assert_eq!(x, Example { x: 1.0, y: 2.0, z: "z".to_string() });
@@ -119,11 +120,22 @@ mod tests {
         let mut vm = Spaik::new_no_core();
         vm.record::<Example>();
         vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
-        let mut x: Gc<Example> = vm.eval("g").unwrap();
-        let x = x.with(|x| x.clone());
+        let mut gx: Gc<Example> = vm.eval("g").unwrap();
+        let x = gx.with(|x| x.clone());
+        drop(gx);
         let y: Example = vm.eval("g").unwrap();
         assert!(vm.eval::<bool>("(void? g)").unwrap());
-        assert_eq!(x, Example { x: 1.0, y: 2.0, z: "z".to_string() });
+        assert_eq!(y, Example { x: 1.0, y: 2.0, z: "z".to_string() });
         assert_eq!(y, x);
+    }
+
+    #[test]
+    fn record_macro_auto_shared_ref() {
+        let mut vm = Spaik::new_no_core();
+        vm.record::<Example>();
+        vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
+        let gx: Gc<Example> = vm.eval("g").unwrap();
+        assert!(matches!(vm.eval::<Example>("g").map_err(|e| e.kind().clone()),
+                         Err(crate::error::ErrorKind::CannotMoveSharedReference { nref: 2, .. }))) ;
     }
 }
