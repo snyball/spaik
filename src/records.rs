@@ -2,6 +2,7 @@ use spaik_proc_macros::Record;
 
 use crate::error::OpName;
 
+use crate::nkgc::Traceable;
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
 use crate::{Result, Fissile, Userdata, Error};
 
@@ -11,6 +12,76 @@ struct Example {
     x: f32,
     y: f32,
     z: String
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
+enum EnumExample {
+    Ayy {
+        x: f32,
+        y: f32,
+        z: String
+    },
+    Lmao {
+        example: Example
+    },
+    Foo(u32, u32)
+}
+
+pub struct MacroNew {
+    name: &'static str,
+    variant: &'static str,
+    variant_maker: &'static str,
+    key_strings: &'static [&'static str],
+    defaults: Vec<Option<PV>>,
+    keys: Vec<SymRef>,
+    make_fn: Option<SymRef>,
+}
+
+unsafe impl Send for MacroNew {}
+
+impl TryFrom<PV> for MacroNew {
+    type Error = crate::Error;
+
+    fn try_from(_: PV) -> std::result::Result<Self, Self::Error> {
+        err!(ImmovableObject, name: OpName::OpStr("EnumMacro"))
+    }
+}
+
+impl Traceable for MacroNew {
+    fn trace(&self, gray: &mut Vec<*mut crate::_deps::NkAtom>) {
+        for df in self.defaults.iter() {
+            df.map(|df| df.trace(gray));
+        }
+    }
+
+    fn update_ptrs(&mut self, reloc: &crate::_deps::PtrMap) {
+        for df in self.defaults.iter() {
+            df.map(|mut df| df.update_ptrs(reloc));
+        }
+    }
+}
+
+unsafe impl Subr for MacroNew {
+    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> std::result::Result<PV, Error> {
+        if self.keys.is_empty() {
+            self.keys = self.key_strings.into_iter().map(|key| {
+                vm.sym(key)
+            }).collect();
+        }
+        let name = self.make_fn.get_or_insert_with(|| vm.sym(self.variant_maker));
+        let mut out = self.defaults.clone();
+        into_init(vm, self.name, name, args, &self.keys[..], &mut out[..])
+    }
+
+    fn name(&self) -> &'static str {
+        self.variant
+    }
+}
+
+pub trait Enum {
+    fn enum_macros() -> impl Iterator<Item = impl Subr>;
+    fn enum_constructors() -> impl Iterator<Item = Box<dyn Subr>>;
 }
 
 pub trait Record: Userdata + Subr {
@@ -87,7 +158,7 @@ unsafe impl<T> Subr for T where T: FieldAccess + MethodCall + Send + KebabTypeNa
 
 #[cfg(test)]
 mod tests {
-    use crate::{Spaik, Gc};
+    use crate::{Spaik, Gc, nuke};
 
     use super::*;
 

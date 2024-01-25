@@ -247,6 +247,7 @@ pub enum ErrorKind {
     UnsupportedOperation { op: OpName },
     DuplicateField { record: String, field: String },
     CannotMoveSharedReference { vt: &'static VTable, nref: u32 },
+    ImmovableObject { name: OpName },
     RecordMissingFields { record: String, fields: Vec<String> },
     UnterminatedString,
     MacroexpandRecursionLimit { lim: usize },
@@ -564,6 +565,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         CannotMoveSharedReference { vt, nref} =>
             write!(f, "Borrow Check Error: cannot move out of shared reference to {}, {} other reference{} exist",
                    vt.type_name, nref - 1, plurs(nref - 1))?,
+        ImmovableObject { name } =>
+            write!(f, "Borrow Check Error: immovable object type {name}")?,
         RecordMissingFields { fields: _, record } =>
             write!(f, "Missing fields: Record type {record} initializer is missing fields")?,
         NoSuchMethod { strucc, method } =>
