@@ -19,14 +19,16 @@ jobs:
     - name: Setup
       run: |
         sudo snap install --edge just --classic
-        sudo apt install valgrind wine gcc-mingw-w64 binutils-mingw-w64
+        sudo apt install valgrind wine gcc-mingw-w64 binutils-mingw-w64 gcc-i686-linux-gnu binutils-i686-linux-gnu
         rustup target add wasm32-wasi
         rustup target add x86_64-pc-windows-gnu
         rustup target add i686-unknown-linux-gnu
-    - name: Run tests on WINE
-      run: cargo test --verbose --target x86_64-pc-windows-gnu
-      env:
-        CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER: "wine"
+        cargo install cargo-valgrind
+    - uses: actions/checkout@v3
+    - name: Install Miri
+      run: |
+        rustup toolchain install nightly --component miri
+        cargo miri setup
     - name: Build
       run: cargo build --verbose
     - name: Run tests on Linux
@@ -37,16 +39,13 @@ jobs:
       run: |
         curl https://wasmtime.dev/install.sh -sSf | bash
         just test-wasm
-    - uses: actions/checkout@v3
-    - name: Install Miri
-      run: |
-        rustup toolchain install nightly --component miri
-        rustup override set nightly
-        cargo miri setup
+    - name: Run tests on WINE
+      run: cargo test --verbose --target x86_64-pc-windows-gnu
+      env:
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER: "wine"
     - name: Run tests with Valgrind
       run: |
         export PATH="$PATH:$HOME/.cargo/bin"
-        cargo install cargo-valgrind
         cargo valgrind test
     - name: Run tests with Valgrind 32-bit
       run: |
@@ -54,10 +53,10 @@ jobs:
         cargo install cargo-valgrind
         cargo valgrind test --target i686-unknown-linux-gnu
     - name: Run tests on Miri
-      run: cargo miri test
+      run: cargo +nightly miri test
       env:
         MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows"
     - name: Run tests on Miri 32-Bit
-      run: cargo miri test --target i686-unknown-linux-gnu
+      run: cargo +nightly miri test --target i686-unknown-linux-gnu
       env:
         MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows"
