@@ -23,12 +23,14 @@ jobs:
         rustup target add wasm32-wasi
         rustup target add x86_64-pc-windows-gnu
         rustup target add i686-unknown-linux-gnu
+    - name: Run tests on WINE
+      run: cargo test --verbose --target x86_64-pc-windows-gnu
+      env:
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER: "wine"
     - name: Build
       run: cargo build --verbose
     - name: Run tests on Linux
       run: cargo test --verbose
-    - name: Run tests on WINE
-      run: cargo test --verbose --target x86_64-pc-windows-gnu
     - name: Run tests on 32-bit Linux
       run: cargo test --verbose --target i686-unknown-linux-gnu
     - name: Run tests on 32-bit WebAssembly
