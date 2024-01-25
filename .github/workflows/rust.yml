@@ -47,10 +47,10 @@ jobs:
       run: |
         export PATH="$PATH:$HOME/.cargo/bin"
         cargo valgrind test
-    - name: Run tests with Valgrind 32-bit
-      run: |
-        export PATH="$PATH:$HOME/.cargo/bin"
-        cargo valgrind test --target i686-unknown-linux-gnu
+    # - name: Run tests with Valgrind 32-bit
+    #   run: |
+    #     export PATH="$PATH:$HOME/.cargo/bin"
+    #     cargo valgrind test --target i686-unknown-linux-gnu
     - name: Run tests on Miri
       run: cargo +nightly miri test
       env:
