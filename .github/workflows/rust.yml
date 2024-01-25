@@ -21,6 +21,7 @@ jobs:
         sudo snap install --edge just --classic
         sudo apt install valgrind wine
         rustup target add wasm32-wasi
+        rustup target add x86_64-pc-windows-gnu
         rustup target add i686-unknown-linux-gnu
     - name: Build
       run: cargo build --verbose
