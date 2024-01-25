@@ -21,11 +21,14 @@ jobs:
         sudo snap install --edge just --classic
         sudo apt install valgrind
         rustup target add wasm32-wasi
+        rustup target add i686-unknown-linux-gnu
     - name: Build
       run: cargo build --verbose
-    - name: Run tests
+    - name: Run tests on Linux
       run: cargo test --verbose
-    - name: Run tests on WebAssembly
+    - name: Run tests on 32-bit Linux
+      run: cargo test --verbose --target i686-unknown-linux-gnu
+    - name: Run tests on 32-bit WebAssembly
       run: |
         curl https://wasmtime.dev/install.sh -sSf | bash
         just test-wasm
@@ -40,6 +43,11 @@ jobs:
         export PATH="$PATH:$HOME/.cargo/bin"
         cargo install cargo-valgrind
         cargo valgrind test
+    - name: Run tests with Valgrind 32-bit
+      run: |
+        export PATH="$PATH:$HOME/.cargo/bin"
+        cargo install cargo-valgrind
+        cargo valgrind test --target i686-unknown-linux-gnu
     - name: Run tests on Miri
       run: cargo miri test
       env:
