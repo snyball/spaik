@@ -28,7 +28,7 @@ jobs:
     - name: Install Miri
       run: |
         rustup toolchain install nightly --component miri
-        cargo miri setup
+        cargo +nightly miri setup
     - name: Build
       run: cargo build --verbose
     - name: Run tests on Linux
@@ -50,7 +50,6 @@ jobs:
     - name: Run tests with Valgrind 32-bit
       run: |
         export PATH="$PATH:$HOME/.cargo/bin"
-        cargo install cargo-valgrind
         cargo valgrind test --target i686-unknown-linux-gnu
     - name: Run tests on Miri
       run: cargo +nightly miri test
