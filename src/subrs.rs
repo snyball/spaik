@@ -667,7 +667,7 @@ mod tests {
 
         let mut vm = Spaik::new_no_core();
 
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Obj)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         struct Lmao {}
 

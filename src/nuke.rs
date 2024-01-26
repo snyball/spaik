@@ -310,8 +310,6 @@ pub struct VTable {
     lisp_fmt: unsafe fn(*const u8, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
-    /// `Subr::call`
-    call: unsafe fn(*const u8, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>,
     /// Serialize the object
     #[allow(dead_code)]
     freeze: unsafe fn(*const u8, into: &mut dyn Write) -> usize,
@@ -554,7 +552,7 @@ pub struct Voided;
 // };
 
 impl Object {
-    pub fn register<T: Userdata + Subr + 'static>() -> &'static VTable {
+    pub fn register<T: Userdata + 'static>() -> &'static VTable {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
@@ -600,13 +598,12 @@ impl Object {
                     update_ptrs: delegate! { update_ptrs(reloc) },
                     lisp_fmt: delegate! { lisp_fmt(visited, f) },
                     fmt: delegate! { fmt(f) },
-                    call: delegate! { call(vm, args) }
                 })))
             }
         }
     }
 
-    pub fn new<T: Userdata + Subr + 'static>(obj: T) -> Object {
+    pub fn new<T: Userdata + 'static>(obj: T) -> Object {
         let layout = unsafe { ud_layout::<T>() };
         let vtable = Object::register::<T>();
         let mem = unsafe {
@@ -660,7 +657,7 @@ impl Object {
         self.mem as *const T
     }
 
-    pub fn from_ref<T: Userdata + Subr>(obj: &mut T) -> Object {
+    pub fn from_ref<T: Userdata>(obj: &mut T) -> Object {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
@@ -688,7 +685,6 @@ impl Object {
                     update_ptrs: delegate! { update_ptrs(reloc) },
                     lisp_fmt: delegate! { lisp_fmt(visited, f) },
                     fmt: delegate! { fmt(f) },
-                    call: delegate! { call(vm, args) }
                 })))
             },
         };
@@ -722,7 +718,6 @@ impl Object {
                     update_ptrs: |_, _| {},
                     lisp_fmt: |_, _, f| write!(f, "void"),
                     fmt: |_, f| write!(f, "void"),
-                    call: |_, _, _| err!(VoidVariable,),
                 })))
             },
         }
@@ -768,18 +763,6 @@ impl Traceable for Object {
 }
 
 unsafe impl Send for Object {}
-
-unsafe impl Subr for Object {
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
-        unsafe {
-            (self.vt.call)(self.mem, vm, args)
-        }
-    }
-
-    fn name(&self) -> &'static str {
-        self.vt.type_name
-    }
-}
 
 impl Drop for Object {
     fn drop(&mut self) {
