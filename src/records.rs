@@ -225,9 +225,11 @@ mod tests {
         pub struct Test3(i32, i32);
         let mut vm = Spaik::new_no_core();
         vm.enum_record::<Test1>();
-        vm.exec(r##"(define g (test1 :x 2))"##).unwrap();
-        vm.exec(r##"(define g2 (test2))"##).unwrap();
-        vm.exec(r##"(define g3 (test3 1 2))"##).unwrap();
+        vm.enum_record::<Test2>();
+        vm.enum_record::<Test3>();
+        vm.exec(r##"(define g (test-1 :x 2))"##).unwrap();
+        vm.exec(r##"(define g2 (test-2))"##).unwrap();
+        vm.exec(r##"(define g3 (test-3 1 2))"##).unwrap();
         let mut g: Gc<Test1> = vm.get("g").unwrap();
         assert_eq!(g.with(|t| t.clone()), Test1 { x: 2 });
         let mut g2: Gc<Test2> = vm.get("g2").unwrap();
