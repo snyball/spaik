@@ -81,7 +81,7 @@ pub(crate) mod stylize;
 pub mod records;
 
 #[cfg(feature = "derive")]
-pub use spaik_proc_macros::{Fissile, kebabify, export};
+pub use spaik_proc_macros::{Fissile, kebabify, export, Obj};
 pub use nkgc::SPV;
 pub(crate) use nkgc::SymID;
 pub(crate) use nkgc::ObjRef;
