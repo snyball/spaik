@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, ItemTrait};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, ItemTrait, DataEnum, Fields, Field};
 use convert_case::{Case, Casing};
 
 fn crate_root() -> proc_macro2::TokenStream {
@@ -261,13 +261,129 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
     out.into()
 }
 
+fn maker(p: proc_macro2::TokenStream,
+         rs_struct_name: Ident,
+         name: &str,
+         z_name: &str,
+         fields: Fields) -> proc_macro2::TokenStream
+{
+    let root = crate_root();
+    let fields_it = fields.iter();
+    let num_fields: u16 = fields_it.clone().count().try_into().expect("too many fields");
+    let (z_name, obj_init) = match fields {
+        Fields::Named(ref fields) => {
+            let fields_it = fields.named.iter();
+            let field_names = fields_it.clone().map(|f| f.ident.clone().expect("Identifier"));
+            let field_try_set = field_names.clone().enumerate().map(|(i, f)| {
+                let f_s = format!("{f}");
+                quote! {
+                    args[#i].try_into()
+                            .map_err(|e: Error| e.arg_name(OpName::OpStr(#f_s)))?
+                }
+            });
+            (z_name,
+             quote! {
+                 #p {#(#field_names : #field_try_set),*}
+             })
+        },
+        Fields::Unnamed(ref fields) => {
+            let fields_try = fields.unnamed.iter().enumerate().map(|(i, f)| quote! {
+                args[#i].try_into().map_err(|e: Error| e.argn(i))
+            });
+            (name, quote! { #p(#(#fields_try),*) })
+        },
+        Fields::Unit => (name, quote! { #p }),
+    };
+    quote! {
+        struct #rs_struct_name;
+        unsafe impl Subr for #rs_struct_name {
+            fn call(&mut self, vm: &mut #root::_deps::R8VM,
+                    args: &[#root::_deps::PV]) -> #root::Result<#root::_deps::PV> {
+                use #root::_deps::*;
+                ArgSpec::normal(#num_fields).check(args.len().try_into()?)?;
+                let common_err = |e: Error| e.sop(#name);
+                let make_obj = || Ok(Object::new(#obj_init));
+                Ok(vm.mem.put_pv(make_obj().map_err(common_err)?))
+            }
+            fn name(&self) -> &'static str {
+                #z_name
+            }
+        }
+    }
+}
+
 #[proc_macro_derive(Enum)]
 pub fn derive_enum(item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
+    let data = input.data.clone();
+    let variants = match data {
+        Data::Enum(DataEnum {variants, ..}) => variants,
+        _ => unimplemented!()
+    }.into_iter();
+    let name_s = format!("{}", name).to_case(Case::Kebab);
+    let variant_macro_strs = variants.clone().filter_map(|v| {
+        if let Fields::Named(fs) = v.fields {
+            let keys = fs.named.iter().map(|i| {
+                format!(":{}", i.ident.clone().unwrap())
+            });
+            let variant = format!("{name_s}/{}",
+                                  format!("{}", v.ident).to_case(Case::Kebab));
+            let maker_fn = format!("<ζ>::make-{variant}");
+            Some(quote! {
+                MacroNewVariant {
+                    variant: #variant,
+                    variant_maker: #maker_fn,
+                    key_strings: &[#(#keys),*]
+                }
+            })
+        } else {
+            None
+        }
+    });
+    let num_variants = variants.clone().count();
+    let maker_rs_names = variants.clone().map(|var| {
+        format_ident!("Make{}", var.ident)
+    });
+    let makers = variants.clone().zip(maker_rs_names.clone()).map(|(var, rs_name)| {
+        let nicename = format!("{}/{}",
+                               name.to_string().to_case(Case::Kebab),
+                               var.ident.to_string().to_case(Case::Kebab));
+        let zname = format!("<ζ>::make-{nicename}");
+        let var_ident = var.ident.clone();
+        maker(quote! { #name::#var_ident }.into(),
+              rs_name,
+              &nicename,
+              &zname,
+              var.fields)
+    });
 
     let out = quote! {
+        impl #root::KebabTypeName for #name {
+            fn kebab_type_name() -> &'static str {
+                "enum-example"
+            }
+        }
+        impl #root::MethodCall for #name {}
+        impl #root::FieldAccess for #name {}
+        impl #root::Enum for #name {
+            fn enum_macros() -> impl Iterator<Item = #root::MacroNew> {
+                const VARIANTS: [#root::MacroNewVariant; #num_variants] = [
+                    #(#variant_macro_strs),*
+                ];
+                into_macro_news(&VARIANTS)
+            }
+
+            fn enum_constructors() -> impl Iterator<Item = Box<dyn Subr>> {
+                use crate::_deps::*;
+                #(#makers)*
+                let boxes: [Box<dyn #root::Subr>; #num_variants] = [
+                    #(Box::new(#maker_rs_names)),*
+                ];
+                boxes.into_iter()
+            }
+        }
     };
 
     out.into()

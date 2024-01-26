@@ -1,4 +1,4 @@
-use spaik_proc_macros::Record;
+use spaik_proc_macros::{Record, Enum};
 
 use crate::error::OpName;
 
@@ -14,7 +14,7 @@ struct Example {
     z: String
 }
 
-#[derive(Debug, Clone, Fissile, PartialEq)]
+#[derive(Debug, Clone, Enum, Fissile, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
 enum EnumExample {
     Ayy {
@@ -101,68 +101,6 @@ pub fn into_macro_news(parts: &'static [MacroNewVariant]) -> impl Iterator<Item 
         keys: Default::default(),
         make_fn: None,
     })
-}
-
-impl KebabTypeName for EnumExample {
-    fn kebab_type_name() -> &'static str {
-        "enum-example"
-    }
-}
-
-impl MethodCall for EnumExample {}
-
-impl FieldAccess for EnumExample {}
-
-impl Enum for EnumExample {
-    fn enum_macros() -> impl Iterator<Item = MacroNew> {
-        const VARIANTS: [MacroNewVariant; 2] = [
-            MacroNewVariant { variant: "enum-example/ayy",
-                              variant_maker: "<ζ>::make-enum-example/ayy",
-                              key_strings: &[":x", ":y", ":z"] },
-            MacroNewVariant { variant: "enum-example/lmao",
-                              variant_maker: "<ζ>::make-enum-example/lmao",
-                              key_strings: &[":example"] },
-        ];
-        into_macro_news(&VARIANTS)
-    }
-
-    fn enum_constructors() -> impl Iterator<Item = Box<dyn Subr>> {
-        use crate::_deps::*;
-        struct MakeAyy;
-        struct MakeLmao;
-        unsafe impl Subr for MakeAyy {
-            fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
-                ArgSpec::normal(3).check(args.len().try_into()?)?;
-                let common_err = |e: Error| e.sop("enum-example/ayy");
-                let make_obj = || Ok(Object::new(EnumExample::Ayy {
-                    x: args[0].try_into().map_err(|e: Error| e.arg_name(OpName::OpStr("x")))?,
-                    y: args[1].try_into().map_err(|e: Error| e.arg_name(OpName::OpStr("y")))?,
-                    z: args[2].try_into().map_err(|e: Error| e.arg_name(OpName::OpStr("z")))?,
-                }));
-                Ok(vm.mem.put_pv(make_obj().map_err(common_err)?))
-            }
-
-            fn name(&self) -> &'static str {
-                "<ζ>::make-enum-example/ayy"
-            }
-        }
-        unsafe impl Subr for MakeLmao {
-            fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
-                ArgSpec::normal(1).check(args.len().try_into()?)?;
-                let common_err = |e: Error| e.sop("enum-example/lmao");
-                let make_obj = || Ok(Object::new(EnumExample::Lmao {
-                    example: args[0].try_into().map_err(|e: Error| e.arg_name(OpName::OpStr("example")))?,
-                }));
-                Ok(vm.mem.put_pv(make_obj().map_err(common_err)?))
-            }
-
-            fn name(&self) -> &'static str {
-                "<ζ>::make-enum-example/lmao"
-            }
-        }
-        let boxes: [Box<dyn Subr>; 2] = [Box::new(MakeAyy), Box::new(MakeLmao)];
-        boxes.into_iter()
-    }
 }
 
 pub trait Record: Userdata + Subr {

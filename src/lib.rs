@@ -90,7 +90,7 @@ pub type Str = Arc<str>;
 pub use nuke::Userdata;
 pub use swym::SymRef as Sym;
 #[cfg(feature = "derive")]
-pub use records::{FieldAccess, MethodCall, Record, KebabTypeName};
+pub use records::{FieldAccess, MethodCall, Record, KebabTypeName, Enum, MacroNewVariant, MacroNew};
 #[cfg(test)]
 pub mod logging;
 
