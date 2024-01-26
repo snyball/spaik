@@ -288,7 +288,7 @@ fn maker(p: proc_macro2::TokenStream,
         },
         Fields::Unnamed(ref fields) => {
             let fields_try = fields.unnamed.iter().enumerate().map(|(i, f)| quote! {
-                args[#i].try_into().map_err(|e: Error| e.argn(i))
+                args[#i].try_into().map_err(|e: Error| e.argn(#i as u32))?
             });
             (name, quote! { #p(#(#fields_try),*) })
         },
@@ -342,6 +342,9 @@ pub fn derive_enum(item: TokenStream) -> TokenStream {
             None
         }
     });
+    let num_macros = variants.clone()
+                             .filter(|v| matches!(v.fields, Fields::Named(_)))
+                             .count();
     let num_variants = variants.clone().count();
     let maker_rs_names = variants.clone().map(|var| {
         format_ident!("Make{}", var.ident)
@@ -369,7 +372,7 @@ pub fn derive_enum(item: TokenStream) -> TokenStream {
         impl #root::FieldAccess for #name {}
         impl #root::Enum for #name {
             fn enum_macros() -> impl Iterator<Item = #root::MacroNew> {
-                const VARIANTS: [#root::MacroNewVariant; #num_variants] = [
+                const VARIANTS: [#root::MacroNewVariant; #num_macros] = [
                     #(#variant_macro_strs),*
                 ];
                 into_macro_news(&VARIANTS)

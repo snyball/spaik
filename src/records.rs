@@ -25,6 +25,11 @@ enum EnumExample {
     Lmao {
         example: Example
     },
+    Foo {
+        x: i32,
+    },
+    Bar(i32, i32),
+    Zed,
 }
 
 pub struct MacroNew {
@@ -234,11 +239,17 @@ mod tests {
         vm.record::<Example>();
         vm.exec(r##"(define g (enum-example/ayy :x 1 :y 2 :z "z"))"##).unwrap();
         vm.exec(r##"(define z (enum-example/lmao :example (example :x 1 :y 2 :z "z")))"##).unwrap();
+        vm.exec(r##"(define zed (enum-example/zed))"##).unwrap();
+        vm.exec(r##"(define bar (enum-example/bar 1 2))"##).unwrap();
         let mut g: Gc<EnumExample> = vm.get("g").unwrap();
         let mut z: Gc<EnumExample> = vm.get("z").unwrap();
+        let mut zed: Gc<EnumExample> = vm.get("zed").unwrap();
+        let mut bar: Gc<EnumExample> = vm.get("bar").unwrap();
         assert_eq!(g.with(|t| t.clone()),
                    EnumExample::Ayy { x: 1.0, y: 2.0, z: "z".to_string() });
         assert_eq!(z.with(|t| t.clone()),
                    EnumExample::Lmao { example: Example { x: 1.0, y: 2.0, z: "z".to_string() } });
+        assert_eq!(zed.with(|t| t.clone()), EnumExample::Zed);
+        assert_eq!(bar.with(|t| t.clone()), EnumExample::Bar(1, 2));
     }
 }
