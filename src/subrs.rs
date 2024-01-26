@@ -663,13 +663,15 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn method_calls() {
+        use spaik_proc_macros::{methods, Obj};
+
         let mut vm = Spaik::new_no_core();
 
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Obj)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         struct Lmao {}
 
-        #[export]
+        #[methods(())]
         impl Lmao {
             fn foo(&self, x: i32, y: i32) -> i32 {
                 x + y
@@ -685,6 +687,7 @@ mod tests {
         }
 
         vm.set("lmao", Lmao{});
+        vm.defmethods::<Lmao, ()>();
         assert_eq!(vm.eval("(lmao :foo 1 2)"), Ok(3));
         assert_eq!(vm.eval(r#"(lmao :bar 8.8 8.8 "lmao")"#), Ok("answer: 16 (lmao)"));
         assert_eq!(vm.eval(r#"(lmao :baz 8 8 "lmao")"#), Ok("answer: 16 (lmao)"));

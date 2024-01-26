@@ -17,9 +17,9 @@ use crate::{
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
-    chasm::LblMap, opt::Optomat, swym::SymRef, tokit};
+    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path};
+use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::TypeId};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -883,6 +883,8 @@ impl<T> OutStream for T where T: io::Write + Debug + Send {}
 pub trait InStream: io::Read + Debug + Send {}
 impl<T> InStream for T where T: io::Read + Debug + Send {}
 
+pub type ObjMethod = unsafe fn(*mut u8, &mut R8VM, &[PV]) -> Result<PV>;
+
 #[derive(Debug)]
 pub struct R8VM {
     /// Memory
@@ -902,6 +904,8 @@ pub struct R8VM {
     func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
     pub(crate) srctbl: SourceList,
     catch: Vec<usize>,
+
+    obj_methods: FnvHashMap<(TypeId, SymID), ObjMethod>,
 
     stdout: Mutex<Box<dyn OutStream>>,
 
@@ -923,6 +927,7 @@ impl Default for R8VM {
             macros: Default::default(),
             funcs: Default::default(),
             func_labels: Default::default(),
+            obj_methods: Default::default(),
             func_arg_syms: Default::default(),
             stdout: Mutex::new(Box::new(io::stdout())),
             labels: Default::default(),
@@ -1321,6 +1326,33 @@ impl R8VM {
                         src.clone()).unwrap();
 
         vm
+    }
+
+    pub unsafe fn call_method_w_keys(&mut self, key: (TypeId, SymID), mem: *mut u8, args: &[PV]) -> Result<PV> {
+        match self.obj_methods.get(&key) {
+            Some(f) => (f)(mem, self, args),
+            None => err!(NoSuchMethod,
+                         strucc: "unknown", // FIXME
+                         method: key.1.into()),
+        }
+    }
+
+    pub unsafe fn call_method(&mut self, obj: *mut Object, args: &[PV]) -> Result<PV> {
+        let kw = args.first()
+                     .ok_or_else(|| error!(NoMethodGiven, vt: (*obj).vt))
+                     .and_then(|f| f.sym())?;
+        let key = ((*obj).type_id , kw);
+        match self.obj_methods.get(&key) {
+            Some(f) => (f)((*obj).mem, self, &args[1..]),
+            None => err!(NoSuchMethod,
+                         strucc: (*obj).vt.type_name,
+                         method: key.1.into()),
+        }
+    }
+
+    pub fn register_method<T: Userdata>(&mut self, name: impl AsSym, m: ObjMethod) {
+        let sym = name.as_sym(self);
+        self.obj_methods.insert((TypeId::of::<T>(), sym), m);
     }
 
     pub fn dump_code_to(&self, out: &mut dyn Write) -> Result<()> {
@@ -2038,7 +2070,7 @@ impl R8VM {
                 let top = self.mem.stack.len();
                 let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
                 let dip = self.ip_delta(ip);
-                let res = (*s).call(self, &args[..]);
+                let res = self.call_method(s, &args[..]);
                 self.mem.stack.drain(idx..).for_each(drop); // drain gang
                 self.mem.push(res?);
                 Ok(self.ret_to(dip))

@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, ItemTrait, DataEnum, Fields, Field};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, ItemTrait, DataEnum, Fields, Field, Type};
 use convert_case::{Case, Casing};
 
 fn crate_root() -> proc_macro2::TokenStream {
@@ -199,7 +199,7 @@ fn maker(p: proc_macro2::TokenStream,
     };
     quote! {
         struct #rs_struct_name;
-        unsafe impl Subr for #rs_struct_name {
+        unsafe impl #root::Subr for #rs_struct_name {
             fn call(&mut self, vm: &mut #root::_deps::R8VM,
                     args: &[#root::_deps::PV]) -> #root::Result<#root::_deps::PV> {
                 use #root::_deps::*;
@@ -253,7 +253,7 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
                                   format!("{}", v.ident).to_case(Case::Kebab));
             let maker_fn = format!("<ζ>::make-{variant}");
             Some(quote! {
-                MacroNewVariant {
+                #root::_deps::MacroNewVariant {
                     variant: #variant,
                     variant_maker: #maker_fn,
                     key_strings: &[#(#keys),*]
@@ -291,13 +291,13 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
         impl #root::FieldAccess for #name {}
         impl #root::Enum for #name {
             fn enum_macros() -> impl Iterator<Item = #root::MacroNew> {
-                const VARIANTS: [#root::MacroNewVariant; #num_macros] = [
+                const VARIANTS: [#root::_deps::MacroNewVariant; #num_macros] = [
                     #(#variant_macro_strs),*
                 ];
-                into_macro_news(&VARIANTS)
+                #root::_deps::into_macro_news(&VARIANTS)
             }
 
-            fn enum_constructors() -> impl Iterator<Item = Box<dyn Subr>> {
+            fn enum_constructors() -> impl Iterator<Item = Box<dyn #root::Subr>> {
                 use crate::_deps::*;
                 #(#makers)*
                 let boxes: [Box<dyn #root::Subr>; #num_variants] = [
@@ -338,6 +338,44 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
                        -> core::result::Result<#root::_deps::PV, #root::error::Error>
             {
                 Ok(mem.put_pv(#root::_deps::Object::new(self)))
+            }
+        }
+    };
+
+    out.into()
+}
+#[proc_macro_attribute]
+pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let root = crate_root();
+    let input = parse_macro_input!(item as ItemImpl);
+    let spec = parse_macro_input!(attr as syn::Type);
+    let name = input.self_ty.clone();
+    let methods = input.items.iter().filter_map(|x| if let ImplItem::Method(m) = x {
+        m.sig.inputs.first().and_then(|arg| match arg {
+            FnArg::Receiver(_) => Some(m),
+            FnArg::Typed(_) => None,
+        })
+    } else {
+        None
+    });
+    let nargs = methods.clone().map(|x| x.sig.inputs.len() as u16 - 1);
+    let mnames = methods.clone().map(|x| x.sig.ident.clone());
+    let kwnames = methods.clone().map(|x| format!(":{}", x.sig.ident).to_case(Case::Kebab));
+    let args = nargs.clone().map(|nargs| {
+        let idx = 0..(nargs as usize);
+        quote!(#(args[#idx].try_into()?),*)
+    });
+
+    let out = quote! {
+        #input
+
+        unsafe impl #root::MethodSet<#spec> for #name {
+            fn methods() -> &'static [(&'static str, #root::_deps::ObjMethod)] {
+                use #root::{Lispify, FromLisp, _deps::*};
+                &[#((#kwnames, |this: *mut u8, vm: &mut R8VM, args: &[PV]| unsafe {
+                    ArgSpec::normal(#nargs).check(args.len() as u16)?;
+                    (*(this as *mut #name)).#mnames(#args).lispify(&mut vm.mem)
+                })),*]
             }
         }
     };

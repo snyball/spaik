@@ -337,15 +337,15 @@ unsafe impl Send for VTable {}
 /// SPAIK internals (library user code) see `Gc<T>`.
 #[derive(Clone)]
 pub struct Object {
-    type_id: TypeId,
-    vt: &'static VTable,
+    pub(crate) type_id: TypeId,
+    pub(crate) vt: &'static VTable,
     /// This indirection allows us to safely pass references to the underlying T
     /// to user code, without having to worry about updating the pointer when
     /// the GC compacts. Of course, this also sacrifices some of the utility of
     /// the compacting process.
     ///
     /// See RcMem<T> for the actual layout of this memory.
-    mem: *mut u8,
+    pub(crate) mem: *mut u8,
 }
 
 /// Reference-counter for `Object` memory, see `RcMem`

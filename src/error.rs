@@ -253,6 +253,7 @@ pub enum ErrorKind {
     MacroexpandRecursionLimit { lim: usize },
     SyntaxError(SyntaxErrorKind),
     IDError { id: usize },
+    NoMethodGiven { vt: &'static VTable },
     None,
     VoidVariable,
 }
@@ -550,6 +551,9 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Syntax Error: {kind}")?,
         IDError { id } =>
             write!(f, "ID Error: id number {id} was out of range for enum")?,
+        NoMethodGiven { vt } =>
+            write!(f, "No Method Given: No method name was given in method call on {}",
+                   vt.type_name)?,
         UnterminatedString =>
             write!(f, "Syntax Error: Unterminated string")?,
         TrailingEscape =>

@@ -1,10 +1,11 @@
-use spaik_proc_macros::Obj;
+use spaik_proc_macros::{Obj, methods};
 
 use crate::error::OpName;
 
 use crate::nkgc::Traceable;
+use crate::r8vm::{ObjMethod, ArgSpec};
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
-use crate::{Result, Fissile, Userdata, Error};
+use crate::{Result, Fissile, Userdata, Error, IntoLisp, Lispify};
 
 #[derive(Debug, Obj, Clone, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
@@ -89,9 +90,9 @@ pub trait Enum {
 }
 
 pub struct MacroNewVariant {
-    variant: &'static str,
-    variant_maker: &'static str,
-    key_strings: &'static [&'static str],
+    pub variant: &'static str,
+    pub variant_maker: &'static str,
+    pub key_strings: &'static [&'static str],
 }
 
 #[inline(never)]
@@ -159,6 +160,10 @@ pub trait MethodCall {
     fn call_method(&mut self, _args: &[PV]) -> crate::Result<Option<PV>> {
         Ok(None)
     }
+}
+
+pub unsafe trait MethodSet<Name> {
+    fn methods() -> &'static [(&'static str, ObjMethod)];
 }
 
 pub trait KebabTypeName {

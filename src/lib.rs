@@ -90,7 +90,7 @@ pub type Str = Arc<str>;
 pub use nuke::Userdata;
 pub use swym::SymRef as Sym;
 #[cfg(feature = "derive")]
-pub use records::{FieldAccess, MethodCall, KebabTypeName, Enum, MacroNewVariant, MacroNew};
+pub use records::{FieldAccess, MethodCall, KebabTypeName, Enum, MacroNewVariant, MacroNew, MethodSet};
 #[cfg(test)]
 pub mod logging;
 
@@ -101,14 +101,14 @@ pub mod logging;
  * and can change between even semver patch versions.
  */
 pub mod _deps {
-    pub use crate::r8vm::{R8VM, ArgSpec};
+    pub use crate::r8vm::{R8VM, ArgSpec, ObjMethod};
     pub use crate::nkgc::SymID;
     pub use crate::nkgc::{PV, ObjRef, Arena, Traceable};
     pub use crate::nuke::{NkAtom, PtrMap, Object, cast_mut_err};
     pub use crate::fmt::LispFmt;
     pub use crate::fmt::VisitSet;
     #[cfg(feature = "derive")]
-    pub use crate::records::into_init;
+    pub use crate::records::{into_init, into_macro_news, MacroNewVariant};
     pub use crate::error::{Error, Result};
 }
 
@@ -305,6 +305,12 @@ impl Spaik {
         for mac in T::enum_macros() {
             let macbx = Box::new(mac);
             self.set_subr_macro(macbx.name(), macbx);
+        }
+    }
+
+    pub fn defmethods<T: Userdata + MethodSet<K>, K>(&mut self) {
+        for (kwname, m) in T::methods() {
+            self.vm.register_method::<T>(*kwname, *m)
         }
     }
 
