@@ -1,4 +1,4 @@
-use spaik_proc_macros::{Record, Obj};
+use spaik_proc_macros::Obj;
 
 use crate::error::OpName;
 
@@ -6,7 +6,7 @@ use crate::nkgc::Traceable;
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
 use crate::{Result, Fissile, Userdata, Error};
 
-#[derive(Debug, Record, Clone, Fissile, PartialEq)]
+#[derive(Debug, Obj, Clone, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
 struct Example {
     x: f32,
@@ -108,11 +108,6 @@ pub fn into_macro_news(parts: &'static [MacroNewVariant]) -> impl Iterator<Item 
     })
 }
 
-pub trait Record: Userdata + Subr {
-    fn record_macro() -> Option<impl Subr>;
-    fn record_constructor() -> impl Subr;
-}
-
 #[inline(never)]
 pub fn into_init(vm: &mut R8VM,
                  name: &'static str,
@@ -189,7 +184,7 @@ mod tests {
     #[test]
     fn record_macro_auto() {
         let mut vm = Spaik::new_no_core();
-        vm.record::<Example>();
+        vm.defobj::<Example>();
         vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
         let mut gx: Gc<Example> = vm.eval("g").unwrap();
         let x = gx.with(|x| x.clone());
@@ -203,7 +198,7 @@ mod tests {
     #[test]
     fn record_macro_auto_shared_ref() {
         let mut vm = Spaik::new_no_core();
-        vm.record::<Example>();
+        vm.defobj::<Example>();
         vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
         let _gx: Gc<Example> = vm.eval("g").unwrap();
         assert!(matches!(vm.eval::<Example>("g").map_err(|e| e.kind().clone()),
@@ -224,9 +219,9 @@ mod tests {
         #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
         pub struct Test3(i32, i32);
         let mut vm = Spaik::new_no_core();
-        vm.enum_record::<Test1>();
-        vm.enum_record::<Test2>();
-        vm.enum_record::<Test3>();
+        vm.defobj::<Test1>();
+        vm.defobj::<Test2>();
+        vm.defobj::<Test3>();
         vm.exec(r##"(define g (test-1 :x 2))"##).unwrap();
         vm.exec(r##"(define g2 (test-2))"##).unwrap();
         vm.exec(r##"(define g3 (test-3 1 2))"##).unwrap();
@@ -241,8 +236,8 @@ mod tests {
     #[test]
     fn enum_macros() {
         let mut vm = Spaik::new_no_core();
-        vm.enum_record::<EnumExample>();
-        vm.record::<Example>();
+        vm.defobj::<EnumExample>();
+        vm.defobj::<Example>();
         vm.exec(r##"(define g (enum-example/ayy :x 1 :y 2 :z "z"))"##).unwrap();
         vm.exec(r##"(define z (enum-example/lmao :example (example :x 1 :y 2 :z "z")))"##).unwrap();
         vm.exec(r##"(define zed (enum-example/zed))"##).unwrap();

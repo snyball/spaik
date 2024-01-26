@@ -90,7 +90,7 @@ pub type Str = Arc<str>;
 pub use nuke::Userdata;
 pub use swym::SymRef as Sym;
 #[cfg(feature = "derive")]
-pub use records::{FieldAccess, MethodCall, Record, KebabTypeName, Enum, MacroNewVariant, MacroNew};
+pub use records::{FieldAccess, MethodCall, KebabTypeName, Enum, MacroNewVariant, MacroNew};
 #[cfg(test)]
 pub mod logging;
 
@@ -285,25 +285,6 @@ impl Spaik {
         self.set(func.name(), func.into_subr());
     }
 
-    /// Register a record (struct) with the vm
-    #[cfg(feature = "derive")]
-    pub fn record<T: Record + Userdata + KebabTypeName>(&mut self) {
-        let make_bx: Box<dyn Subr> = Box::new(T::record_constructor());
-        self.set(T::record_constructor().name(), make_bx);
-        if let Some(mac) = T::record_macro() {
-            let name = mac.name();
-            let macro_bx: Box<dyn Subr> = Box::new(mac);
-            self.set(name, macro_bx);
-            let macro_fn_name = format!("<ξ>::{}", T::kebab_type_name());
-            self.exec(format!("(define ({} &body <ζ>::body) (apply {} <ζ>::body))",
-                              macro_fn_name, name))
-                .expect("error in auto-generated code");
-            let macro_name = T::kebab_type_name().as_sym(&mut self.vm);
-            let macro_fn_name = (&macro_fn_name[..]).as_sym(&mut self.vm);
-            self.vm.set_macro(macro_name, macro_fn_name);
-        }
-    }
-
     fn set_subr_macro(&mut self, name: impl AsSym, macrobx: Box<dyn Subr>) {
         let name = name.as_sym(&mut self.vm);
         let macro_fn_name = format!("<ξ>::<wrap>::{}", name);
@@ -317,7 +298,7 @@ impl Spaik {
     }
 
     #[cfg(feature = "derive")]
-    pub fn enum_record<T: records::Enum>(&mut self) {
+    pub fn defobj<T: records::Enum>(&mut self) {
         for cs in T::enum_constructors() {
             self.set(cs.name(), cs);
         }
