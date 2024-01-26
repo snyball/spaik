@@ -109,7 +109,7 @@ pub fn into_macro_news(parts: &'static [MacroNewVariant]) -> impl Iterator<Item 
 }
 
 pub trait Record: Userdata + Subr {
-    fn record_macro() -> impl Subr;
+    fn record_macro() -> Option<impl Subr>;
     fn record_constructor() -> impl Subr;
 }
 
@@ -187,28 +187,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn record_macro_manual() {
-        let mut vm = Spaik::new_no_core();
-        let macro_bx: Box<dyn Subr> = Box::new(Example::record_macro());
-        vm.set("m", macro_bx);
-        let make_bx: Box<dyn Subr> = Box::new(Example::record_constructor());
-        vm.set(make_bx.name(), make_bx);
-        assert!(vm.eval::<bool>(
-            "(eq? (m :x '(1 2 3) :y 2 :z 3) '(<ζ>::make-example (1 2 3) 2 3))"
-        ).unwrap());
-        vm.exec("(define (mm &body b) (apply m b))").unwrap();
-        vm.exec("(set-macro! q mm)").unwrap();
-        vm.exec(r##"(define g (q :x 1 :y 2 :z "z"))"##).unwrap();
-        let mut gx: Gc<Example> = vm.eval("g").unwrap();
-        let x = gx.with(|x| x.clone());
-        drop(gx);
-        let y: Example = vm.eval("g").unwrap();
-        assert!(vm.eval::<bool>("(void? g)").unwrap());
-        assert_eq!(x, Example { x: 1.0, y: 2.0, z: "z".to_string() });
-        assert_eq!(y, x);
-    }
-
-    #[test]
     fn record_macro_auto() {
         let mut vm = Spaik::new_no_core();
         vm.record::<Example>();
@@ -230,6 +208,32 @@ mod tests {
         let _gx: Gc<Example> = vm.eval("g").unwrap();
         assert!(matches!(vm.eval::<Example>("g").map_err(|e| e.kind().clone()),
                          Err(crate::error::ErrorKind::CannotMoveSharedReference { nref: 2, .. }))) ;
+    }
+
+    #[test]
+    fn struct_as_enum() {
+        #[derive(Debug, Fissile, Enum, Clone, PartialEq, Eq)]
+        #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
+        pub struct Test1 {
+            x: i32
+        }
+        #[derive(Debug, Fissile, Enum, Clone, PartialEq, Eq)]
+        #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
+        pub struct Test2;
+        #[derive(Debug, Fissile, Enum, Clone, PartialEq, Eq)]
+        #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
+        pub struct Test3(i32, i32);
+        let mut vm = Spaik::new_no_core();
+        vm.enum_record::<Test1>();
+        vm.exec(r##"(define g (test1 :x 2))"##).unwrap();
+        vm.exec(r##"(define g2 (test2))"##).unwrap();
+        vm.exec(r##"(define g3 (test3 1 2))"##).unwrap();
+        let mut g: Gc<Test1> = vm.get("g").unwrap();
+        assert_eq!(g.with(|t| t.clone()), Test1 { x: 2 });
+        let mut g2: Gc<Test2> = vm.get("g2").unwrap();
+        assert_eq!(g2.with(|t| t.clone()), Test2);
+        let mut g3: Gc<Test3> = vm.get("g3").unwrap();
+        assert_eq!(g3.with(|t| t.clone()), Test3(1, 2));
     }
 
     #[test]

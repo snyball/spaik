@@ -159,6 +159,13 @@ pub fn derive_record(item: TokenStream) -> TokenStream {
     let macro_s = format!("<ξζ>::make-{sp_name}");
     let name_s = format!("{sp_name}");
     let name_s_2 = name_s.clone();
+
+    let fields = match input.data {
+        Data::Struct(DataStruct {ref fields, ..}) => fields.clone(),
+        _ => unimplemented!()
+    };
+    let maker = maker(quote! { #name }.into(), format_ident!("Construct"),
+                      &name_s, &make_s, fields);
     let out = quote! {
         impl #root::FieldAccess for #name {} // TODO
         impl #root::MethodCall for #name {} // TODO
@@ -176,7 +183,7 @@ pub fn derive_record(item: TokenStream) -> TokenStream {
             }
         }
         impl #root::Record for #name {
-            fn record_macro() -> impl #root::Subr {
+            fn record_macro() -> Option<impl #root::Subr> {
                 use #root::_deps::*;
                 #[derive(Default)]
                 struct Construct {
@@ -199,26 +206,12 @@ pub fn derive_record(item: TokenStream) -> TokenStream {
                         #macro_s
                     }
                 }
-                Construct::default()
+                Some(Construct::default())
             }
 
             fn record_constructor() -> impl #root::Subr {
                 use #root::_deps::*;
-                struct Construct;
-                unsafe impl #root::Subr for Construct {
-                    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
-                        ArgSpec::normal(#argn_u16).check(args.len().try_into()?)?;
-                        let common_err = |e: Error| e.sop(#name_s);
-                        let make_obj = || Ok(Object::new(#name {
-                            #(#field_names : #field_try_set),*
-                        }));
-                        Ok(vm.mem.put_pv(make_obj().map_err(common_err)?))
-                    }
-
-                    fn name(&self) -> &'static str {
-                        #make_s
-                    }
-                }
+                #maker
                 Construct
             }
         }
@@ -312,23 +305,41 @@ fn maker(p: proc_macro2::TokenStream,
     }
 }
 
+struct DataRepr {
+    ident: Ident,
+    fields: Fields
+}
+
 #[proc_macro_derive(Enum)]
 pub fn derive_enum(item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
     let data = input.data.clone();
-    let variants = match data {
-        Data::Enum(DataEnum {variants, ..}) => variants,
-        _ => unimplemented!()
-    }.into_iter();
     let name_s = format!("{}", name).to_case(Case::Kebab);
+    let (prefix, mkpath, data_reprs): (_, _, Vec<_>) = match data {
+        Data::Enum(DataEnum {variants, ..}) => (
+            format!("{name_s}/"),
+            Some(|var_ident| quote! { #name::#var_ident }),
+            variants.into_iter().map(|v| DataRepr {
+                ident: v.ident,
+                fields: v.fields
+            }).collect()
+        ),
+        Data::Struct(DataStruct {fields, ..}) => (
+            "".to_string(),
+            None,
+            vec![DataRepr { fields, ident: name.clone() }]
+        ),
+        Data::Union(_) => unimplemented!("Bare unions cannot be shared with SPAIK"),
+    };
+    let variants = data_reprs.iter();
     let variant_macro_strs = variants.clone().filter_map(|v| {
-        if let Fields::Named(fs) = v.fields {
+        if let Fields::Named(fs) = &v.fields {
             let keys = fs.named.iter().map(|i| {
                 format!(":{}", i.ident.clone().unwrap())
             });
-            let variant = format!("{name_s}/{}",
+            let variant = format!("{prefix}{}",
                                   format!("{}", v.ident).to_case(Case::Kebab));
             let maker_fn = format!("<ζ>::make-{variant}");
             Some(quote! {
@@ -349,16 +360,15 @@ pub fn derive_enum(item: TokenStream) -> TokenStream {
     let maker_rs_names = variants.clone().map(|var| {
         format_ident!("Make{}", var.ident)
     });
-    let name_s = name.to_string().to_case(Case::Kebab);
     let makers = variants.clone().zip(maker_rs_names.clone()).map(|(var, rs_name)| {
-        let nicename = format!("{name_s}/{}", var.ident.to_string().to_case(Case::Kebab));
+        let nicename = format!("{prefix}{}", var.ident.to_string().to_case(Case::Kebab));
         let zname = format!("<ζ>::make-{nicename}");
         let var_ident = var.ident.clone();
-        maker(quote! { #name::#var_ident }.into(),
+        maker(mkpath.map(|f| f(var_ident)).unwrap_or(quote! { #name }),
               rs_name,
               &nicename,
               &zname,
-              var.fields)
+              var.fields.clone())
     });
 
     let out = quote! {
