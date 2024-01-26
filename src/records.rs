@@ -1,4 +1,4 @@
-use spaik_proc_macros::{Record, Enum};
+use spaik_proc_macros::{Record, Obj};
 
 use crate::error::OpName;
 
@@ -6,7 +6,7 @@ use crate::nkgc::Traceable;
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
 use crate::{Result, Fissile, Userdata, Error};
 
-#[derive(Debug, Record, Fissile, Clone, PartialEq)]
+#[derive(Debug, Record, Clone, Fissile, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
 struct Example {
     x: f32,
@@ -14,7 +14,7 @@ struct Example {
     z: String
 }
 
-#[derive(Debug, Clone, Enum, Fissile, PartialEq)]
+#[derive(Debug, Clone, Obj, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
 enum EnumExample {
     Ayy {
@@ -212,15 +212,15 @@ mod tests {
 
     #[test]
     fn struct_as_enum() {
-        #[derive(Debug, Fissile, Enum, Clone, PartialEq, Eq)]
+        #[derive(Debug, Obj, Clone, PartialEq, Eq)]
         #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
         pub struct Test1 {
             x: i32
         }
-        #[derive(Debug, Fissile, Enum, Clone, PartialEq, Eq)]
+        #[derive(Debug, Obj, Clone, PartialEq, Eq)]
         #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
         pub struct Test2;
-        #[derive(Debug, Fissile, Enum, Clone, PartialEq, Eq)]
+        #[derive(Debug, Obj, Clone, PartialEq, Eq)]
         #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
         pub struct Test3(i32, i32);
         let mut vm = Spaik::new_no_core();

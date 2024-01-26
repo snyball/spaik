@@ -310,8 +310,8 @@ struct DataRepr {
     fields: Fields
 }
 
-#[proc_macro_derive(Enum)]
-pub fn derive_enum(item: TokenStream) -> TokenStream {
+#[proc_macro_derive(Obj)]
+pub fn derive_obj(item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
@@ -394,6 +394,28 @@ pub fn derive_enum(item: TokenStream) -> TokenStream {
                     #(Box::new(#maker_rs_names)),*
                 ];
                 boxes.into_iter()
+            }
+        }
+        impl #root::_deps::Traceable for #name {
+            fn trace(&self, _gray: &mut Vec<*mut #root::_deps::NkAtom>) {}
+            fn update_ptrs(&mut self, _reloc: &#root::_deps::PtrMap) {}
+        }
+
+        impl #root::_deps::LispFmt for #name {
+            fn lisp_fmt(&self,
+                        _visited: &mut #root::_deps::VisitSet,
+                        f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{:?}", self)
+            }
+        }
+
+        impl #root::Userdata for #name {}
+
+        impl #root::IntoLisp for #name {
+            fn into_pv(self, mem: &mut #root::_deps::Arena)
+                       -> core::result::Result<#root::_deps::PV, #root::error::Error>
+            {
+                Ok(mem.put_pv(#root::_deps::Object::new(self)))
             }
         }
     };
