@@ -170,16 +170,6 @@ pub trait KebabTypeName {
     fn kebab_type_name() -> &'static str;
 }
 
-unsafe impl<T> Subr for T where T: FieldAccess + MethodCall + Send + KebabTypeName + 'static {
-    fn call(&mut self, _vm: &mut R8VM, _args: &[PV]) -> std::result::Result<PV, Error> {
-        todo!()
-    }
-
-    fn name(&self) -> &'static str {
-        Self::kebab_type_name()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{Spaik, Gc, nuke};

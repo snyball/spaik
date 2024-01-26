@@ -137,19 +137,6 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
     let name = input.ident.clone();
 
     let out = quote! {
-        impl #root::_deps::Traceable for #name {
-            fn trace(&self, _gray: &mut Vec<*mut #root::_deps::NkAtom>) {}
-            fn update_ptrs(&mut self, _reloc: &#root::_deps::PtrMap) {}
-        }
-
-        impl #root::_deps::LispFmt for #name {
-            fn lisp_fmt(&self,
-                        _visited: &mut #root::_deps::VisitSet,
-                        f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{:?}", self)
-            }
-        }
-
         impl #root::Userdata for #name {}
 
         impl #root::IntoLisp for #name {
@@ -287,8 +274,7 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
                 #name_s
             }
         }
-        impl #root::MethodCall for #name {}
-        impl #root::FieldAccess for #name {}
+
         impl #root::Enum for #name {
             fn enum_macros() -> impl Iterator<Item = #root::MacroNew> {
                 const VARIANTS: [#root::_deps::MacroNewVariant; #num_macros] = [
@@ -315,19 +301,6 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
                     let obj = #root::_deps::cast_mut_err::<#root::_deps::Object>(p)?;
                     (*obj).take()
                 }
-            }
-        }
-
-        impl #root::_deps::Traceable for #name {
-            fn trace(&self, _gray: &mut Vec<*mut #root::_deps::NkAtom>) {}
-            fn update_ptrs(&mut self, _reloc: &#root::_deps::PtrMap) {}
-        }
-
-        impl #root::_deps::LispFmt for #name {
-            fn lisp_fmt(&self,
-                        _visited: &mut #root::_deps::VisitSet,
-                        f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{:?}", self)
             }
         }
 

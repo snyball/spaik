@@ -211,10 +211,10 @@ macro_rules! fissile_types {
 /// Marker-trait for data that can be stored inside a SPAIK `Object`, and
 /// referred to from Rust using `Gc<T>`.
 #[cfg(not(feature = "freeze"))]
-pub trait Userdata: LispFmt + Debug + Traceable + Any + 'static
+pub trait Userdata: Debug + Any + 'static
 {}
 #[cfg(feature = "freeze")]
-pub trait Userdata: LispFmt + Debug + Traceable + Any +
+pub trait Userdata: Debug + Any +
     Serialize + serde::de::DeserializeOwned + 'static
 {}
 
@@ -300,14 +300,8 @@ pub struct VTable {
     pub type_name: &'static str,
     /// Get reference count
     get_rc: unsafe fn(*const u8) -> u32,
-    /// `Traceable::trace`
-    trace: unsafe fn(*const u8, gray: &mut Vec<*mut NkAtom>),
-    /// `Traceable::update_ptrs`
-    update_ptrs: unsafe fn(*mut u8, reloc: &PtrMap),
     /// `Drop::drop`
     drop: unsafe fn(*mut u8),
-    /// `LispFmt::lisp_fmt`
-    lisp_fmt: unsafe fn(*const u8, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
     /// Serialize the object
@@ -320,10 +314,7 @@ impl Debug for VTable {
         f.debug_struct("VTable")
          .field("type_name", &self.type_name)
          .field("get_rc", &self.get_rc)
-         .field("trace", &(self.trace as *mut u8))
-         .field("update_ptrs", &(self.update_ptrs as *mut u8))
          .field("drop", &self.drop)
-         .field("lisp_fmt", &(self.lisp_fmt as *mut u8))
          .field("fmt", &(self.fmt as *mut u8))
          .finish()
     }
@@ -397,7 +388,7 @@ impl Debug for Object {
 impl LispFmt for Object {
     fn lisp_fmt(&self, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
-            (self.vt.lisp_fmt)(self.mem, visited, f)
+            (self.vt.fmt)(self.mem, f)
         }
     }
 }
@@ -594,9 +585,6 @@ impl Object {
                         opts.serialize_into(into, &*obj).unwrap();
                         sz as usize
                     },
-                    trace: delegate! { trace(gray) },
-                    update_ptrs: delegate! { update_ptrs(reloc) },
-                    lisp_fmt: delegate! { lisp_fmt(visited, f) },
                     fmt: delegate! { fmt(f) },
                 })))
             }
@@ -681,9 +669,6 @@ impl Object {
                         opts.serialize_into(into, &*obj).unwrap();
                         sz as usize
                     },
-                    trace: delegate! { trace(gray) },
-                    update_ptrs: delegate! { update_ptrs(reloc) },
-                    lisp_fmt: delegate! { lisp_fmt(visited, f) },
                     fmt: delegate! { fmt(f) },
                 })))
             },
@@ -714,9 +699,6 @@ impl Object {
                         opts.serialize_into(into, &()).unwrap();
                         sz as usize
                     },
-                    trace: |_, _| {},
-                    update_ptrs: |_, _| {},
-                    lisp_fmt: |_, _, f| write!(f, "void"),
                     fmt: |_, f| write!(f, "void"),
                 })))
             },
@@ -749,17 +731,9 @@ impl Object {
 }
 
 impl Traceable for Object {
-    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
-        unsafe {
-            (self.vt.trace)(self.mem, gray);
-        }
-    }
+    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {}
 
-    fn update_ptrs(&mut self, reloc: &PtrMap) {
-        unsafe {
-            (self.vt.update_ptrs)(self.mem, reloc);
-        }
-    }
+    fn update_ptrs(&mut self, reloc: &PtrMap) {}
 }
 
 unsafe impl Send for Object {}
