@@ -301,6 +301,29 @@ impl Spaik {
         self.vm.set_macro(macro_name, macro_fn_name);
     }
 
+    fn set_subr_macro(&mut self, name: impl AsSym, macrobx: Box<dyn Subr>) {
+        let name = name.as_sym(&mut self.vm);
+        let macro_fn_name = format!("<ξ>::<wrap>::{}", name);
+        let macro_subr_name = format!("<ζ/ξ>::{}", name);
+        self.set(&macro_subr_name[..], macrobx);
+        self.exec(format!("(define ({} &body <ζ>::body) (apply {} <ζ>::body))",
+                          macro_fn_name, macro_subr_name))
+            .expect("error in auto-generated code");
+        let macro_fn_name = (&macro_fn_name[..]).as_sym(&mut self.vm);
+        self.vm.set_macro(name, macro_fn_name);
+    }
+
+    #[cfg(feature = "derive")]
+    pub fn enum_record<T: records::Enum + Userdata + KebabTypeName>(&mut self) {
+        for cs in T::enum_constructors() {
+            self.set(cs.name(), cs);
+        }
+        for mac in T::enum_macros() {
+            let macbx = Box::new(mac);
+            self.set_subr_macro(macbx.name(), macbx);
+        }
+    }
+
     #[inline]
     pub fn defun<A, R, F: IntoSubr<A, R>>(&mut self, func: F) {
         let t = type_name::<F>();
