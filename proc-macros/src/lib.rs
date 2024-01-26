@@ -349,10 +349,9 @@ pub fn derive_enum(item: TokenStream) -> TokenStream {
     let maker_rs_names = variants.clone().map(|var| {
         format_ident!("Make{}", var.ident)
     });
+    let name_s = name.to_string().to_case(Case::Kebab);
     let makers = variants.clone().zip(maker_rs_names.clone()).map(|(var, rs_name)| {
-        let nicename = format!("{}/{}",
-                               name.to_string().to_case(Case::Kebab),
-                               var.ident.to_string().to_case(Case::Kebab));
+        let nicename = format!("{name_s}/{}", var.ident.to_string().to_case(Case::Kebab));
         let zname = format!("<ζ>::make-{nicename}");
         let var_ident = var.ident.clone();
         maker(quote! { #name::#var_ident }.into(),
@@ -365,7 +364,7 @@ pub fn derive_enum(item: TokenStream) -> TokenStream {
     let out = quote! {
         impl #root::KebabTypeName for #name {
             fn kebab_type_name() -> &'static str {
-                "enum-example"
+                #name_s
             }
         }
         impl #root::MethodCall for #name {}
