@@ -314,7 +314,7 @@ impl Spaik {
     }
 
     #[cfg(feature = "derive")]
-    pub fn enum_record<T: records::Enum + Userdata + KebabTypeName>(&mut self) {
+    pub fn enum_record<T: records::Enum>(&mut self) {
         for cs in T::enum_constructors() {
             self.set(cs.name(), cs);
         }

@@ -293,9 +293,14 @@ mod tests {
     fn enum_macros() {
         let mut vm = Spaik::new_no_core();
         vm.enum_record::<EnumExample>();
+        vm.record::<Example>();
         vm.exec(r##"(define g (enum-example/ayy :x 1 :y 2 :z "z"))"##).unwrap();
-        let mut thing: Gc<EnumExample> = vm.get("g").unwrap();
-        assert_eq!(thing.with(|t| t.clone()),
-                   EnumExample::Ayy { x: 1.0, y: 2.0, z: "z".to_string() })
+        vm.exec(r##"(define z (enum-example/lmao :example (example :x 1 :y 2 :z "z")))"##).unwrap();
+        let mut g: Gc<EnumExample> = vm.get("g").unwrap();
+        let mut z: Gc<EnumExample> = vm.get("z").unwrap();
+        assert_eq!(g.with(|t| t.clone()),
+                   EnumExample::Ayy { x: 1.0, y: 2.0, z: "z".to_string() });
+        assert_eq!(z.with(|t| t.clone()),
+                   EnumExample::Lmao { example: Example { x: 1.0, y: 2.0, z: "z".to_string() } });
     }
 }

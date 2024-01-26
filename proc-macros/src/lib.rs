@@ -261,6 +261,18 @@ pub fn derive_fissile(item: TokenStream) -> TokenStream {
     out.into()
 }
 
+#[proc_macro_derive(Enum)]
+pub fn derive_enum(item: TokenStream) -> TokenStream {
+    let root = crate_root();
+    let input = parse_macro_input!(item as DeriveInput);
+    let name = input.ident.clone();
+
+    let out = quote! {
+    };
+
+    out.into()
+}
+
 #[proc_macro_attribute]
 pub fn export(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let root = crate_root();
