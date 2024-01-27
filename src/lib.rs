@@ -111,7 +111,7 @@ pub mod _deps {
     pub use crate::fmt::VisitSet;
     #[cfg(feature = "derive")]
     pub use crate::records::{into_init, into_macro_news, MacroNewVariant};
-    pub use crate::error::{Error, Result};
+    pub use crate::error::{Error, Result, OpName};
 }
 
 use std::any::type_name;
@@ -285,6 +285,10 @@ impl Spaik {
     #[inline]
     pub fn register(&mut self, func: impl Subr) {
         self.set(func.name(), func.into_subr());
+    }
+
+    pub fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
+        self.vm.set_resource(rf)
     }
 
     fn set_subr_macro(&mut self, name: impl AsSym, macrobx: Box<dyn Subr>) {

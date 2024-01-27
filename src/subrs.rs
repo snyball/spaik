@@ -557,7 +557,7 @@ pub trait Lispify<A, R, N> {
     fn lispify(self, mem: &mut Arena) -> Result<PV, Error>;
 }
 
-impl<T> IntoLisp for &mut T where T: Userdata + Subr {
+impl<T> IntoLisp for &mut T where T: Userdata {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
         let (rf, _p) = mem.put(Object::from_ref(self));
         mem.push_borrow(rf);

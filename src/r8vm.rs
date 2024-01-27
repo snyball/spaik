@@ -17,7 +17,7 @@ use crate::{
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
-    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym};
+    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp};
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::TypeId};
 #[cfg(feature = "freeze")]
@@ -891,6 +891,7 @@ pub struct R8VM {
     pub(crate) pmem: Vec<r8c::Op>,
     pub mem: Arena,
     pub(crate) globals: FnvHashMap<SymID, usize>,
+    resources: FnvHashMap<TypeId, usize>,
     pub(crate) trace_counts: FnvHashMap<SymID, usize>,
     tok_tree: tokit::Fragment,
     reader_macros: FnvHashMap<String, SymID>,
@@ -918,6 +919,7 @@ impl Default for R8VM {
     fn default() -> Self {
         R8VM {
             pmem: Default::default(),
+            resources: Default::default(),
             reader_macros: Default::default(),
             tok_tree: tokit::standard_lisp_tok_tree(),
             catch: Default::default(),
@@ -1326,6 +1328,23 @@ impl R8VM {
                         src.clone()).unwrap();
 
         vm
+    }
+
+    pub fn add_resource<T: Userdata + 'static>(&mut self) {
+        let idx = self.mem.push_env(PV::Nil);
+        self.resources.insert(TypeId::of::<T>(), idx);
+    }
+
+    pub fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
+        let obj = rf.into_pv(&mut self.mem).unwrap();
+        let idx = match self.resources.entry(TypeId::of::<T>()) {
+            Entry::Occupied(e) => *e.get(),
+            Entry::Vacant(e) => {
+                let idx = self.mem.push_env(PV::Nil);
+                *e.insert(idx)
+            },
+        };
+        self.mem.set_env(idx, obj);
     }
 
     pub unsafe fn call_method_w_keys(&mut self, key: (TypeId, SymID), mem: *mut u8, args: &[PV]) -> Result<PV> {
