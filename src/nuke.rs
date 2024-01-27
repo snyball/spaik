@@ -5,7 +5,7 @@ use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::builtins::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
-use crate::r8vm::R8VM;
+
 use crate::subrs::{IntoLisp, FromLisp, self};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
@@ -386,7 +386,7 @@ impl Debug for Object {
 }
 
 impl LispFmt for Object {
-    fn lisp_fmt(&self, visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn lisp_fmt(&self, _visited: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
             (self.vt.fmt)(self.mem, f)
         }
@@ -731,9 +731,9 @@ impl Object {
 }
 
 impl Traceable for Object {
-    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {}
+    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
 
-    fn update_ptrs(&mut self, reloc: &PtrMap) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
 }
 
 unsafe impl Send for Object {}

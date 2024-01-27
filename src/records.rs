@@ -1,11 +1,11 @@
-use spaik_proc_macros::{Obj, methods};
+use spaik_proc_macros::{Obj};
 
 use crate::error::OpName;
 
 use crate::nkgc::Traceable;
-use crate::r8vm::{ObjMethod, ArgSpec};
+use crate::r8vm::{ObjMethod};
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
-use crate::{Result, Fissile, Userdata, Error, IntoLisp, Lispify};
+use crate::{Result, Error};
 
 #[derive(Debug, Obj, Clone, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
@@ -176,6 +176,8 @@ pub trait KebabTypeName {
 
 #[cfg(test)]
 mod tests {
+    use spaik_proc_macros::methods;
+
     use crate::{Spaik, Gc, nuke};
 
     use super::*;
