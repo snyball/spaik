@@ -94,6 +94,7 @@ pub use swym::SymRef as Sym;
 pub use records::{FieldAccess, MethodCall, KebabTypeName, Enum, MacroNewVariant, MacroNew, MethodSet, SubrSet};
 #[cfg(test)]
 pub mod logging;
+pub mod events;
 
 /** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)
