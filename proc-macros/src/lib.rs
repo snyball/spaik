@@ -317,6 +317,7 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
 
     out.into()
 }
+
 #[proc_macro_attribute]
 pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     let root = crate_root();

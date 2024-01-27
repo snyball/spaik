@@ -631,6 +631,46 @@ impl<T: DeserializeOwned> DerefMut for PList<T> {
     }
 }
 
+/// The `mem` parameter is necessary here, because some of the conversions
+/// may need to create an SPV reference-counter
+pub trait FromLisp3<T, Q, C>: Sized {
+    #[allow(clippy::wrong_self_convention)]
+    fn from_lisp_3(self, mem: &mut Arena) -> Result<T, Error>;
+}
+
+impl<T> FromLisp3<Option<T>, Option<()>, ()> for PV where PV: FromLisp<T>, T: Sized {
+    fn from_lisp_3(self, mem: &mut Arena) -> Result<Option<T>, Error> {
+        match self {
+            PV::Nil => Ok(None),
+            x => Ok(Some(x.from_lisp(mem)?))
+        }
+    }
+}
+
+
+impl<T> FromLisp3<T, (), ()> for PV where PV: FromLisp<T>, T: Sized {
+    fn from_lisp_3(self, mem: &mut Arena) -> Result<T, Error> {
+        self.from_lisp(mem)
+    }
+}
+
+impl<A> Lispify<(), Option<A>, ()> for Option<A> where A: IntoLisp {
+    fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
+        match self {
+            Some(x) => x.lispify(mem),
+            None => Ok(PV::Nil)
+        }
+    }
+}
+
+impl<A, E> Lispify<(), Result<A, E>, ()> for Result<A, E>
+    where A: IntoLisp, Error: From<E>
+{
+    fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
+        self?.lispify(mem)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -638,7 +678,7 @@ mod tests {
     #[cfg(feature = "derive")]
     use spaik_proc_macros::{Fissile, export};
 
-    use crate::{Spaik, PList, logging};
+    use crate::{Spaik, PList, logging, nkgc::PV, FromLisp};
 
     use serde::{Serialize, Deserialize};
 
@@ -658,6 +698,27 @@ mod tests {
         vm.exec("(f '(:x 123 :blah-blah 1.2))").unwrap();
         let lock = lmao_2.lock().unwrap();
         assert_eq!(lock.clone(), Some(Lmao { x: 123, blah_blah: 1.2 }))
+    }
+
+    #[test]
+    fn option_from_lisp() {
+        let mut vm = Spaik::new_no_core();
+        let ans: Option<i32> = vm.eval("1").unwrap();
+        assert_eq!(ans, Some(1))
+    }
+
+    #[test]
+    fn option_to_lisp() {
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define (::is-nil? w) (= w nil))").unwrap();
+        let ans: Option<i32> = None;
+        let ans: bool = vm.call("::is-nil?", (ans,)).unwrap();
+        assert!(ans);
+        vm.exec("(define (::id w) w)").unwrap();
+        let ans: Option<i32> = Some(1);
+        let ans: i32 = vm.call("::id", (ans,)).unwrap();
+        assert_eq!(ans, 1);
+        assert_eq!(ans, 1);
     }
 
     #[cfg(feature = "derive")]

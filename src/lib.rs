@@ -51,6 +51,7 @@ pub mod plug;
 pub use plug::*;
 pub use r8vm::Func;
 use r8vm::NArgs;
+use subrs::FromLisp3;
 use subrs::IntoSubr;
 pub use subrs::{Lispify, PList};
 pub use tokit::minify;
@@ -422,11 +423,11 @@ impl Spaik {
     ///
     /// - `expr` : Lisp expression
     #[inline]
-    pub fn eval<R>(&mut self, expr: impl AsRef<str>) -> Result<R>
-        where PV: FromLisp<R>
+    pub fn eval<R,A>(&mut self, expr: impl AsRef<str>) -> Result<R>
+        where PV: FromLisp3<R,A,()>
     {
         self.vm.eval(expr.as_ref())
-               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
+               .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
     }
 
     pub fn take<T>(&mut self, var: impl AsSym) -> Result<T>

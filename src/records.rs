@@ -185,7 +185,7 @@ mod tests {
         let x = gx.with(|x| x.clone());
         drop(gx);
         let y: Example = vm.eval("g").unwrap();
-        assert!(vm.eval::<bool>("(void? g)").unwrap());
+        assert!(vm.eval::<bool,()>("(void? g)").unwrap());
         assert_eq!(y, Example { x: 1.0, y: 2.0, z: "z".to_string() });
         assert_eq!(y, x);
     }
@@ -196,7 +196,7 @@ mod tests {
         vm.defobj::<Example>();
         vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
         let _gx: Gc<Example> = vm.eval("g").unwrap();
-        assert!(matches!(vm.eval::<Example>("g").map_err(|e| e.kind().clone()),
+        assert!(matches!(vm.eval::<Example,()>("g").map_err(|e| e.kind().clone()),
                          Err(crate::error::ErrorKind::CannotMoveSharedReference { nref: 2, .. }))) ;
     }
 
