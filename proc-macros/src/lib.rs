@@ -1,5 +1,7 @@
 extern crate proc_macro;
 
+use std::fmt::Display;
+
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
@@ -319,12 +321,46 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
     out.into()
 }
 
+struct KebabTypeName<'a>(&'a Type);
+
+impl<'a> Display for KebabTypeName<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Type::Array(_) => todo!(),
+            Type::BareFn(_) => todo!(),
+            Type::Group(_) => todo!(),
+            Type::ImplTrait(_) => todo!(),
+            Type::Infer(_) => todo!(),
+            Type::Macro(_) => todo!(),
+            Type::Never(_) => todo!(),
+            Type::Paren(_) => todo!(),
+            Type::Path(p) => {
+                let mut had = false;
+                for seg in p.path.segments.iter() {
+                    if had { write!(f, "/")?; }
+                    write!(f, "{}", format!("{}", seg.ident).to_case(Case::Kebab))?;
+                    had = true;
+                }
+                Ok(())
+            },
+            Type::Ptr(_) => todo!(),
+            Type::Reference(_) => todo!(),
+            Type::Slice(_) => todo!(),
+            Type::TraitObject(_) => todo!(),
+            Type::Tuple(_) => todo!(),
+            Type::Verbatim(_) => todo!(),
+            _ => todo!(),
+        }
+    }
+}
+
 #[proc_macro_attribute]
 pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as ItemImpl);
     let spec = parse_macro_input!(attr as syn::Type);
     let name = input.self_ty.clone();
+
     let methods = input.items.iter().filter_map(|x| if let ImplItem::Method(m) = x {
         m.sig.inputs.first().and_then(|arg| match arg {
             FnArg::Receiver(_) => Some(m),
@@ -341,6 +377,33 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
     });
 
+    let st_methods = input.items.iter().filter_map(|x| if let ImplItem::Method(m) = x {
+        m.sig.inputs.first().and_then(|arg| match arg {
+            FnArg::Receiver(_) => None,
+            FnArg::Typed(_) => Some(m),
+        })
+    } else {
+        None
+    });
+    let st_nargs = st_methods.clone().map(|x| x.sig.inputs.len() as u16);
+    let st_mnames = st_methods.clone().map(|x| {
+        let mname = x.sig.ident.clone();
+        quote!(#name::#mname)
+    });
+    let st_rs_names = st_methods.clone().map(|x| format_ident!("{}_Subr", x.sig.ident.clone()));
+    let st_rs_names_2 = st_rs_names.clone();
+    let tmp_rs_names = st_methods.clone().map(|x| format_ident!("tmp_{}", x.sig.ident.clone()));
+    let tmp_rs_names_2 = tmp_rs_names.clone();
+    let st_names = st_methods.clone().map(|x| {
+        format!("{}/{}",
+                KebabTypeName(&name),
+                format!("{}", x.sig.ident).to_case(Case::Kebab))
+    });
+    let st_args = st_nargs.clone().map(|nargs| {
+        let idx = 0..(nargs as usize);
+        quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
+    });
+
     let out = quote! {
         #input
 
@@ -351,6 +414,26 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
                     ArgSpec::normal(#nargs).check(args.len() as u16)?;
                     (*(this as *mut #name)).#mnames(#args).lispify(&mut vm.mem)
                 })),*]
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        impl #root::SubrSet<#spec> for #name {
+            fn subrs() -> impl Iterator<Item = Box<dyn #root::Subr>> {
+                #(struct #st_rs_names;
+                  unsafe impl #root::Subr for #st_rs_names {
+                      fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
+                          use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
+                          ArgSpec::normal(#st_nargs).check(args.len() as u16)?;
+                          #st_mnames(#st_args).lispify(&mut vm.mem)
+                      }
+                      fn name(&self) -> &'static str {
+                          #st_names
+                      }
+                  }
+                )*
+                #(let #tmp_rs_names: Box<dyn #root::Subr> = Box::new(#st_rs_names_2);)*
+                [#(#tmp_rs_names_2),*].into_iter()
             }
         }
     };

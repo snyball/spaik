@@ -166,6 +166,10 @@ pub unsafe trait MethodSet<Name> {
     fn methods() -> &'static [(&'static str, ObjMethod)];
 }
 
+pub trait SubrSet<Name> {
+    fn subrs() -> impl Iterator<Item = Box<dyn Subr>>;
+}
+
 pub trait KebabTypeName {
     fn kebab_type_name() -> &'static str;
 }
@@ -247,5 +251,52 @@ mod tests {
                    EnumExample::Lmao { example: Example { x: 1.0, y: 2.0, z: "z".to_string() } });
         assert_eq!(zed.with(|t| t.clone()), EnumExample::Zed);
         assert_eq!(bar.with(|t| t.clone()), EnumExample::Bar(1, 2));
+    }
+
+    #[test]
+    fn static_and_self_methods() {
+        #[derive(Debug, Obj, Clone, PartialEq, Eq)]
+        #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
+        pub struct TestStatic;
+        #[methods(())]
+        impl TestStatic {
+            fn f(&self, x: i32) -> i32 {
+                x + 1
+            }
+            fn s(x: i32) -> i32 {
+                x + 1
+            }
+            fn s2(x: i32, y: i32) -> i32 {
+                x + 2 + y
+            }
+        }
+        let mut vm = Spaik::new();
+        vm.defobj::<TestStatic>();
+        vm.defmethods::<TestStatic, ()>();
+        vm.exec("(define g (test-static))").unwrap();
+        assert_eq!(3i32, vm.eval("(g :f 2)").unwrap());
+        assert_eq!(3i32, vm.eval("(test-static/s 2)").unwrap());
+        assert_eq!(7i32, vm.eval("(test-static/s-2 2 3)").unwrap());
+    }
+
+    #[test]
+    fn only_static_methods() {
+        pub struct TestStatic;
+        #[methods(())]
+        impl TestStatic {
+            fn s(x: i32) -> i32 {
+                x + 1
+            }
+            fn s2(x: i32, y: i32) -> i32 {
+                x + 2 + y
+            }
+            fn s3(x: i32, y: i32) -> i32 {
+                x + 3 + y
+            }
+        }
+        let mut vm = Spaik::new();
+        vm.defstatic::<TestStatic, ()>();
+        assert_eq!(3i32, vm.eval("(test-static/s 2)").unwrap());
+        assert_eq!(7i32, vm.eval("(test-static/s-2 2 3)").unwrap());
     }
 }

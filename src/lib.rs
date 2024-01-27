@@ -91,7 +91,7 @@ pub type Str = Arc<str>;
 pub use nuke::Userdata;
 pub use swym::SymRef as Sym;
 #[cfg(feature = "derive")]
-pub use records::{FieldAccess, MethodCall, KebabTypeName, Enum, MacroNewVariant, MacroNew, MethodSet};
+pub use records::{FieldAccess, MethodCall, KebabTypeName, Enum, MacroNewVariant, MacroNew, MethodSet, SubrSet};
 #[cfg(test)]
 pub mod logging;
 
@@ -309,9 +309,17 @@ impl Spaik {
         }
     }
 
-    pub fn defmethods<T: Userdata + MethodSet<K>, K>(&mut self) {
+    pub fn defmethods<T: Userdata + MethodSet<K> + SubrSet<K>, K>(&mut self) {
         for (kwname, m) in T::methods() {
             self.vm.register_method::<T>(*kwname, *m)
+        }
+        self.defstatic::<T, K>();
+    }
+
+    pub fn defstatic<T: SubrSet<K>, K>(&mut self) {
+        for s in T::subrs() {
+            let name = s.name();
+            self.set(name, s);
         }
     }
 
