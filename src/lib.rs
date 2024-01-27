@@ -95,6 +95,7 @@ pub use records::{FieldAccess, MethodCall, KebabTypeName, Enum, MacroNewVariant,
 #[cfg(test)]
 pub mod logging;
 pub mod events;
+pub use events::LinkedEvents;
 
 /** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)
@@ -287,7 +288,7 @@ impl Spaik {
         self.set(func.name(), func.into_subr());
     }
 
-    pub fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
+    pub unsafe fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
         self.vm.set_resource(rf)
     }
 

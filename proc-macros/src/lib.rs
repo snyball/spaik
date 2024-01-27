@@ -132,6 +132,74 @@ pub fn spaiklib(_attr: TokenStream, _item: TokenStream) -> TokenStream {
     quote!().into()
 }
 
+#[proc_macro_attribute]
+pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let root = crate_root();
+    let prefix = parse_macro_input!(attr as syn::LitStr);
+    let input = parse_macro_input!(item as ItemTrait);
+    let items = input.items.iter().filter_map(|item| {
+        match item {
+            syn::TraitItem::Method(m) => Some(m),
+            _ => None,
+        }
+    });
+    let fields = items.clone().map(|m| {
+        let name = &m.sig.ident;
+        quote!(#name: Option<#root::Func>)
+    });
+    let set_fields = items.clone().map(|m| {
+        let name = &m.sig.ident;
+        let sname = format!("{}{}", prefix.value(), name);
+        quote!(self.#name = vm.getfn(#sname).ok())
+    });
+    let wrappers = items.clone().map(|m| {
+        let name = &m.sig.ident;
+        let out = match &m.sig.output {
+            syn::ReturnType::Default => quote!(#root::Result<#root::Ignore>),
+            syn::ReturnType::Type(_, ty) => quote!(#root::Result<#ty>),
+        };
+        let args = m.sig.inputs.iter().map(|arg| {
+            match arg {
+                FnArg::Receiver(_) =>
+                    unimplemented!("Cannot use self in SPAIK interface"),
+                FnArg::Typed(syn::PatType { pat, ty, .. }) => if let Pat::Ident(arg) = &**pat {
+                    (arg, ty)
+                } else {
+                    unimplemented!("Cannot use patterns in SPAIK interface")
+                },
+            }
+        });
+        let inp = args.clone().map(|(arg, ty)| quote!(#arg : #ty));
+        let arg_idents = args.clone().map(|(arg, ty)| arg);
+        quote! {
+            pub fn #name(self, #(#inp),*) -> #out {
+                if let Some(f) = self.fns.#name {
+                    self.vm.callfn(f, (#(#arg_idents,)*))
+                } else {
+                    PV::Nil.try_into()
+                }
+            }
+        }
+    });
+    let name = input.ident;
+    quote! {
+        #[derive(Debug, Default)]
+        struct #name {
+            #(#fields),*
+        }
+
+        impl LinkedEvents for #name {
+            fn link_events(&mut self, vm: &mut Spaik) {
+                #(#set_fields);*
+            }
+        }
+
+        impl<'q: 'c, 'a, 'b, 'c> CallBuilder<'a, 'b, 'c, #name> {
+            #(#wrappers)*
+        }
+    }.into()
+}
+
 #[proc_macro_derive(Fissile)]
 pub fn derive_fissile(item: TokenStream) -> TokenStream {
     let root = crate_root();
