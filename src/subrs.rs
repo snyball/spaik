@@ -431,14 +431,6 @@ impl Zubr {
     }
 }
 
-/**
- * SAFETY: The call method may be passed an arg reference into the,
- *         vm stack (which it gets a mutable reference to.) The call
- *         method may not access `args` after mutating `vm`.
- *         -
- *         This invariant is ensured by the lispy proc-macro, which you
- *         should use instead of implementing Subr yourself.
-*/
 #[cfg(not(feature = "freeze"))]
 pub unsafe trait Subr: Send + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
