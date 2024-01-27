@@ -103,7 +103,7 @@ impl REPL {
         let mut config_dir = dirs::config_dir().unwrap();
         config_dir.push("spaik");
         self.vm.add_load_path(config_dir.to_str().unwrap());
-        match self.vm.load::<Ignore>("init") {
+        match self.vm.load::<Ignore,()>("init") {
             Ok(_) => (),
             Err(e) => {
                 vmprintln!(self.vm.vm, "{}", e);

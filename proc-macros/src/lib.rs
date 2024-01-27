@@ -167,7 +167,7 @@ fn maker(p: proc_macro2::TokenStream,
             let field_try_set = field_names.clone().enumerate().map(|(i, f)| {
                 let f_s = format!("{f}");
                 quote! {
-                    args[#i].try_into()
+                    args[#i].from_lisp_3(&mut vm.mem)
                             .map_err(|e: Error| e.arg_name(OpName::OpStr(#f_s)))?
                 }
             });
@@ -178,7 +178,7 @@ fn maker(p: proc_macro2::TokenStream,
         },
         Fields::Unnamed(ref fields) => {
             let fields_try = fields.unnamed.iter().enumerate().map(|(i, f)| quote! {
-                args[#i].try_into().map_err(|e: Error| e.argn(#i as u32))?
+                args[#i].from_lisp_3(&mut vm.mem).map_err(|e: Error| e.argn(#i as u32))?
             });
             (name, quote! { #p(#(#fields_try),*) })
         },
@@ -189,11 +189,12 @@ fn maker(p: proc_macro2::TokenStream,
         unsafe impl #root::Subr for #rs_struct_name {
             fn call(&mut self, vm: &mut #root::_deps::R8VM,
                     args: &[#root::_deps::PV]) -> #root::Result<#root::_deps::PV> {
-                use #root::_deps::*;
+                use #root::{_deps::*, FromLisp3};
                 ArgSpec::normal(#num_fields).check(args.len().try_into()?)?;
                 let common_err = |e: Error| e.sop(#name);
-                let make_obj = || Ok(Object::new(#obj_init));
-                Ok(vm.mem.put_pv(make_obj().map_err(common_err)?))
+                let mut make_obj = || Ok(Object::new(#obj_init));
+                let obj = make_obj().map_err(common_err)?;
+                Ok(vm.mem.put_pv(obj))
             }
             fn name(&self) -> &'static str {
                 #z_name
@@ -337,7 +338,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     let kwnames = methods.clone().map(|x| format!(":{}", x.sig.ident).to_case(Case::Kebab));
     let args = nargs.clone().map(|nargs| {
         let idx = 0..(nargs as usize);
-        quote!(#(args[#idx].try_into()?),*)
+        quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
     });
 
     let out = quote! {
@@ -345,7 +346,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         unsafe impl #root::MethodSet<#spec> for #name {
             fn methods() -> &'static [(&'static str, #root::_deps::ObjMethod)] {
-                use #root::{Lispify, FromLisp, _deps::*};
+                use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
                 &[#((#kwnames, |this: *mut u8, vm: &mut R8VM, args: &[PV]| unsafe {
                     ArgSpec::normal(#nargs).check(args.len() as u16)?;
                     (*(this as *mut #name)).#mnames(#args).lispify(&mut vm.mem)

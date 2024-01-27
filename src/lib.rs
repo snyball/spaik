@@ -51,7 +51,7 @@ pub mod plug;
 pub use plug::*;
 pub use r8vm::Func;
 use r8vm::NArgs;
-use subrs::FromLisp3;
+pub use subrs::FromLisp3;
 use subrs::IntoSubr;
 pub use subrs::{Lispify, PList};
 pub use tokit::minify;
@@ -330,14 +330,14 @@ impl Spaik {
 
     /// Return a clone of `var`
     #[inline]
-    pub fn get<R>(&mut self, var: impl AsSym) -> Result<R>
-        where PV: FromLisp<R>
+    pub fn get<R,A>(&mut self, var: impl AsSym) -> Result<R>
+        where PV: FromLisp3<R,A,()>
     {
         let name = var.as_sym(&mut self.vm);
         let idx = self.vm.get_env_global(name)
                          .ok_or(error!(UndefinedVariable, var: name.into()))?;
         self.vm.mem.get_env(idx)
-                   .from_lisp(&mut self.vm.mem)
+                   .from_lisp_3(&mut self.vm.mem)
     }
 
     /// Return a function by `name`, or an error if it does not exist.
@@ -455,17 +455,17 @@ impl Spaik {
         self.vm.count_trace_report()
     }
 
-    /// Load library from the load-path, by default this is `./lisp/`.
+    /// Load library from the load-path
     ///
     /// # Arguments
     ///
     /// - `lib` : If the library is stored at `"<name>.lisp"`, then `lib` should be
     ///           `<name>` as either a string or symbol
     #[inline]
-    pub fn load<R>(&mut self, lib: impl AsSym) -> Result<R> where PV: FromLisp<R> {
+    pub fn load<R,A>(&mut self, lib: impl AsSym) -> Result<R> where PV: FromLisp3<R,A,()> {
         let lib = lib.as_sym(&mut self.vm);
         self.vm.load_eval(lib)
-               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
+               .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
     }
 
     /// Load a SPAIK library from a string, this is useful both for embedding code
@@ -489,23 +489,23 @@ impl Spaik {
     ///
     /// Use `Spaik::run` if don't care about the result.
     #[inline]
-    pub fn call<R, A>(&mut self, sym: impl AsSym, args: impl NArgs<A>) -> Result<R>
-        where PV: FromLisp<R>
+    pub fn call<R, A, L>(&mut self, sym: impl AsSym, args: impl NArgs<A>) -> Result<R>
+        where PV: FromLisp3<R,L,()>
     {
         let sym = sym.as_sym(&mut self.vm);
         self.vm.ncall(sym, args)
-               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
+               .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
     }
 
     /// Call a function by-name an args and return the result.
     ///
     /// Use `Spaik::run` if don't care about the result.
     #[inline]
-    pub fn callfn<R, A>(&mut self, f: impl AsRef<Func>, args: impl NArgs<A>) -> Result<R>
-        where PV: FromLisp<R>
+    pub fn callfn<R, A, K>(&mut self, f: impl AsRef<Func>, args: impl NArgs<A>) -> Result<R>
+        where PV: FromLisp3<R,K,()>
     {
         self.vm.callfn(f.as_ref(), args)
-               .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
+               .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
     }
 
     /// Call a function by-name an args and ignore the result.
@@ -525,18 +525,18 @@ impl Spaik {
     }
 
     /// Fulfil a `Promise<T>` by running its continuation with value `ans`
-    pub fn fulfil<R,A,T>/*🐀*/(&mut self,
-                               pr: Promise<T>,
-                               ans: A) -> Result<R>
-        where PV: FromLisp<R>,
+    pub fn fulfil<R,A,T,O>/*🐀*/(&mut self,
+                                 pr: Promise<T>,
+                                 ans: A) -> Result<R>
+        where PV: FromLisp3<R,O,()>,
               A: IntoLisp + Clone + Send + 'static,
     {
         if let Some(cont) = pr.cont {
             self.vm.apply_spv(cont, (ans,))
-                   .and_then(|pv| pv.from_lisp(&mut self.vm.mem))
+                   .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
 
         } else {
-            PV::Nil.from_lisp(&mut self.vm.mem)
+            PV::Nil.from_lisp_3(&mut self.vm.mem)
         }
     }
 
@@ -628,11 +628,11 @@ impl IntoLisp for Lambda {
 }
 
 impl Lambda {
-    pub fn call<R, A>(&self, vm: &mut Spaik, args: impl NArgs<A>) -> Result<R>
-        where PV: FromLisp<R>
+    pub fn call<R, A, O>(&self, vm: &mut Spaik, args: impl NArgs<A>) -> Result<R>
+        where PV: FromLisp3<R,O,()>
     {
         vm.vm.napply_pv(self.0.pv(&vm.vm.mem), args)
-             .and_then(|pv| pv.from_lisp(&mut vm.vm.mem))
+             .and_then(|pv| pv.from_lisp_3(&mut vm.vm.mem))
     }
 
     pub fn run<R, A>(&self, vm: &mut Spaik, args: impl NArgs<A>) -> Result<()>
@@ -837,14 +837,14 @@ mod tests {
     #[test]
     fn test_load_path() {
         let mut vm = Spaik::new();
-        assert!(vm.load::<Ignore>("self").is_err());
+        assert!(vm.load::<Ignore,_>("self").is_err());
         vm.add_load_path("lisp");
-        vm.load::<Ignore>("self").unwrap();
+        let _: Ignore = vm.load("self").unwrap();
         vm.add_load_path("/usr/share/spaik/lib");
         let path: Vec<String> = vm.get("sys/load-path").unwrap();
         assert_eq!(&path, &["lisp", "/usr/share/spaik/lib"]);
         vm.set("sys/load-path", ());
-        assert!(vm.get::<()>("sys/load-path").is_ok());
+        assert!(vm.get::<(),_>("sys/load-path").is_ok());
     }
 
     #[test]
@@ -852,7 +852,7 @@ mod tests {
     fn test_load_path_illegal_value() {
         let mut vm = Spaik::new();
         vm.set("sys/load-path", ());
-        assert!(vm.get::<()>("sys/load-path").is_ok());
+        assert!(vm.get::<(),_>("sys/load-path").is_ok());
         vm.add_load_path("lmao");
     }
 
