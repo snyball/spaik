@@ -19,7 +19,7 @@ use crate::{
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp, MethodSet, KebabTypeName};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display, format}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::TypeId};
+use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::TypeId};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;

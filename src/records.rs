@@ -178,7 +178,7 @@ pub trait KebabTypeName {
 mod tests {
     use spaik_proc_macros::methods;
 
-    use crate::{Spaik, Gc, nuke};
+    use crate::{Spaik, Gc};
 
     use super::*;
 

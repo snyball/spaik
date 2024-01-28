@@ -7,7 +7,7 @@ use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
 use crate::subrs::FromLisp;
 use crate::swym::{SwymDb, SymRef};
-use std::any::TypeId;
+
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::mpsc::{Receiver, Sender, channel};

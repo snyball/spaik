@@ -668,9 +668,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{Fissile, export};
+    use spaik_proc_macros::{Fissile};
 
-    use crate::{Spaik, PList, logging, nkgc::PV, FromLisp};
+    use crate::{Spaik, PList, logging};
 
     use serde::{Serialize, Deserialize};
 
@@ -716,7 +716,7 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn method_calls() {
-        use spaik_proc_macros::{methods, Obj};
+        use spaik_proc_macros::{methods};
 
         let mut vm = Spaik::new_no_core();
 
