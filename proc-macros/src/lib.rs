@@ -6,7 +6,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, FieldsNamed, ImplItem, ItemImpl, ItemTrait, DataEnum, Fields, Field, Type};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, ImplItem, ItemImpl, ItemTrait, DataEnum, Fields, Type};
 use convert_case::{Case, Casing};
 
 fn crate_root() -> proc_macro2::TokenStream {
@@ -170,7 +170,7 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         });
         let inp = args.clone().map(|(arg, ty)| quote!(#arg : #ty));
-        let arg_idents = args.clone().map(|(arg, ty)| arg);
+        let arg_idents = args.clone().map(|(arg, _ty)| arg);
         quote! {
             pub fn #name(self, #(#inp),*) -> #out {
                 if let Some(f) = self.fns.#name {
@@ -247,7 +247,7 @@ fn maker(p: proc_macro2::TokenStream,
              })
         },
         Fields::Unnamed(ref fields) => {
-            let fields_try = fields.unnamed.iter().enumerate().map(|(i, f)| quote! {
+            let fields_try = fields.unnamed.iter().enumerate().map(|(i, _f)| quote! {
                 args[#i].from_lisp_3(&mut vm.mem).map_err(|e: Error| e.argn(#i as u32))?
             });
             (name, quote! { #p(#(#fields_try),*) })

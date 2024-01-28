@@ -1,6 +1,5 @@
 //! The Nuclear Allocator
 
-use crate::Subr;
 use crate::error::Error;
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::builtins::Builtin;
@@ -471,6 +470,7 @@ pub type ThawFn = fn(from: &mut dyn Read) -> Result<Object, Error>;
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct TypePath(&'static str);
 
+#[allow(dead_code)]
 impl TypePath {
     pub fn of<T: ?Sized>() -> Self {
         TypePath(type_name::<T>())
@@ -486,6 +486,7 @@ pub fn get_vtables() -> &'static Mutex<FnvHashMap<TypeId, &'static VTable>> {
     VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()))
 }
 
+#[allow(dead_code)]
 pub fn get_thaw_fns() -> &'static Mutex<FnvHashMap<TypePath, ThawFn>> {
     THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()))
 }
@@ -1440,6 +1441,7 @@ impl Nuke {
         }
     }
 
+    #[allow(dead_code)]
     pub fn shallow_clone(&self) -> Nuke {
         let mut nk = Nuke::new(self.sz);
 

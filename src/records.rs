@@ -1,4 +1,4 @@
-use spaik_proc_macros::{Obj};
+use spaik_proc_macros::Obj;
 
 use crate::error::OpName;
 

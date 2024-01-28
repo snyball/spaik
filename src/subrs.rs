@@ -54,6 +54,7 @@ impl<T> RefIntoLisp for T
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! impl_objref {
     ($($from_t:ty),*) => {
         $(impl TryFrom<PV> for ObjRef<$from_t> {
@@ -668,7 +669,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{Fissile};
+    use spaik_proc_macros::Fissile;
 
     use crate::{Spaik, PList, logging};
 
@@ -716,7 +717,7 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn method_calls() {
-        use spaik_proc_macros::{methods};
+        use spaik_proc_macros::methods;
 
         let mut vm = Spaik::new_no_core();
 

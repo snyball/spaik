@@ -29,6 +29,7 @@ macro_rules! vmprint {
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! vmprintln {
     ($vm:expr, $($fmt:expr),+) => {
         $vm.print_fmt(format_args!($($fmt),+)).unwrap();

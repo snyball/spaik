@@ -25,6 +25,7 @@
 
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::option_map_unit_fn)]
+#![allow(unused_imports)]
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -292,6 +293,7 @@ impl Spaik {
         self.vm.set_resource(rf)
     }
 
+    #[cfg(feature = "derive")]
     fn set_subr_macro(&mut self, name: impl AsSym, macrobx: Box<dyn Subr>) {
         let name = name.as_sym(&mut self.vm);
         let macro_fn_name = format!("<ξ>::<wrap>::{}", name);
@@ -315,6 +317,7 @@ impl Spaik {
         }
     }
 
+    #[cfg(feature = "derive")]
     pub fn defmethods<T: Userdata + MethodSet<K> + SubrSet<K>, K>(&mut self) {
         for (kwname, _spec, m) in T::methods() {
             self.vm.register_method::<T>(*kwname, *m)
@@ -325,12 +328,14 @@ impl Spaik {
         self.defstatic::<T, K>();
     }
 
+    #[cfg(feature = "derive")]
     pub fn bind_resource_fns<T, K>(&mut self, override_prefix: Option<&'static str>)
         where T: Userdata + MethodSet<K> + KebabTypeName
     {
         self.vm.bind_resource_fns::<T, K>(override_prefix)
     }
 
+    #[cfg(feature = "derive")]
     pub fn defstatic<T: SubrSet<K>, K>(&mut self) {
         for s in T::subrs() {
             let name = s.name();

@@ -17,7 +17,7 @@ use crate::{
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
-    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp, MethodSet, KebabTypeName};
+    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp};
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::TypeId};
 #[cfg(feature = "freeze")]
@@ -203,6 +203,7 @@ macro_rules! subr {
         #[derive(Clone, Copy, Debug)]
         pub struct $name;
 
+        #[allow(unused_variables)]
         unsafe impl Subr for $name {
             fn call(&mut $self, $vm: &mut R8VM, $args: &[PV]) -> Result<PV> $body
             fn name(&self) -> &'static str { $name_s }
@@ -1341,8 +1342,9 @@ impl R8VM {
         }.try_into().unwrap()
     }
 
+    #[cfg(feature = "derive")]
     pub fn bind_resource_fns<T, K>(&mut self, override_prefix: Option<&'static str>)
-        where T: Userdata + MethodSet<K> + KebabTypeName
+        where T: Userdata + crate::records::MethodSet<K> + crate::records::KebabTypeName
     {
         let obj_idx = self.resource_idx::<T>();
         let sep = if override_prefix.is_some() { "" } else { "/" };
@@ -2306,7 +2308,6 @@ impl R8VM {
                     }).map_err(|e| e.bop(Builtin::Pop))?;
                 }
                 VGET() => {
-                    let op = Builtin::Get;
                     let idx = self.mem.pop()?;
                     let vec = self.mem.pop()?;
                     let err = || Error::new(ErrorKind::TypeNError {
@@ -2318,7 +2319,7 @@ impl R8VM {
                     #[cfg(feature = "math")]
                     let ierr = |x: PV| Err(error!(TypeError,
                                                   expect: Builtin::Integer,
-                                                  got: x.bt_type_of()).bop(op).argn(2));
+                                                  got: x.bt_type_of()).bop(Builtin::Get).argn(2));
                     let elem = match (idx, vec) {
                         (idx, PV::Ref(p)) => match (idx, atom_kind(p)) {
                             (PV::Int(idx), NkT::Vector) =>
@@ -2343,14 +2344,13 @@ impl R8VM {
                 }
                 VSET() => {
                     // (set (get <vec> <idx>) <val>)
-                    let op = Builtin::Set;
                     let len = self.mem.stack.len();
                     let args = &mut self.mem.stack[len - 3..];
                     with_ref_mut!(args[1], Vector(v) => {
                         TryInto::<usize>::try_into(args[2])
                             .map_err(|_| error!(TypeError,
                                                 expect: Builtin::Integer,
-                                                got: args[2].bt_type_of()).bop(op).argn(2))
+                                                got: args[2].bt_type_of()).bop(Builtin::Set).argn(2))
                             .and_then(|idx| if idx >= (*v).len() {
                                 err!(IndexError, idx)
                             } else {

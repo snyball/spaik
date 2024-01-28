@@ -1,7 +1,5 @@
 use std::marker::PhantomData;
 
-use spaik_proc_macros::hooks;
-
 use crate::{Spaik, Userdata, nkgc::PV};
 
 pub struct CallBuilder<'a, 'b, 'c, T> {
@@ -29,13 +27,6 @@ impl<T> IntoCallBuilder for T where T: LinkedEvents {
     }
 }
 
-#[hooks("events/")]
-trait Example {
-    fn dead(id: u32);
-    fn ready();
-    fn thing(x: i32) -> i32;
-}
-
 pub trait LinkedEvents {
     fn link_events(&mut self, vm: &mut Spaik);
 }
@@ -46,8 +37,18 @@ mod tests {
 
     use super::*;
 
+    #[cfg(feature = "derive")]
     #[test]
     fn call_builder() {
+        use spaik_proc_macros::hooks;
+
+        #[hooks("events/")]
+        trait Example {
+            fn dead(id: u32);
+            fn ready();
+            fn thing(x: i32) -> i32;
+        }
+
         #[derive(Debug, Obj)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         struct Test { x: i32 }
