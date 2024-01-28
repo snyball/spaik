@@ -52,6 +52,7 @@ pub mod plug;
 pub use plug::*;
 pub use r8vm::Func;
 use r8vm::NArgs;
+pub use r8vm::OutStream;
 pub use subrs::FromLisp3;
 use subrs::IntoSubr;
 pub use subrs::{Lispify, PList};
@@ -294,6 +295,10 @@ impl Spaik {
 
     pub unsafe fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
         self.vm.set_resource(rf)
+    }
+
+    pub fn set_stdout(&mut self, out: Box<dyn OutStream>) {
+        self.vm.set_stdout(out)
     }
 
     #[cfg(feature = "derive")]
