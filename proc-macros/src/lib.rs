@@ -176,7 +176,7 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
                 if let Some(f) = self.fns.#name {
                     self.vm.callfn(f, (#(#arg_idents,)*))
                 } else {
-                    PV::Nil.try_into()
+                    #root::_deps::PV::Nil.try_into()
                 }
             }
         }
@@ -188,13 +188,13 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
             #(#fields),*
         }
 
-        impl LinkedEvents for #name {
-            fn link_events(&mut self, vm: &mut Spaik) {
+        impl #root::LinkedEvents for #name {
+            fn link_events(&mut self, vm: &mut #root::Spaik) {
                 #(#set_fields);*
             }
         }
 
-        impl<'q: 'c, 'a, 'b, 'c> CallBuilder<'a, 'b, 'c, #name> {
+        impl<'q: 'c, 'a, 'b, 'c> #root::CallBuilder<'a, 'b, 'c, #name> {
             #(#wrappers)*
         }
     }.into()

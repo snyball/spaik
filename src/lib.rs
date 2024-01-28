@@ -96,7 +96,7 @@ pub use records::{FieldAccess, MethodCall, KebabTypeName, Enum, MacroNewVariant,
 #[cfg(test)]
 pub mod logging;
 pub mod events;
-pub use events::LinkedEvents;
+pub use events::{LinkedEvents, CallBuilder, IntoCallBuilder};
 
 /** This is NOT a public interface.
  * Dependencies for procedural macros (feature "derive".)
