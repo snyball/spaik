@@ -355,7 +355,7 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
             }
 
             fn enum_constructors() -> impl Iterator<Item = Box<dyn #root::Subr>> {
-                use crate::_deps::*;
+                use #root::_deps::*;
                 #(#makers)*
                 let boxes: [Box<dyn #root::Subr>; #num_variants] = [
                     #(Box::new(#maker_rs_names)),*
