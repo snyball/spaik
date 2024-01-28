@@ -649,7 +649,7 @@ impl Object {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
-        let type_id = TypeId::of::<&mut T>();
+        let type_id = TypeId::of::<*mut T>();
         let vtables = get_vtables();
         let vt = match vtables.lock().unwrap().entry(type_id) {
             Entry::Occupied(vp) => *vp.get(),

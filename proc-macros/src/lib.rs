@@ -444,6 +444,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         let idx = 0..(nargs as usize);
         quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
     });
+    let num_methods = methods.clone().count();
 
     let st_methods = input.items.iter().filter_map(|x| if let ImplItem::Method(m) = x {
         m.sig.inputs.first().and_then(|arg| match arg {
@@ -476,12 +477,14 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input
 
         unsafe impl #root::MethodSet<#spec> for #name {
-            fn methods() -> &'static [(&'static str, #root::_deps::ObjMethod)] {
+            fn methods() -> &'static [(&'static str, #root::_deps::ArgSpec, #root::_deps::ObjMethod)] {
                 use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
-                &[#((#kwnames, |this: *mut u8, vm: &mut R8VM, args: &[PV]| unsafe {
+                const METHODS: [(&'static str, #root::_deps::ArgSpec, #root::_deps::ObjMethod); #num_methods] =
+                [#((#kwnames, ArgSpec::normal(#nargs), |this: *mut u8, vm: &mut R8VM, args: &[PV]| unsafe {
                     ArgSpec::normal(#nargs).check(args.len() as u16)?;
                     (*(this as *mut #name)).#mnames(#args).lispify(&mut vm.mem)
-                })),*]
+                })),*];
+                &METHODS
             }
         }
 

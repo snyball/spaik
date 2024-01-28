@@ -17,9 +17,9 @@ use crate::{
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
-    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp};
+    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp, MethodSet, KebabTypeName};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::TypeId};
+use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display, format}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::TypeId};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -74,6 +74,7 @@ chasm_def! {
     RST(),
     TOP(delta: u16),
     DUP(),
+    // SHF(idx: u32),
     ZXP(),
     // Stack variables
     MOV(var_idx: u16),
@@ -1330,21 +1331,47 @@ impl R8VM {
         vm
     }
 
-    pub fn add_resource<T: Userdata + 'static>(&mut self) {
-        let idx = self.mem.push_env(PV::Nil);
-        self.resources.insert(TypeId::of::<T>(), idx);
-    }
-
-    pub fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
-        let obj = rf.into_pv(&mut self.mem).unwrap();
-        let idx = match self.resources.entry(TypeId::of::<T>()) {
+    fn resource_idx<T: Userdata>(&mut self) -> u32 {
+        match self.resources.entry(TypeId::of::<T>()) {
             Entry::Occupied(e) => *e.get(),
             Entry::Vacant(e) => {
                 let idx = self.mem.push_env(PV::Nil);
                 *e.insert(idx)
             },
-        };
-        self.mem.set_env(idx, obj);
+        }.try_into().unwrap()
+    }
+
+    pub fn bind_resource_fns<T, K>(&mut self, override_prefix: Option<&'static str>)
+        where T: Userdata + MethodSet<K> + KebabTypeName
+    {
+        let obj_idx = self.resource_idx::<T>();
+        let sep = if override_prefix.is_some() { "" } else { "/" };
+        let prefix = override_prefix.unwrap_or(T::kebab_type_name());
+        for (name, spec, _fn) in T::methods() {
+            assert!(name.len() > 1, "Empty method name");
+            let name_no_kw = &name[1..];
+            let fn_name = self.sym_id(&format!("{prefix}{sep}{name_no_kw}"));
+            let kwname = self.sym_id(name);
+            let name_idx = self.mem.push_env(PV::Sym(kwname));
+            let fn_pos = self.pmem.len();
+            self.pmem.push(r8c::Op::INS(obj_idx as u32));
+            self.pmem.push(r8c::Op::INS(name_idx as u32));
+            assert!(!spec.is_special(), "No special function signatures allowed for methods");
+            for i in 0..spec.nargs {
+                self.pmem.push(r8c::Op::MOV(i));
+            }
+            self.pmem.push(r8c::Op::ZCALL(spec.nargs + 1));
+            self.pmem.push(r8c::Op::RET());
+            let sz = self.pmem.len() - fn_pos;
+            // TODO: Add arg names, they have to be generated in the methods proc-macro
+            self.defun(fn_name, *spec, vec![], fn_pos, sz);
+        }
+    }
+
+    pub fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
+        let obj = rf.into_pv(&mut self.mem).unwrap();
+        let idx = self.resource_idx::<T>();
+        self.mem.set_env(idx as usize, obj);
     }
 
     pub unsafe fn call_method_w_keys(&mut self, key: (TypeId, SymID), mem: *mut u8, args: &[PV]) -> Result<PV> {
@@ -1369,7 +1396,7 @@ impl R8VM {
         }
     }
 
-    pub fn register_method<T: Userdata>(&mut self, name: impl AsSym, m: ObjMethod) {
+    pub fn register_method<T: 'static>(&mut self, name: impl AsSym, m: ObjMethod) {
         let sym = name.as_sym(self);
         self.obj_methods.insert((TypeId::of::<T>(), sym), m);
     }

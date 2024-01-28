@@ -3,7 +3,7 @@ use spaik_proc_macros::{Obj};
 use crate::error::OpName;
 
 use crate::nkgc::Traceable;
-use crate::r8vm::{ObjMethod};
+use crate::r8vm::{ObjMethod, ArgSpec};
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
 use crate::{Result, Error};
 
@@ -163,7 +163,7 @@ pub trait MethodCall {
 }
 
 pub unsafe trait MethodSet<Name> {
-    fn methods() -> &'static [(&'static str, ObjMethod)];
+    fn methods() -> &'static [(&'static str, ArgSpec, ObjMethod)];
 }
 
 pub trait SubrSet<Name> {

@@ -316,10 +316,19 @@ impl Spaik {
     }
 
     pub fn defmethods<T: Userdata + MethodSet<K> + SubrSet<K>, K>(&mut self) {
-        for (kwname, m) in T::methods() {
+        for (kwname, _spec, m) in T::methods() {
             self.vm.register_method::<T>(*kwname, *m)
         }
+        for (kwname, _spec, m) in T::methods() {
+            self.vm.register_method::<*mut T>(*kwname, *m)
+        }
         self.defstatic::<T, K>();
+    }
+
+    pub fn bind_resource_fns<T, K>(&mut self, override_prefix: Option<&'static str>)
+        where T: Userdata + MethodSet<K> + KebabTypeName
+    {
+        self.vm.bind_resource_fns::<T, K>(override_prefix)
     }
 
     pub fn defstatic<T: SubrSet<K>, K>(&mut self) {
