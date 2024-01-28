@@ -809,7 +809,7 @@ impl<T> fmt::Display for Gc<T> where T: fmt::Display + Userdata {
 /// dangling-pointer references.
 impl<T> FromLisp<Gc<T>> for PV where T: Userdata {
     fn from_lisp(self, _mem: &mut Arena) -> Result<Gc<T>, Error> {
-        with_ref!(self, Struct(s) => {
+        with_ref!(self, Object(s) => {
             #[allow(clippy::unnecessary_cast)]
             let this = ((*s).cast_mut()? as *mut T) as *mut RcMem<T>;
             unsafe { (*this).rc.inc() }
@@ -938,8 +938,24 @@ fissile_types! {
     (Mat2, Builtin::Mat2, glam::Mat2),
     (Mat3, Builtin::Mat3, glam::Mat3),
     (Mat4, Builtin::Mat4, glam::Mat4),
-    (Struct, Builtin::Struct, crate::nuke::Object),
-    (Iter, Builtin::Struct, crate::nuke::Iter),
+    (Object, Builtin::Object, crate::nuke::Object),
+    (Iter, Builtin::Iter, crate::nuke::Iter),
+    (Continuation, Builtin::Continuation, crate::nuke::Continuation),
+    (Subroutine, Builtin::Subr, Box<dyn crate::subrs::Subr>)
+}
+
+#[cfg(not(feature = "math"))]
+fissile_types! {
+    (Void, Builtin::Void, Void),
+    (Cons, Builtin::Cons, crate::nkgc::Cons),
+    (Intr, Builtin::Intr, crate::nuke::Intr),
+    (Lambda, Builtin::Lambda, crate::nkgc::Lambda),
+    (String, Builtin::String, std::string::String),
+    (Table, Builtin::Table, FnvHashMap<PV, PV>),
+    (PV, Builtin::Ref, crate::nkgc::PV),
+    (Vector, Builtin::Vector, Vec<PV>),
+    (Object, Builtin::Object, crate::nuke::Object),
+    (Iter, Builtin::Iter, crate::nuke::Iter),
     (Continuation, Builtin::Continuation, crate::nuke::Continuation),
     (Subroutine, Builtin::Subr, Box<dyn crate::subrs::Subr>)
 }
@@ -974,22 +990,6 @@ impl LispFmt for FnvHashMap<PV, PV> {
         }
         write!(f, ")")
     }
-}
-
-#[cfg(not(feature = "math"))]
-fissile_types! {
-    (Void, Builtin::Void, Void),
-    (Cons, Builtin::Cons, crate::nkgc::Cons),
-    (Intr, Builtin::Intr, crate::nuke::Intr),
-    (Lambda, Builtin::Lambda, crate::nkgc::Lambda),
-    (String, Builtin::String, std::string::String),
-    (Table, Builtin::Table, FnvHashMap<PV, PV>),
-    (PV, Builtin::Ref, crate::nkgc::PV),
-    (Vector, Builtin::Vector, Vec<PV>),
-    (Struct, Builtin::Struct, crate::nuke::Object),
-    (Iter, Builtin::Struct, crate::nuke::Iter),
-    (Continuation, Builtin::Continuation, crate::nuke::Continuation),
-    (Subroutine, Builtin::Subr, Box<dyn crate::subrs::Subr>)
 }
 
 #[repr(u8)]
@@ -1175,7 +1175,7 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         NkRef::Mat3(m3) => clone!(m3),
         #[cfg(feature = "math")]
         NkRef::Mat4(m4) => clone!(m4),
-        NkRef::Struct(s) => clone!(s),
+        NkRef::Object(s) => clone!(s),
         NkRef::Iter(i) => clone!(i),
         NkRef::Continuation(_c) => todo!(),
         NkRef::Subroutine(_s) => unimplemented!("cloning subroutines is unimplemented"),

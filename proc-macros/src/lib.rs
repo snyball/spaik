@@ -557,7 +557,7 @@ pub fn export(_attr: TokenStream, item: TokenStream) -> TokenStream {
                              .ok_or_else(|| #root::error::Error::new(
                                  #root::error::ErrorKind::TypeError {
                                      expect: #root::Builtin::Callable,
-                                     got: #root::Builtin::Struct
+                                     got: #root::Builtin::Object
                                  }
                              ).bop(#root::Builtin::Apply))?
                              .sym()

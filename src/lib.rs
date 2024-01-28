@@ -460,7 +460,7 @@ impl Spaik {
         self.vm.globals.remove(&sym)
                        .ok_or_else(|| error!(UndefinedVariable, var: sym.into()))
                        .and_then(|i| with_ref_mut!(self.vm.mem.env[i],
-                                                   Struct(s) => { (*s).take() }))
+                                                   Object(s) => { (*s).take() }))
     }
 
     /// Run an expression and ignore the result (unless there was an error.)

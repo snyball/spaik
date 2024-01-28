@@ -59,7 +59,7 @@ builtins! {
     (Quasi, "`"),
     (Unquote, ","),
     (USplice, ",@"),
-    (Struct, "struct"),
+    (Object, "object"),
     (Loop, "loop"),
     (Cdr, "cdr"),
     (Car, "car"),

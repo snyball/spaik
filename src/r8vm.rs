@@ -2060,7 +2060,7 @@ impl R8VM {
                                expect: vec![Builtin::Lambda,
                                             Builtin::Subr,
                                             Builtin::Continuation,
-                                            Builtin::Struct],
+                                            Builtin::Object],
                                got: lambda_pv.bt_type_of());
         let PV::Ref(p) = lambda_pv else { return err() };
         match unsafe { mem::transmute(((*p).meta.0 & META_TYPE_MASK) >> 2) } {
@@ -2111,7 +2111,7 @@ impl R8VM {
                 self.frame = (*cont).frame;
                 Ok(self.ret_to((*cont).dip))
             }
-            NkT::Struct => unsafe {
+            NkT::Object => unsafe {
                 let s = fastcast_mut::<Object>(p);
                 let top = self.mem.stack.len();
                 let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();

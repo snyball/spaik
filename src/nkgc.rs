@@ -79,7 +79,7 @@ impl<T: Userdata> TryFrom<PV> for ObjRef<*const T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<*const T>, Self::Error> {
-        Ok(ObjRef(with_ref!(v, Struct(v) => {
+        Ok(ObjRef(with_ref!(v, Object(v) => {
             ObjPtr(v).cast::<T>()
         })?))
     }
@@ -89,7 +89,7 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<&'a T>, Self::Error> {
-        Ok(ObjRef(with_ref!(v, Struct(v) => {
+        Ok(ObjRef(with_ref!(v, Object(v) => {
             ObjPtr(v).cast::<T>().map(|p| &*p)
         })?))
     }
@@ -99,7 +99,7 @@ impl<'a, T: Userdata> TryFrom<PV> for ObjRef<&'a mut T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<&'a mut T>, Self::Error> {
-        Ok(ObjRef(with_ref_mut!(v, Struct(v) => {
+        Ok(ObjRef(with_ref_mut!(v, Object(v) => {
             ObjPtrMut(v).cast_mut::<T>().map(|p| &mut *p)
         })?))
     }
@@ -125,7 +125,7 @@ impl<T: Userdata> TryFrom<PV> for ObjRef<*mut T> {
     type Error = Error;
 
     fn try_from(v: PV) -> Result<ObjRef<*mut T>, Self::Error> {
-        Ok(ObjRef(with_ref_mut!(v, Struct(v) => {
+        Ok(ObjRef(with_ref_mut!(v, Object(v) => {
             ObjPtrMut(v).cast_mut::<T>()
         })?))
     }
@@ -1475,7 +1475,7 @@ impl Arena {
 
     pub fn has_mut_extrefs(&self) -> bool {
         for val in self.nuke.iter() {
-            if let NkRef::Struct(s) = to_fissile_ref(val) {
+            if let NkRef::Object(s) = to_fissile_ref(val) {
                 if unsafe{(*s).rc()} > 1 {
                     return true;
                 }
@@ -1614,7 +1614,7 @@ impl Arena {
 
     pub fn pop_borrows(&mut self) {
         for obj in self.borrows.drain(..) {
-            if let NkMut::Struct(s) = to_fissile_mut(obj) {
+            if let NkMut::Object(s) = to_fissile_mut(obj) {
                 unsafe { (*s).void() }
             }
         }
