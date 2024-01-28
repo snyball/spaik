@@ -364,7 +364,7 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
             }
         }
 
-        impl TryFrom<#root::PV> for #name {
+        impl TryFrom<#root::_deps::PV> for #name {
             type Error = #root::error::Error;
             fn try_from(pv: #root::_deps::PV) -> std::result::Result<Self, Self::Error> {
                 let p = pv.ref_inner()?;
@@ -491,6 +491,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[allow(non_camel_case_types)]
         impl #root::SubrSet<#spec> for #name {
             fn subrs() -> impl Iterator<Item = Box<dyn #root::Subr>> {
+                use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
                 #(struct #st_rs_names;
                   unsafe impl #root::Subr for #st_rs_names {
                       fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
