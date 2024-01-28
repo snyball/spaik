@@ -194,7 +194,7 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
-        impl<'q: 'c, 'a, 'b, 'c> #root::CallBuilder<'a, 'b, 'c, #name> {
+        impl<'q: 'c, 'a, 'b, 'c> crate::__spaik_call_builder::CallBuilder<'a, 'b, 'c, #name> {
             #(#wrappers)*
         }
     }.into()

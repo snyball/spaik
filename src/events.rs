@@ -2,30 +2,39 @@ use std::marker::PhantomData;
 
 use crate::{Spaik, Userdata, nkgc::PV};
 
-pub struct CallBuilder<'a, 'b, 'c, T> {
-    fns: &'a mut T,
-    vm: &'b mut Spaik,
-    _ph: PhantomData<&'c ()>
+#[macro_export]
+macro_rules! def_call_builder {
+    () => {
+        mod __spaik_call_builder {
+            pub struct CallBuilder<'a, 'b, 'c, T> {
+                pub fns: &'a mut T,
+                pub vm: &'b mut $crate::Spaik,
+                _ph: std::marker::PhantomData<&'c ()>
+            }
+
+            impl<'q: 'c, 'a, 'b, 'c, T> CallBuilder<'a, 'b, 'c, T> {
+                pub fn with_resource<G>(self, global: &'q mut G) -> CallBuilder<'a, 'b, 'q, T>
+                    where G: $crate::Userdata
+                {
+                    unsafe { self.vm.set_resource(global) };
+                    CallBuilder { fns: self.fns, vm: self.vm, _ph: Default::default() }
+                }
+            }
+
+            pub trait IntoCallBuilder: Sized {
+                fn on<'a, 'b>(&'a mut self, vm: &'b mut $crate::Spaik) -> CallBuilder<'a, 'b, 'b, Self>;
+            }
+
+            impl<T> IntoCallBuilder for T where T: $crate::LinkedEvents {
+                fn on<'a, 'b>(&'a mut self, vm: &'b mut $crate::Spaik) -> CallBuilder<'a, 'b, 'b, T> {
+                    CallBuilder { fns: self, vm, _ph: Default::default() }
+                }
+            }
+        }
+    };
 }
 
-impl<'q: 'c, 'a, 'b, 'c, T> CallBuilder<'a, 'b, 'c, T> {
-    pub fn with_resource<G>(self, global: &'q mut G) -> CallBuilder<'a, 'b, 'q, T>
-        where G: Userdata
-    {
-        unsafe { self.vm.set_resource(global) };
-        CallBuilder { fns: self.fns, vm: self.vm, _ph: Default::default() }
-    }
-}
-
-pub trait IntoCallBuilder: Sized {
-    fn on<'a, 'b>(&'a mut self, vm: &'b mut Spaik) -> CallBuilder<'a, 'b, 'b, Self>;
-}
-
-impl<T> IntoCallBuilder for T where T: LinkedEvents {
-    fn on<'a, 'b>(&'a mut self, vm: &'b mut Spaik) -> CallBuilder<'a, 'b, 'b, T> {
-        CallBuilder { fns: self, vm, _ph: Default::default() }
-    }
-}
+pub use crate::__spaik_call_builder::*;
 
 pub trait LinkedEvents {
     fn link_events(&mut self, vm: &mut Spaik);
