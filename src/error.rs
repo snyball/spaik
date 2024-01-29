@@ -186,6 +186,7 @@ pub enum SyntaxErrorKind {
     DotAfterDot,
     SpliceAfterDot,
     ModifierBeforeDot,
+    MoreThanOneElemAfterDot,
 }
 
 impl fmt::Display for SyntaxErrorKind {
@@ -199,6 +200,8 @@ impl fmt::Display for SyntaxErrorKind {
                 write!(f, "Splice operator [,@] after dot operator [.]"),
             SyntaxErrorKind::ModifierBeforeDot =>
                 write!(f, "Modifier e.g [,@] [,] [`] or ['] etc. before dot [.] operator e.g (a b ' . c) instead of (a b . 'c)"),
+            SyntaxErrorKind::MoreThanOneElemAfterDot =>
+                write!(f, "More than one element after dot [.] operator, e.g (1 2 . 3 4) instead of (1 2 3 . 4)"),
         }
     }
 }

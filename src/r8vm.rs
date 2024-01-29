@@ -1539,7 +1539,7 @@ impl R8VM {
         let mut close = vec![];
         let mut pmods = vec![];
         let mut dots = vec![];
-        let mut dot = false;
+        let mut dot = None;
         let mut num: u32 = 0;
         let mut srcs = vec![];
         let mut src_idxs = vec![0];
@@ -1584,7 +1584,7 @@ impl R8VM {
                     pmods.push(take(&mut mods));
                     close.push(num + 1);
                     dots.push(dot);
-                    dot = false;
+                    dot = None;
                     num = 0;
                 }
                 ")" if close.is_empty() => bail!(TrailingDelimiter { close: ")" }),
@@ -1592,7 +1592,7 @@ impl R8VM {
                     ctx: Builtin::List,
                     op: Builtin::ConsDot
                 }),
-                "." if dot => bail!(SyntaxError(SyntaxErrorKind::DotAfterDot)),
+                "." if dot.is_some() => bail!(SyntaxError(SyntaxErrorKind::DotAfterDot)),
                 "." => {
                     if tokit.peek().map(|t| t.text == ")").unwrap_or_default() {
                         bail!(SyntaxError(SyntaxErrorKind::DotAtEndOfList))
@@ -1602,9 +1602,14 @@ impl R8VM {
                         bail!(SyntaxError(SyntaxErrorKind::ModifierBeforeDot))
                     }
 
-                    dot = true
+                    dot = Some(num)
                 },
                 ")" => {
+                    if let Some(dot_at) = dot {
+                        if dot_at != num-1 {
+                            bail!(SyntaxError(SyntaxErrorKind::MoreThanOneElemAfterDot))
+                        }
+                    }
                     assert_no_trailing!(Meta::Source(LineCol { line, col }));
                     let src_idx = src_idxs.pop().unwrap();
                     let fst_src = srcs[src_idx].into_source(file.clone());
@@ -1619,9 +1624,9 @@ impl R8VM {
                                 pv.tag(&mut self.mem, src);
                             }
                             let _ = replace(&mut self.mem.stack, stack);
-                            self.expand_from_stack(num, dot)?
+                            self.expand_from_stack(num, dot.is_some())?
                         } else {
-                            wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot));
+                            wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot.is_some()));
                             let pv = self.mem.pop().unwrap();
                             self.macroexpand_pv(pv, false)?
                         };
@@ -1643,7 +1648,7 @@ impl R8VM {
                         }
                         cc.take(self)?;
                     } else {
-                        wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot));
+                        wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot.is_some()));
                     }
 
                     dot = dots.pop().unwrap();
