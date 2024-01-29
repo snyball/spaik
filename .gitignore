@@ -29,3 +29,4 @@ js/bin
 package-lock.json
 cachegrind.out*
 /flamegraph.svg
+heaptrack.*
