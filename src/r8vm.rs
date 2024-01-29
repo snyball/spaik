@@ -6,7 +6,7 @@ use comfy_table::Table;
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
 use crate::{
-    ast::{Excavator, Visitor},
+    ast::{Excavator, Visitor, PVSrcFmt},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     builtins::Builtin,
     comp::SourceList,
@@ -1774,6 +1774,7 @@ impl R8VM {
             }
         } else {
             let mut inds = 0;
+            let src = self.mem.get_pv_tag(v).cloned();
             // Keep expanding until the result can no longer be macro-expanded
             while let Some(m) = v.op().and_then(|op| self.macros.get(&op)).copied() {
                 // `op` is the macro name, and `m` is the underlying function
@@ -1808,6 +1809,9 @@ impl R8VM {
                 // Set new expand-candidate to the result of the macro
                 invalid!(v); // run_from_unwind
                 v = self.mem.pop().expect("Function did not return a value");
+                if let Some(ref src) = src {
+                    self.mem.tag_pv(v, src.clone());
+                }
 
                 // This may loop infinitely if a macro expands to itself, so
                 // check if we're at macro recursion limit

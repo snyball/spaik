@@ -1422,6 +1422,7 @@ impl Arena {
             head = nhead;
             cell = next;
         }
+        self.tags.insert(head, srcs.next().expect("Not enough sources for list"));
         unsafe {
             ptr::write(cell, Cons::new(self.stack[top - 1 - dot as usize], if dot {
                 self.stack[top - 1]
@@ -1556,7 +1557,13 @@ impl Arena {
 
     #[inline]
     pub fn tag(&mut self, item: *mut NkAtom, tag: Source) {
-        self.tags.insert(item, tag);
+        if let Entry::Vacant(e) = self.tags.entry(item) {
+            e.insert(tag);
+        }
+    }
+
+    pub fn tag_pv(&mut self, item: PV, tag: Source) {
+        item.ref_inner().ok().map(|i| self.tag(i, tag));
     }
 
     pub fn clear_tags(&mut self) {
@@ -1565,6 +1572,10 @@ impl Arena {
 
     pub fn get_tag(&self, item: *mut NkAtom) -> Option<&Source> {
         self.tags.get(&item)
+    }
+
+    pub fn get_pv_tag(&self, item: PV) -> Option<&Source> {
+        item.ref_inner().ok().and_then(|i| self.get_tag(i))
     }
 
     pub fn untag(&mut self, item: *mut NkAtom) {

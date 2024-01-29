@@ -1,5 +1,6 @@
 //! Abstract Syntax Tree Tools
 
+use crate::fmt::LispFmt;
 use crate::nkgc::Arena;
 use crate::nkgc::Cons;
 use crate::nkgc::ConsItem;
@@ -836,7 +837,7 @@ impl<'a> Excavator<'a> {
         match v {
             PV::Ref(p) => match to_fissile_ref(p) {
                 NkRef::Cons(cell) => {
-                    let src = self.mem.get_tag(p).cloned().unwrap_or(src);
+                    let src = self.mem.get_tag(p).cloned().unwrap_or_else(|| src);
                     self.cons(unsafe { *cell }, src)
                 },
                 _ => Ok(AST2 { src, kind: v.into() })
@@ -847,6 +848,37 @@ impl<'a> Excavator<'a> {
             PV::Sym(var) => Ok(AST2 { src, kind: M::Var(var) }),
             _ => Ok(AST2 { src, kind: v.into() })
         }
+    }
+}
+
+pub struct PVSrcFmt<'a> {
+    pub v: PV,
+    pub mem: &'a Arena
+}
+
+impl<'a> LispFmt for PVSrcFmt<'a> {
+    fn lisp_fmt(&self,
+                visited: &mut crate::fmt::VisitSet,
+                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let PV::Ref(p) = self.v {
+            if let NkRef::Cons(cns) = to_fissile_ref(p) {
+                write!(f, "(cons ", )?;
+                if let Some(mut src) = self.mem.get_tag(p).cloned() {
+                    src.file = None;
+                    write!(f, "{src} ")?;
+                } else {
+                    write!(f, "[] ")?;
+                }
+                unsafe {
+                    PVSrcFmt { v: (*cns).car, mem: self.mem }.lisp_fmt(visited, f)?;
+                    write!(f, " ")?;
+                    PVSrcFmt { v: (*cns).cdr, mem: self.mem }.lisp_fmt(visited, f)?;
+                }
+                write!(f, ")")?;
+                return Ok(())
+            }
+        }
+        self.v.lisp_fmt(visited, f)
     }
 }
 
