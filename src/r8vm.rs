@@ -2729,7 +2729,7 @@ impl R8VM {
 
     pub fn dump_code(&self) -> Result<()> {
         for (i, op) in self.pmem.iter().enumerate() {
-            println!("{i:0>8}    {op}")
+            println!("{i:0>8}    {op} {}", self.get_source(i))
         }
         Ok(())
     }
@@ -2784,9 +2784,10 @@ impl R8VM {
                 (op.name().to_ascii_lowercase(),
                  op.args().iter().map(|v| v.to_string()).collect())
             );
-            writeln!(stdout, "    {} {}",
+            writeln!(stdout, "    {} {} {}",
                      name.style_asm_op(),
-                     args.join(", "))?;
+                     args.join(", "),
+                     self.get_source(i as usize))?;
         }
 
         Ok(())
