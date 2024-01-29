@@ -1774,22 +1774,33 @@ impl R8VM {
             }
         } else {
             let mut inds = 0;
+            // Keep expanding until the result can no longer be macro-expanded
             while let Some(m) = v.op().and_then(|op| self.macros.get(&op)).copied() {
+                // `op` is the macro name, and `m` is the underlying function
+                // for the macro (it may be undefined,) find the function
                 let func = self.funcs.get(&m).ok_or("No such function")?;
                 let mut nargs = 0;
+
+                // Back up previous call-frame and set new one for macro
                 let frame = self.frame;
                 self.frame = self.mem.stack.len();
+
+                // Push arguments to macro function
                 for arg in v.args() {
                     self.mem.push(arg);
                     nargs += 1;
                 }
+
+                // Check for correct number of arguments
                 if let Err(e) = func.args.check(nargs).map_err(|e| e.op(m)) {
+                    // Pop arguments off stack again in case of error, and
+                    // restore call-frame
                     self.mem.popn(nargs as usize);
                     self.frame = frame;
                     return Err(e);
                 }
 
-                // Set up call-frame and run macro function
+                // Push previous call-frame and run macro
                 self.mem.push(PV::UInt(0));
                 self.mem.push(PV::UInt(frame));
                 unsafe { self.run_from_unwind(func.pos)?; }
