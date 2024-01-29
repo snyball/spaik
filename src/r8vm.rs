@@ -19,7 +19,7 @@ use crate::{
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::{TypeId, type_name}};
+use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32}, path::Path, any::{TypeId, type_name}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -112,6 +112,10 @@ chasm_def! {
     DIV(),
     MUL()
 }
+
+pub type VMID = u16;
+const MAX_VMS: u16 = u16::MAX;
+static VM_COUNT: AtomicU32 = AtomicU32::new(0);
 
 #[allow(unused_macros)]
 macro_rules! vmprint {
@@ -1372,7 +1376,7 @@ impl R8VM {
         }
     }
 
-    pub fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
+    pub unsafe fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
         let obj = rf.into_pv(&mut self.mem).unwrap();
         let idx = self.resource_idx::<T>();
         log::trace!("bind resource {} at {}", type_name::<T>(), idx);

@@ -648,6 +648,35 @@ impl Default for Spaik {
 
 pub struct Lambda(SPV);
 
+pub struct PrepLambda<'a, 'b, 'c> {
+    lambda: &'a Lambda,
+    vm: &'b mut R8VM,
+    _ph: std::marker::PhantomData<&'c ()>
+}
+
+impl<'q: 'c, 'a, 'b, 'c> PrepLambda<'a, 'b, 'c> {
+    pub fn with_resource<G>(self, global: &'q mut G) -> PrepLambda<'a, 'b, 'q>
+        where G: Userdata
+    {
+        unsafe { self.vm.set_resource(global) };
+        PrepLambda { lambda: self.lambda, vm: self.vm, _ph: Default::default() }
+    }
+
+    pub fn call<R, A, O>(self, args: impl NArgs<A>) -> Result<R>
+        where PV: FromLisp3<R,O,()>
+    {
+        self.vm.napply_pv(self.lambda.0.pv(&self.vm.mem), args)
+               .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
+    }
+
+    pub fn run<R, A>(self, args: impl NArgs<A>) -> Result<()>
+        where PV: FromLisp<R>
+    {
+        self.vm.napply_pv(self.lambda.0.pv(&self.vm.mem), args)?;
+        Ok(())
+    }
+}
+
 impl FromLisp<Lambda> for PV {
     fn from_lisp(self, mem: &mut _deps::Arena) -> std::result::Result<Lambda, Error> {
         (self.bt_type_of() == Builtin::Lambda)
@@ -665,18 +694,8 @@ impl IntoLisp for Lambda {
 }
 
 impl Lambda {
-    pub fn call<R, A, O>(&self, vm: &mut Spaik, args: impl NArgs<A>) -> Result<R>
-        where PV: FromLisp3<R,O,()>
-    {
-        vm.vm.napply_pv(self.0.pv(&vm.vm.mem), args)
-             .and_then(|pv| pv.from_lisp_3(&mut vm.vm.mem))
-    }
-
-    pub fn run<R, A>(&self, vm: &mut Spaik, args: impl NArgs<A>) -> Result<()>
-        where PV: FromLisp<R>
-    {
-        vm.vm.napply_pv(self.0.pv(&vm.vm.mem), args)?;
-        Ok(())
+    pub fn on<'a, 'b>(&'a self, vm: &'b mut Spaik) -> PrepLambda<'a, 'b, 'b> {
+        PrepLambda { lambda: self, vm: &mut vm.vm, _ph: Default::default() }
     }
 }
 
@@ -1007,7 +1026,7 @@ mod tests {
     fn take_lambda() {
         let mut vm = Spaik::new_no_core();
         let s: Lambda = vm.eval("(lambda (x) (+ x 1))").unwrap();
-        assert_eq!(s.call(&mut vm, (2,)), Ok(3));
+        assert_eq!(s.on(&mut vm).call((2,)), Ok(3));
         let s: Result<Lambda> = vm.eval("1");
         assert!(s.is_err());
     }
@@ -1056,5 +1075,12 @@ mod tests {
         vm.exec("(define (f x) (+ x 2))").unwrap();
         let f = vm.getfn("f").unwrap();
         assert_eq!(vm.callfn(f, (2,)), Ok(4));
+    }
+
+    #[test]
+    fn sym_str_eq() {
+        let mut vm = Spaik::new_no_core();
+        let s: Sym = vm.eval("'x").unwrap();
+        assert_eq!(s.as_ref(), "x");
     }
 }

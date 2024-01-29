@@ -14,13 +14,14 @@ use crate::AsSym;
 use crate::nkgc::PV;
 use crate::nuke::GcRc;
 use crate::nuke::memcpy;
-use crate::r8vm::R8VM;
+use crate::r8vm::{R8VM, VMID};
 
 pub struct Sym {
     rc: GcRc,
     ptr: NonNull<u8>,
     len: usize,
     sz: usize,
+    // vm_id: VMID,
 }
 
 impl Sym {
