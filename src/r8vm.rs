@@ -1628,6 +1628,9 @@ impl R8VM {
                         // ^ macroexpand can eval/defun, so update offsets
                         cc.set_offsets(self);
 
+                        // FIXME: This is SLOW and has to be REMOVED removed
+                        cc.update_globals(self);
+
                         let excv = Excavator::new(&self.mem);
                         let mut ast = excv.to_ast(v, fst_src)?;
                         self.mem.clear_tags();

@@ -271,6 +271,16 @@ impl R8Compiler {
         cc
     }
 
+    // FIXME: This is SLOW and has to be REMOVED removed
+    #[deprecated]
+    pub fn update_globals(&mut self, vm: &R8VM) {
+        if vm.globals.len() != self.env.len() {
+            for (k, v) in vm.globals.iter() {
+                self.env.insert(*k, *v);
+            }
+        }
+    }
+
     pub fn unit(&mut self) -> &mut ChASM<R8C> {
         self.units.last_mut().expect("No unit to save asm to")
     }
