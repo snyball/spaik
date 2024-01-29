@@ -669,9 +669,7 @@ impl<'q: 'c, 'a, 'b, 'c> PrepLambda<'a, 'b, 'c> {
                .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
     }
 
-    pub fn run<R, A>(self, args: impl NArgs<A>) -> Result<()>
-        where PV: FromLisp<R>
-    {
+    pub fn run<A>(self, args: impl NArgs<A>) -> Result<()> {
         self.vm.napply_pv(self.lambda.0.pv(&self.vm.mem), args)?;
         Ok(())
     }
@@ -1021,6 +1019,7 @@ mod tests {
         let mut vm = Spaik::new_no_core();
         let s: Lambda = vm.eval("(lambda (x) (+ x 1))").unwrap();
         assert_eq!(s.on(&mut vm).call((2,)), Ok(3));
+        s.on(&mut vm).run((2,)).unwrap();
         let s: Result<Lambda> = vm.eval("1");
         assert!(s.is_err());
     }
