@@ -1760,6 +1760,14 @@ impl R8VM {
     }
 
     fn macroexpand_pv(&mut self, mut v: PV, quasi: bool) -> Result<PV> {
+        // This function is tricky, any time macroexpand_pv is executed
+        // recursively, or when run_from_unwind is executed, all local variables
+        // of type PV may have their pointers become invalidated. Any time you
+        // call this function recursively or otherwise execute code, you must
+        // first back up any PV values on the SPAIK stack with
+        // `self.mem.stack.push(v)` and then recover them by popping from the
+        // stack. Doing otherwise is UB.
+
         let ind_lim = self.varor(Builtin::LimitsMacroexpandRecursion.sym_id(),
                                  limits::MACROEXPAND_RECURSION)?;
 
@@ -1861,20 +1869,23 @@ impl R8VM {
                     }
                 };
                 invalid!(car, cdr, r); // ^ macroexpand_pv
+                let ncar = match ncar {
+                    Ok(x) => x,
+                    Err(e) => {
+                        self.mem.pop().unwrap();
+                        return Err(e)
+                    }
+                };
                 let PV::Ref(p) = v else { unreachable!() };
                 let cns = unsafe { fastcast_mut::<Cons>(p) };
                 unsafe {
                     // Replace car with expanded code, unless we are at the end
                     // of a dotted list, then we replace cdr
-                    *(if dot { addr_of_mut!((*cns).cdr) }
-                      else   { addr_of_mut!((*cns).car) }) = match ncar {
-                        Ok(x) => x,
-                        Err(e) => {
-                            // Don't leave garbage on the stack in case of error
-                            self.mem.pop().unwrap();
-                            return Err(e);
-                        }
-                    };
+                    if dot {
+                        (*cns).cdr = ncar;
+                    } else {
+                        (*cns).car = ncar;
+                    }
 
                     idx += 1;
                     v = match (*cns).cdr.bt_type_of() {
