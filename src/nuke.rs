@@ -1795,7 +1795,7 @@ impl PtrMap {
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::{Fissile, export};
+    use spaik_proc_macros::Fissile;
 
     use crate::Spaik;
 

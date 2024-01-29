@@ -1905,8 +1905,6 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn virtual_destructors() {
-        use spaik_proc_macros::export;
-
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {
