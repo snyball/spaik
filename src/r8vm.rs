@@ -1742,7 +1742,7 @@ impl R8VM {
                     }
                 }
             }
-            self.mem.list_dot(n, dot);
+            self.mem.list_dot(n, dot); // FIXME: Source info???
             self.mem.pop().unwrap()
         };
         self.macroexpand_pv(v, false)
@@ -1789,13 +1789,17 @@ impl R8VM {
                     return Err(e);
                 }
 
+                // Set up call-frame and run macro function
                 self.mem.push(PV::UInt(0));
                 self.mem.push(PV::UInt(frame));
+                unsafe { self.run_from_unwind(func.pos)?; }
 
-                let pos = func.pos;
-                unsafe { self.run_from_unwind(pos)?; }
+                // Set new expand-candidate to the result of the macro
                 invalid!(v); // run_from_unwind
                 v = self.mem.pop().expect("Function did not return a value");
+
+                // This may loop infinitely if a macro expands to itself, so
+                // check if we're at macro recursion limit
                 inds += 1;
                 if inds > ind_lim {
                     return err!(MacroexpandRecursionLimit, lim: ind_lim);
@@ -1805,8 +1809,10 @@ impl R8VM {
 
         let bop = v.bt_op();
         if bop == Some(Builtin::Quote) {
+            // Quoted list, no expansion
             Ok(v)
         } else if bop == Some(Builtin::Quasi) {
+            // Quasi-quoted list, expand (cdr v)
             self.mem.stack.push(v);
             let ni = self.macroexpand_pv(v.inner()?, true)?;
             invalid!(v); // macroexpand_pv
@@ -1814,19 +1820,24 @@ impl R8VM {
             v.set_inner(ni)?;
             Ok(v)
         } else if v.is_atom() {
+            // Atomic, e.g number or symbol, no expansion
             Ok(v)
         } else {
+            // Expand each element of the list
             self.mem.push(v);
+            // Is this the final element of a dotted list e.g we are at 3 in (1 2 . 3)
             let mut dot = false;
+            // Index in list
             let mut idx = 0;
             loop {
-                // self.dump_stack().unwrap();
                 let PV::Ref(p) = v else { unreachable!("{v:?}") };
                 let Cons { car, cdr } = unsafe { *fastcast(p) };
                 let r = if dot {cdr} else {car};
                 let ncar = match (bop, idx) {
+                    // We ignore (lambda <args> ...) and (define <var> ...)
                     (Some(Builtin::Lambda), 1) |
                     (Some(Builtin::Define), 1) => Ok(r),
+                    // Expand element
                     _ => {
                         self.mem.push(v);
                         let ncar = self.macroexpand_pv(r, quasi);
@@ -1838,10 +1849,13 @@ impl R8VM {
                 let PV::Ref(p) = v else { unreachable!() };
                 let cns = unsafe { fastcast_mut::<Cons>(p) };
                 unsafe {
+                    // Replace car with expanded code, unless we are at the end
+                    // of a dotted list, then we replace cdr
                     *(if dot { addr_of_mut!((*cns).cdr) }
                       else   { addr_of_mut!((*cns).car) }) = match ncar {
                         Ok(x) => x,
                         Err(e) => {
+                            // Don't leave garbage on the stack in case of error
                             self.mem.pop().unwrap();
                             return Err(e);
                         }
@@ -1851,7 +1865,9 @@ impl R8VM {
                     v = match (*cns).cdr.bt_type_of() {
                         Builtin::Nil => break,
                         Builtin::Cons => (*cns).cdr,
+                        // No cons, but we are at end of dotted list, so we're done
                         _ if dot => break,
+                        // No cons, it is a dotted list
                         _ => { dot = true; v }
                     }
                 }
