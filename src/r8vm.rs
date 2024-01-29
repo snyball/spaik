@@ -1633,7 +1633,7 @@ impl R8VM {
 
                         let excv = Excavator::new(&self.mem);
                         let mut ast = excv.to_ast(v, fst_src)?;
-                        self.mem.clear_tags();
+                        // self.mem.clear_tags();
                         let mut opto = Optomat::new();
                         opto.visit(&mut ast)?;
                         if tokit.peek().is_some() {
