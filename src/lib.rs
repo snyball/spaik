@@ -359,7 +359,7 @@ impl Spaik {
         self.set(&name[..], func.into_subr());
     }
 
-    pub fn set<A, R, N>(&mut self, var: impl AsSym, obj: impl Lispify<A, R, N>) {
+    pub fn set<R,A,T>/*🐀*/(&mut self, var: impl AsSym, obj: impl Lispify<R,A,T>/*🐀*/) {
         let var = var.as_sym(&mut self.vm);
         self.vm.set(var, obj).unwrap();
         self.vm.mem.pop_borrows();
@@ -526,8 +526,8 @@ impl Spaik {
     ///
     /// Use `Spaik::run` if don't care about the result.
     #[inline]
-    pub fn call<R, A, L>(&mut self, sym: impl AsSym, args: impl NArgs<A>) -> Result<R>
-        where PV: FromLisp3<R,L,()>
+    pub fn call<R,A,T>/*🐀*/(&mut self, sym: impl AsSym, args: impl NArgs<A>) -> Result<R>
+        where PV: FromLisp3<R,T,()>
     {
         let sym = sym.as_sym(&mut self.vm);
         self.vm.ncall(sym, args)
@@ -538,8 +538,8 @@ impl Spaik {
     ///
     /// Use `Spaik::run` if don't care about the result.
     #[inline]
-    pub fn callfn<R, A, K>(&mut self, f: impl AsRef<Func>, args: impl NArgs<A>) -> Result<R>
-        where PV: FromLisp3<R,K,()>
+    pub fn callfn<R,A,T>/*🐀*/(&mut self, f: impl AsRef<Func>, args: impl NArgs<A>) -> Result<R>
+        where PV: FromLisp3<R,T,()>
     {
         self.vm.callfn(f.as_ref(), args)
                .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
