@@ -1913,8 +1913,6 @@ mod tests {
             hello: Vec<u64>,
             thing: String,
         }
-        #[export]
-        impl TestObj {}
         let mut ar = Arena::new(1024);
         for i in 0..10 {
             let mut hello = vec![];

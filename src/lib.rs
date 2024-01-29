@@ -811,8 +811,6 @@ mod tests {
             x: f32,
             y: f32,
         }
-        #[export]
-        impl TestObj {}
 
         #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
@@ -820,8 +818,6 @@ mod tests {
             x: f32,
             thing: String,
         }
-        #[export]
-        impl TestObj2 {}
 
         fn my_function(x: i32, y: i32, obj: &TestObj, obj2: &mut TestObj) -> i32 {
             let res = x + y.pow(2);
@@ -924,8 +920,6 @@ mod tests {
             x: f32,
             y: f32,
         }
-        #[export]
-        impl TestObj {}
 
         let mut vm = Spaik::new_no_core();
         vm.set("test-obj", TestObj { x: 10.0, y: 20.0 });

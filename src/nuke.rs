@@ -1835,8 +1835,6 @@ mod tests {
         struct Data {
             x: String
         }
-        #[export]
-        impl Data {}
         let _data = Data { x: String::from("something") };
         let mut vm = Spaik::new_no_core();
         vm.exec("(define (f x) (println x))").unwrap();
