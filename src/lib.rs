@@ -362,6 +362,7 @@ impl Spaik {
     pub fn set<A, R, N>(&mut self, var: impl AsSym, obj: impl Lispify<A, R, N>) {
         let var = var.as_sym(&mut self.vm);
         self.vm.set(var, obj).unwrap();
+        self.vm.mem.pop_borrows();
     }
 
     /// Return a clone of `var`
