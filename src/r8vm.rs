@@ -19,7 +19,7 @@ use crate::{
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::TypeId};
+use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::Mutex, path::Path, any::{TypeId, type_name}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -1336,6 +1336,7 @@ impl R8VM {
         match self.resources.entry(TypeId::of::<T>()) {
             Entry::Occupied(e) => *e.get(),
             Entry::Vacant(e) => {
+                log::trace!("new resource {}", type_name::<T>());
                 let idx = self.mem.push_env(PV::Nil);
                 *e.insert(idx)
             },
@@ -1349,6 +1350,7 @@ impl R8VM {
         let obj_idx = self.resource_idx::<T>();
         let sep = if override_prefix.is_some() { "" } else { "/" };
         let prefix = override_prefix.unwrap_or(T::kebab_type_name());
+        log::trace!("bind resource functions {} at {}", type_name::<T>(), obj_idx);
         for (name, spec, _fn) in T::methods() {
             assert!(name.len() > 1, "Empty method name");
             let name_no_kw = &name[1..];
@@ -1373,6 +1375,7 @@ impl R8VM {
     pub fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
         let obj = rf.into_pv(&mut self.mem).unwrap();
         let idx = self.resource_idx::<T>();
+        log::trace!("bind resource {} at {}", type_name::<T>(), idx);
         self.mem.set_env(idx as usize, obj);
     }
 
