@@ -99,6 +99,7 @@ pub mod logging;
 #[macro_use]
 pub mod events;
 pub use events::LinkedEvents;
+pub use nuke::OptVTable as VTable;
 
 def_call_builder!();
 
@@ -315,7 +316,8 @@ impl Spaik {
     }
 
     #[cfg(feature = "derive")]
-    pub fn defobj<T: records::Enum>(&mut self) {
+    pub fn defobj<T: records::Enum + Userdata>(&mut self, opt: VTable<T>) {
+        nuke::Object::register::<T>(opt);
         for cs in T::enum_constructors() {
             self.set(cs.name(), cs);
         }

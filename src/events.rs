@@ -58,7 +58,7 @@ mod tests {
             fn thing(x: i32) -> i32;
         }
 
-        #[derive(Debug, Obj)]
+        #[derive(Debug, Obj, Clone)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         struct Test { x: i32 }
         const A: i32 = 1337;

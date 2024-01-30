@@ -24,3 +24,9 @@ macro_rules! count_args {
 macro_rules! invalid {
     ($($pv:ident),+) => {{}};
 }
+
+macro_rules! vm_assert {
+    ($vm:expr, $ex:expr) => {
+        assert!($vm.eval::<bool,_>($ex).unwrap(), $ex)
+    };
+}

@@ -290,6 +290,10 @@ mod sysfns {
             Ok(*x)
         }
 
+        fn clone(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.deep_clone(&mut vm.mem)
+        }
+
         fn sys_freeze(&mut self, vm: &mut R8VM, args: (_dst)) -> Result<PV> {
             featurefn!("modules", {
                 let module = vm.freeze();
@@ -1261,6 +1265,7 @@ impl R8VM {
         addfn!(eval);
         addfn!(read);
         addfn!(macroexpand);
+        addfn!(clone);
         addfn!("make-symbol", make_symbol);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
@@ -1362,7 +1367,7 @@ impl R8VM {
             let kwname = self.sym_id(name);
             let name_idx = self.mem.push_env(PV::Sym(kwname));
             let fn_pos = self.pmem.len();
-            self.pmem.push(r8c::Op::INS(obj_idx as u32));
+            self.pmem.push(r8c::Op::GET(obj_idx as u16));
             self.pmem.push(r8c::Op::INS(name_idx as u32));
             assert!(!spec.is_special(), "No special function signatures allowed for methods");
             for i in 0..spec.nargs {
@@ -2438,7 +2443,7 @@ impl R8VM {
                 // Value creation
                 NIL() => self.mem.push(PV::Nil),
                 INS(idx) => {
-                    let pv = self.mem.get_env(idx as usize).deep_clone(&mut self.mem);
+                    let pv = self.mem.get_env(idx as usize).deep_clone(&mut self.mem)?;
                     self.mem.push(pv);
                 },
                 BOOL(i) => self.mem.push(PV::Bool(i != 0)),

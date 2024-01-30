@@ -257,6 +257,7 @@ pub enum ErrorKind {
     SyntaxError(SyntaxErrorKind),
     IDError { id: usize },
     NoMethodGiven { vt: &'static VTable },
+    CloneNotImplemented { obj: OpName },
     None,
     VoidVariable,
 }
@@ -584,6 +585,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "No such key: {idx}")?,
         KeyReference { key } =>
             write!(f, "Reference types cannot be used as keys: {key}")?,
+        CloneNotImplemented { obj } =>
+            write!(f, "Cannot clone: clone not implemented for type {obj}")?,
     }
 
     if let Some(src) = meta.src() {

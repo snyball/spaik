@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn record_macro_auto() {
         let mut vm = Spaik::new_no_core();
-        vm.defobj::<Example>();
+        vm.defobj::<Example>(Default::default());
         vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
         let mut gx: Gc<Example> = vm.eval("g").unwrap();
         let x = gx.with(|x| x.clone());
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn record_macro_auto_shared_ref() {
         let mut vm = Spaik::new_no_core();
-        vm.defobj::<Example>();
+        vm.defobj::<Example>(Default::default());
         vm.exec(r##"(define g (example :x 1 :y 2 :z "z"))"##).unwrap();
         let _gx: Gc<Example> = vm.eval("g").unwrap();
         assert!(matches!(vm.eval::<Example,()>("g").map_err(|e| e.kind().clone()),
@@ -220,9 +220,9 @@ mod tests {
         #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
         pub struct Test3(i32, i32);
         let mut vm = Spaik::new_no_core();
-        vm.defobj::<Test1>();
-        vm.defobj::<Test2>();
-        vm.defobj::<Test3>();
+        vm.defobj::<Test1>(Default::default());
+        vm.defobj::<Test2>(Default::default());
+        vm.defobj::<Test3>(Default::default());
         vm.exec(r##"(define g (test-1 :x 2))"##).unwrap();
         vm.exec(r##"(define g2 (test-2))"##).unwrap();
         vm.exec(r##"(define g3 (test-3 1 2))"##).unwrap();
@@ -237,8 +237,8 @@ mod tests {
     #[test]
     fn enum_macros() {
         let mut vm = Spaik::new_no_core();
-        vm.defobj::<EnumExample>();
-        vm.defobj::<Example>();
+        vm.defobj::<EnumExample>(Default::default());
+        vm.defobj::<Example>(Default::default());
         vm.exec(r##"(define g (enum-example/ayy :x 1 :y 2 :z "z"))"##).unwrap();
         vm.exec(r##"(define z (enum-example/lmao :example (example :x 1 :y 2 :z "z")))"##).unwrap();
         vm.exec(r##"(define zed (enum-example/zed))"##).unwrap();
@@ -273,7 +273,7 @@ mod tests {
             }
         }
         let mut vm = Spaik::new();
-        vm.defobj::<TestStatic>();
+        vm.defobj::<TestStatic>(Default::default());
         vm.defmethods::<TestStatic, ()>();
         vm.exec("(define g (test-static))").unwrap();
         assert_eq!(3i32, vm.eval("(g :f 2)").unwrap());

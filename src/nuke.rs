@@ -1,6 +1,6 @@
 //! The Nuclear Allocator
 
-use crate::error::Error;
+use crate::error::{Error, OpName};
 use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::builtins::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
@@ -298,14 +298,55 @@ pub struct VTable {
     /// Result of `Any::type_name`
     pub type_name: &'static str,
     /// Get reference count
-    get_rc: unsafe fn(*const u8) -> u32,
+    get_rc: unsafe fn(*mut u8) -> Option<*mut GcRc>,
     /// `Drop::drop`
     drop: unsafe fn(*mut u8),
     /// `Debug::fmt`
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
+    /// `core::clone::Clone`
+    clone: Option<unsafe fn(*const u8) -> Object>,
     /// Serialize the object
     #[allow(dead_code)]
     freeze: unsafe fn(*const u8, into: &mut dyn Write) -> usize,
+}
+
+pub struct OptVTable<T: Userdata> {
+    /// `core::clone::Clone`
+    clone: Option<unsafe fn(*const u8) -> Object>,
+    _ph: std::marker::PhantomData<T>,
+}
+
+pub trait GetOptVTable<T: Userdata> {
+    fn vtable() -> OptVTable<T>;
+}
+
+impl<T> GetOptVTable<T> for T where T: Userdata {
+    fn vtable() -> OptVTable<T> {
+        OptVTable::default()
+    }
+}
+
+impl<T: Userdata> Default for OptVTable<T> {
+    fn default() -> Self {
+        Self { clone: Default::default(), _ph: Default::default() }
+    }
+}
+
+impl<T: Userdata> OptVTable<T> {
+}
+
+pub trait CanClone<T: Sized + Userdata + Clone> {
+    fn can_clone(self) -> Self;
+}
+
+impl<T> CanClone<T> for OptVTable<T> where T: Sized + Userdata + Clone {
+    fn can_clone(mut self) -> Self {
+        self.clone = Some(|mem: *const u8| unsafe {
+            let obj = mem as *mut T;
+            Object::new((*obj).clone())
+        });
+        self
+    }
 }
 
 impl Debug for VTable {
@@ -323,7 +364,6 @@ unsafe impl Send for VTable {}
 
 /// How SPAIK sees objects internally, for referring to objects outside of the
 /// SPAIK internals (library user code) see `Gc<T>`.
-#[derive(Clone)]
 pub struct Object {
     pub(crate) type_id: TypeId,
     pub(crate) vt: &'static VTable,
@@ -334,6 +374,15 @@ pub struct Object {
     ///
     /// See RcMem<T> for the actual layout of this memory.
     pub(crate) mem: *mut u8,
+}
+
+impl Clone for Object {
+    fn clone(&self) -> Self {
+        unsafe { (self.vt.get_rc)(self.mem).map(|rc| (*rc).inc()) };
+        Self { type_id: self.type_id,
+               vt: self.vt,
+               mem: self.mem }
+    }
 }
 
 /// Reference-counter for `Object` memory, see `RcMem`
@@ -544,7 +593,7 @@ pub struct Voided;
 // };
 
 impl Object {
-    pub fn register<T: Userdata + 'static>() -> &'static VTable {
+    pub fn register<T: Userdata + 'static>(opt: OptVTable<T>) -> &'static VTable {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
@@ -573,7 +622,7 @@ impl Object {
                     },
                     get_rc: |obj| unsafe {
                         let rc_mem = obj as *mut RcMem<T>;
-                        (*rc_mem).rc.0.load(atomic::Ordering::SeqCst)
+                        Some(&mut (*rc_mem).rc as *mut GcRc)
                     },
                     #[cfg(not(feature = "freeze"))]
                     freeze: |_, _| unimplemented!("freeze"),
@@ -586,15 +635,23 @@ impl Object {
                         opts.serialize_into(into, &*obj).unwrap();
                         sz as usize
                     },
+                    clone: opt.clone,
                     fmt: delegate! { fmt(f) },
                 })))
             }
         }
     }
 
+    pub fn deep_clone(&self) -> Result<Object, Error> {
+        let clonefn = self.vt.clone
+                             .ok_or_else(|| error!(CloneNotImplemented,
+                                                   obj: OpName::OpStr(self.vt.type_name)))?;
+        Ok(unsafe { (clonefn)(self.mem) })
+    }
+
     pub fn new<T: Userdata + 'static>(obj: T) -> Object {
         let layout = unsafe { ud_layout::<T>() };
-        let vtable = Object::register::<T>();
+        let vtable = Object::register::<T>(OptVTable::default());
         let mem = unsafe {
             let p = alloc(layout) as *mut T;
             if p.is_null() {
@@ -612,7 +669,13 @@ impl Object {
     }
 
     pub fn rc(&self) -> u32 {
-        unsafe { (self.vt.get_rc)(self.mem) }
+        unsafe {
+            if let Some(rc) = (self.vt.get_rc)(self.mem) {
+                (*rc).0.load(atomic::Ordering::SeqCst)
+            } else {
+                1
+            }
+        }
     }
 
     pub fn cast_mut<T: 'static>(&self) -> Result<*mut T, Error> {
@@ -656,9 +719,10 @@ impl Object {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
+                    clone: None,
                     type_name: type_name::<T>(),
                     drop: |_| {},
-                    get_rc: |_| 1,
+                    get_rc: |_| None,
                     #[cfg(not(feature = "freeze"))]
                     freeze: |_, _| unimplemented!("freeze"),
                     #[cfg(feature = "freeze")]
@@ -687,9 +751,10 @@ impl Object {
             Entry::Occupied(vp) => vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
+                    clone: None,
                     type_name: "void",
                     drop: |_| {},
-                    get_rc: |_| 1,
+                    get_rc: |_| None,
                     #[cfg(not(feature = "freeze"))]
                     freeze: |_, _| unimplemented!("freeze"),
                     #[cfg(feature = "freeze")]
@@ -1127,19 +1192,19 @@ pub unsafe fn destroy_atom(atom: *mut NkAtom) {
     DESTRUCTORS[(*atom).meta.typ() as usize](fastcast_mut::<u8>(atom));
 }
 
-pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
+pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, Error> {
     macro_rules! clone {
         ($x:expr) => {{
             let (rf, _) = mem.put(unsafe { (*$x).clone() });
             rf
         }};
     }
-    match to_fissile_ref(atom) {
+    Ok(match to_fissile_ref(atom) {
         NkRef::Void(v) => clone!(v),
         NkRef::Cons(cns) => {
             unsafe {
-                let car = (*cns).car.deep_clone(mem);
-                let cdr = (*cns).cdr.deep_clone(mem);
+                let car = (*cns).car.deep_clone(mem)?;
+                let cdr = (*cns).cdr.deep_clone(mem)?;
                 let (rf, _) = mem.put(Cons { car, cdr });
                 rf
             }
@@ -1148,7 +1213,7 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
             unsafe {
                 let intr = Intr {
                     op: (*intr).op,
-                    arg: (*intr).arg.deep_clone(mem),
+                    arg: (*intr).arg.deep_clone(mem)?,
                 };
                 let (rf, _) = mem.put(intr);
                 rf
@@ -1158,13 +1223,13 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         NkRef::String(s) => clone!(s),
         NkRef::PV(_p) => todo!(),
         NkRef::Vector(xs) => unsafe {
-            let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Vec<_>>();
+            let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Result<Vec<_>, _>>()?;
             let (rf, _) = mem.put(nxs);
             rf
         },
         NkRef::Table(hm) => unsafe {
-            let nxs = (*hm).iter().map(|(k, v)| (*k, v.deep_clone(mem)))
-                                  .collect::<FnvHashMap<_, _>>();
+            let nxs = (*hm).iter().map(|(k, v)| -> Result<_,Error> { Ok((*k, v.deep_clone(mem)?)) })
+                                  .collect::<Result<FnvHashMap<_, _>,_>>()?;
             let (rf, _) = mem.put(nxs);
             rf
         },
@@ -1176,11 +1241,14 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> *mut NkAtom {
         NkRef::Mat3(m3) => clone!(m3),
         #[cfg(feature = "math")]
         NkRef::Mat4(m4) => clone!(m4),
-        NkRef::Object(s) => clone!(s),
+        NkRef::Object(s) => {
+            let (rf, _) = mem.put(unsafe { (*s).deep_clone()? });
+            rf
+        }
         NkRef::Iter(i) => clone!(i),
-        NkRef::Continuation(_c) => todo!(),
-        NkRef::Subroutine(_s) => unimplemented!("cloning subroutines is unimplemented"),
-    }
+        NkRef::Continuation(_c) => bail!(CloneNotImplemented { obj: OpName::OpBt(Builtin::Continuation) }),
+        NkRef::Subroutine(_s) => bail!(CloneNotImplemented { obj: OpName::OpBt(Builtin::Subr) }),
+    })
 }
 
 #[allow(dead_code)]
@@ -1796,6 +1864,7 @@ impl PtrMap {
 mod tests {
     #[cfg(feature = "derive")]
     use spaik_proc_macros::Fissile;
+    use spaik_proc_macros::{Obj, methods};
 
     use crate::Spaik;
 
@@ -1830,7 +1899,7 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn userdata_ref() {
-        #[derive(Debug, Fissile)]
+        #[derive(Debug, Clone, Fissile)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         struct Data {
             x: String
@@ -1839,5 +1908,26 @@ mod tests {
         let mut vm = Spaik::new_no_core();
         vm.exec("(define (f x) (println x))").unwrap();
         // vm.call("f", (&mut data,));
+    }
+
+    #[test]
+    fn clone_obj() {
+        #[derive(Debug, Clone, Obj)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
+        struct Obj(i32);
+        #[methods(())]
+        impl Obj {
+            fn doit(_take: Obj) -> i32 { 1 }
+        }
+        let mut vm = Spaik::new_no_core();
+        vm.defobj(Obj::vtable().can_clone());
+        vm.defstatic::<Obj, ()>();
+        vm.set("obj", Obj(1));
+        vm.exec("(obj/doit obj)").unwrap();
+        vm_assert!(vm, "(void? obj)");
+        vm.set("obj", Obj(1));
+        vm_assert!(vm, "(not (void? obj))");
+        vm.exec("(obj/doit (clone obj))").unwrap();
+        vm_assert!(vm, "(not (void? obj))");
     }
 }
