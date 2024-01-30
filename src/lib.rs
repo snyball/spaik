@@ -100,6 +100,7 @@ pub mod logging;
 pub mod events;
 pub use events::LinkedEvents;
 pub use nuke::OptVTable as VTable;
+pub use nuke::GetOptVTable;
 
 def_call_builder!();
 
