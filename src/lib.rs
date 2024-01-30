@@ -136,11 +136,13 @@ use crate::nkgc::PV;
 pub use crate::subrs::{Subr, IntoLisp, FromLisp, Ignore, BoxSubr};
 pub use crate::error::Error;
 pub use crate::error::Result;
+pub use nuke::CanClone;
 
 /// The easiest way to get started with SPAIK is `use spaik::prelude::*`
 pub mod prelude {
     pub use super::{Subr, IntoLisp, FromLisp, Sym,
-                    Ignore, BoxSubr, plug::SpaikPlug, Spaik, Gc};
+                    Ignore, BoxSubr, plug::SpaikPlug, Spaik, Gc, CanClone,
+                    GetOptVTable};
     #[cfg(feature = "derive")]
     pub use spaik_proc_macros::Fissile;
 }
