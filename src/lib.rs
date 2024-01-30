@@ -328,6 +328,10 @@ impl Spaik {
         }
     }
 
+    pub fn userdata<T: Userdata>(&mut self, opt: VTable<T>) {
+        nuke::Object::register::<T>(opt);
+    }
+
     #[cfg(feature = "derive")]
     pub fn defmethods<T: Userdata + MethodSet<K> + SubrSet<K>, K>(&mut self) {
         for (kwname, _spec, m) in T::methods() {
