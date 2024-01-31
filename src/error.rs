@@ -518,15 +518,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Module Not Found: Could not find {lib}, check sys/load-path")?,
         ErrorKind::Traceback { tb } => {
             writeln!(f, "Traceback:")?;
-            for TraceFrame { src, func, args } in tb.frames.iter() {
-                write!(f, "  - ({func}")?;
-                for arg in args.iter() {
-                    write!(f, " {}", arg)?;
-                }
-                write!(f, ")")?;
-                writeln!(f, " {}", src)?;
-            }
-            return fmt_error(&tb.err, f)
+            err.write_traceback(f)?;
+            return fmt_error(err.cause(), f);
         },
         ErrorKind::IndexError { idx } =>
             write!(f, "Index Error: No such index {idx}")?,
@@ -670,6 +663,21 @@ impl Error {
             },
             _ => self
         }
+    }
+
+    pub fn write_traceback(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let ErrorKind::Traceback { tb } = self.kind() {
+            tb.err.write_traceback(f)?;
+            for TraceFrame { src, func, args } in tb.frames.iter() {
+                write!(f, "  - ({func}")?;
+                for arg in args.iter() {
+                    write!(f, " {}", arg)?;
+                }
+                write!(f, ")")?;
+                writeln!(f, " {}", src)?;
+            }
+        }
+        Ok(())
     }
 }
 
