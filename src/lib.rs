@@ -684,6 +684,14 @@ impl<'q: 'c, 'a, 'b, 'c> PrepLambda<'a, 'b, 'c> {
     }
 }
 
+impl Lispify<(), (), ()> for Result<PV> {
+    fn lispify(self, mem: &mut _deps::Arena) -> std::result::Result<PV, Error> {
+        self
+    }
+}
+
+pub type Any = Result<PV>;
+
 impl FromLisp<Lambda> for PV {
     fn from_lisp(self, mem: &mut _deps::Arena) -> std::result::Result<Lambda, Error> {
         (self.bt_type_of() == Builtin::Lambda)
