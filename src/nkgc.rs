@@ -1635,7 +1635,7 @@ impl Arena {
     pub fn unlock_borrows(&mut self) {
         let from = self.borrow_locks
                        .pop()
-                       .expect("attempted to unlock borrows, but none were locked");
+                       .unwrap_or(0);
         for obj in &mut self.borrows[from..] {
             if let NkMut::Object(s) = to_fissile_mut(*obj) {
                 unsafe { (*s).unlock() }
@@ -1644,12 +1644,14 @@ impl Arena {
     }
 
     pub fn pop_borrows(&mut self) {
-        for obj in self.borrows.drain(..) {
+        let from = self.borrow_locks
+                       .pop()
+                       .unwrap_or(0);
+        for obj in self.borrows.drain(from..) {
             if let NkMut::Object(s) = to_fissile_mut(obj) {
                 unsafe { (*s).void() }
             }
         }
-        self.borrow_locks.drain(..).for_each(drop);
     }
 
     pub fn push_borrow(&mut self, rf: *mut NkAtom) {

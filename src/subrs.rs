@@ -647,20 +647,12 @@ impl<T> FromLisp3<T, (), ()> for PV where PV: FromLisp<T>, T: Sized {
     }
 }
 
-impl<A> Lispify<(), Option<A>, ()> for Option<A> where A: IntoLisp {
+impl<A> Lispify<(), (), Option<A>> for Option<A> where A: IntoLisp {
     fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
         match self {
             Some(x) => x.lispify(mem),
             None => Ok(PV::Nil)
         }
-    }
-}
-
-impl<A, E> Lispify<(), Result<A, E>, ()> for Result<A, E>
-    where A: IntoLisp, Error: From<E>
-{
-    fn lispify(self, mem: &mut Arena) -> Result<PV, Error> {
-        self?.lispify(mem)
     }
 }
 

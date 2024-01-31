@@ -1883,9 +1883,9 @@ impl PtrMap {
 mod tests {
     #[cfg(feature = "derive")]
     use spaik_proc_macros::Fissile;
-    use spaik_proc_macros::{Obj, methods};
+    use spaik_proc_macros::{Obj, methods, hooks};
 
-    use crate::Spaik;
+    use crate::{Spaik, r8vm::{R8VM, ArgSpec}, Lispify, Lambda, FromLisp3, error::Source, __spaik_call_builder::IntoCallBuilder, LinkedEvents};
 
     use super::*;
 
@@ -1948,5 +1948,66 @@ mod tests {
         vm_assert!(vm, "(not (void? obj))");
         vm.exec("(obj/doit (clone obj))").unwrap();
         vm_assert!(vm, "(not (void? obj))");
+    }
+
+    #[test]
+    fn static_method_err_thing() {
+        #[derive(Debug, Clone, Obj)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
+        struct Obj(i32);
+        #[methods(())]
+        impl Obj {
+            fn doit() -> Result<i32, Error> { Ok(1) }
+            fn doitwrong() -> Result<i32, Error> {
+                bail!(SomeError { msg: "lmao".to_string() })
+            }
+        }
+        let mut vm = Spaik::new_no_core();
+        vm.defobj(Obj::vtable().can_clone());
+        vm.defstatic::<Obj, ()>();
+        vm.set("obj", Obj(1));
+        assert_eq!(vm.eval("(obj/doit)"), Ok(1i32));
+        let l: Result<i32, Error> = vm.eval("(obj/doitwrong)");
+        let mut r: Result<i32, Error> = err!(SomeError, msg: "lmao".to_string());
+        r = r.map_err(|e| e.src(Source::new(1, 0, None)));
+        assert_eq!(l.map_err(|e| e.cause().clone()), r);
+    }
+
+    #[test]
+    fn callbacks_in_methods() {
+        #[derive(Debug, Clone, Obj)]
+        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
+        struct Obj(i32);
+        #[methods(())]
+        impl Obj {
+            fn doit(&mut self, x: i32, mut myfunk: impl FnMut(i32) -> Result<i32, Error>) -> Result<i32, Error> {
+                myfunk(1 + x)
+            }
+            fn sdoit(x: i32, mut myfunk: impl FnMut(i32) -> Result<i32, Error>) -> Result<i32, Error> {
+                myfunk(1 + x)
+            }
+        }
+        #[hooks("")]
+        trait TIFACE {
+            fn test1() -> i32;
+        }
+        let mut vm = Spaik::new_no_core();
+        vm.defobj(Obj::vtable());
+        vm.defmethods::<Obj, ()>();
+        vm.bind_resource_fns::<Obj, ()>(None);
+        vm.set("obj", Obj(1));
+        assert_eq!(vm.eval("(obj :doit 2 (lambda (x) (+ x 2)))"), Ok(5i32));
+        assert_eq!(vm.eval("(obj :doit 2 (lambda (x) (+ x 2))) (if (void? obj) (error 'err))"),
+                   Ok(()));
+
+        vm.exec("(define (test1) (obj/doit 2 (lambda (x) (+ x 2))))").unwrap();
+        let mut bobj = Obj(2);
+        unsafe { vm.set_resource(&mut bobj) }
+        let out: PV = vm.eval("(obj/doit 2 (lambda (x) (+ x 2)))").unwrap();
+        println!("{out}");
+        let mut hooks = TIFACE::default();
+        hooks.link_events(&mut vm);
+        assert_eq!(hooks.on(&mut vm).with_resource(&mut bobj).test1(), Ok(5));
+
     }
 }

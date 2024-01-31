@@ -704,6 +704,10 @@ impl Lambda {
     pub fn on<'a, 'b>(&'a self, vm: &'b mut Spaik) -> PrepLambda<'a, 'b, 'b> {
         PrepLambda { lambda: self, vm: &mut vm.vm, _ph: Default::default() }
     }
+
+    pub unsafe fn on_raw<'a, 'b>(&'a self, vm: &'b mut R8VM) -> PrepLambda<'a, 'b, 'b> {
+        PrepLambda { lambda: self, vm, _ph: Default::default() }
+    }
 }
 
 #[cfg(test)]

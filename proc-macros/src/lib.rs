@@ -6,7 +6,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{quote, format_ident};
-use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, ImplItem, ItemImpl, ItemTrait, DataEnum, Fields, Type};
+use syn::{parse_macro_input, ItemFn, Signature, FnArg, PatType, Pat, Ident, DeriveInput, Data, DataStruct, ImplItem, ItemImpl, ItemTrait, DataEnum, Fields, Type, ImplItemMethod};
 use convert_case::{Case, Casing};
 
 fn crate_root() -> proc_macro2::TokenStream {
@@ -422,6 +422,103 @@ impl<'a> Display for KebabTypeName<'a> {
     }
 }
 
+#[derive(Debug)]
+struct FnSig {
+    nargs: usize,
+}
+
+fn get_fn_type(arg: &FnArg) -> Option<FnSig> {
+    match arg {
+        FnArg::Receiver(_) => None,
+        FnArg::Typed(pt) => match (*pt.ty).clone() {
+            Type::ImplTrait(im) => match im.bounds.first().unwrap() {
+                syn::TypeParamBound::Trait(tb) => {
+                    let Some(tgt) = tb.path.segments.last() else { return None };
+                    if tgt.ident == format_ident!("FnMut") {
+                        match &tgt.arguments {
+                            syn::PathArguments::None => None,
+                            syn::PathArguments::AngleBracketed(_) => None,
+                            syn::PathArguments::Parenthesized(s) =>
+                                Some(FnSig { nargs: s.inputs.len() }),
+                        }
+                    } else {
+                        None
+                    }
+                },
+                _ => None,
+            },
+            Type::Paren(_) => None,
+            Type::Reference(_) => None,
+            Type::TraitObject(_) => None,
+            _ => None,
+        },
+    }
+}
+
+fn get_fn_wrapper(name: &Ident, arg: &FnArg) -> proc_macro2::TokenStream {
+    if let Some(funk) = get_fn_type(arg) {
+        let args = (0..funk.nargs).map(|i| format_ident!("local_{i}"));
+        let args_2 = (0..funk.nargs).map(|i| format_ident!("local_{i}"));
+        quote! {
+            let mut #name = |#(#args),*| {
+                vm.mem.lock_borrows();
+                let r = #name.on_raw(vm).call((#(#args_2),*));
+                vm.mem.unlock_borrows();
+                r
+            };
+        }
+    } else {
+        quote!()
+    }
+}
+
+fn make_setargs(nargs: impl Iterator<Item = usize>) -> impl Iterator<Item = proc_macro2::TokenStream> {
+     nargs.map(move |nargs| {
+        let setarg = (0..nargs).map(|idx| {
+            let name = format_ident!("arg_{idx}");
+            quote!(let #name = args[#idx].from_lisp_3(&mut vm.mem)?;)
+        });
+        quote!(#(#setarg)*)
+    })
+}
+
+fn make_wrappers(skip: usize, methods: impl Iterator<Item = ImplItemMethod>) -> impl Iterator<Item = proc_macro2::TokenStream> {
+     methods.map(move |x: ImplItemMethod| {
+        let wraps = x.sig.inputs.iter().skip(skip).enumerate().filter_map(|(idx, arg)| {
+            get_fn_type(arg).map(|funk| {
+                let name = format_ident!("arg_{idx}");
+                let args = (0..funk.nargs).map(|i| format_ident!("local_{i}"));
+                let args_2 = (0..funk.nargs).map(|i| format_ident!("local_{i}"));
+                quote! {
+                    let #name: Lambda = #name;
+                    let mut #name = |#(#args),*| {
+                        vm.mem.lock_borrows();
+                        let r = #name.on_raw(vm).call((#(#args_2,)*));
+                        r
+                    };
+                }
+            })
+        });
+        quote!(#(#wraps)*)
+    })
+}
+
+fn make_getargs(skip: isize, methods: impl Iterator<Item = ImplItemMethod>) -> impl Iterator<Item = proc_macro2::TokenStream> {
+    methods.map(move |x| {
+        let nargs: u16 = (x.sig.inputs.len() as isize - skip).try_into().unwrap();
+        let names = (0..nargs).map(|i| format_ident!("arg_{i}"));
+        let getarg = x.sig.inputs.iter().skip(skip as usize).enumerate().map(|(idx, arg)| {
+            let name = format_ident!("arg_{idx}");
+            if get_fn_type(arg).is_some() {
+                quote!(&mut #name)
+            } else {
+                quote!(#name)
+            }
+        });
+        quote!(#(#getarg),*)
+    })
+}
+
 #[proc_macro_attribute]
 pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     let root = crate_root();
@@ -444,13 +541,20 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         let idx = 0..(nargs as usize);
         quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
     });
+    let set_args = make_setargs(methods.clone().map(|m| m.sig.inputs.len() - 1));
+    let get_args = make_getargs(1, methods.clone().cloned());
+    let wraps = make_wrappers(1, methods.clone().cloned());
     let num_methods = methods.clone().count();
 
     let st_methods = input.items.iter().filter_map(|x| if let ImplItem::Method(m) = x {
-        m.sig.inputs.first().and_then(|arg| match arg {
-            FnArg::Receiver(_) => None,
-            FnArg::Typed(_) => Some(m),
-        })
+        if let Some(arg) = m.sig.inputs.first() {
+            match arg {
+                FnArg::Receiver(_) => None,
+                FnArg::Typed(_) => Some(m),
+            }
+        } else {
+            Some(m)
+        }
     } else {
         None
     });
@@ -472,6 +576,9 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         let idx = 0..(nargs as usize);
         quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
     });
+    let st_set_args = make_setargs(st_methods.clone().map(|m| m.sig.inputs.len()));
+    let st_get_args = make_getargs(0, st_methods.clone().cloned());
+    let st_wraps = make_wrappers(0, st_methods.clone().cloned());
 
     let out = quote! {
         #input
@@ -482,7 +589,9 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
                 const METHODS: [(&'static str, #root::_deps::ArgSpec, #root::_deps::ObjMethod); #num_methods] =
                 [#((#kwnames, ArgSpec::normal(#nargs), |this: *mut u8, vm: &mut R8VM, args: &[PV]| unsafe {
                     ArgSpec::normal(#nargs).check(args.len() as u16)?;
-                    (*(this as *mut #name)).#mnames(#args).lispify(&mut vm.mem)
+                    #set_args
+                    #wraps
+                    (*(this as *mut #name)).#mnames(#get_args).lispify(&mut vm.mem)
                 })),*];
                 &METHODS
             }
@@ -497,7 +606,11 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
                       fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
                           use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
                           ArgSpec::normal(#st_nargs).check(args.len() as u16)?;
-                          #st_mnames(#st_args).lispify(&mut vm.mem)
+                          unsafe {
+                              #st_set_args
+                              #st_wraps
+                              #st_mnames(#st_get_args).lispify(&mut vm.mem)
+                          }
                       }
                       fn name(&self) -> &'static str {
                           #st_names
