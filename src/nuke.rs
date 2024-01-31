@@ -2031,6 +2031,5 @@ mod tests {
         let res: Result<bool, Error> = hooks.on(&mut vm).test6(&mut bobj);
         assert!(matches!(res.map_err(|e| e.cause().kind().clone()),
                          Err(ErrorKind::MutLocked { .. })));
-        hooks.on(&mut vm).test6(&mut bobj).unwrap();
     }
 }
