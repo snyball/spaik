@@ -2012,7 +2012,7 @@ mod tests {
         vm.exec("(define (test2) (doit) (doit) (doit))").unwrap();
         vm.exec("(define (test3 obj) (obj :doit 3 (lambda (x) (+ x 4))))").unwrap();
         vm.exec("(define (test4 obj) (obj :doitb (lambda () (void? obj))))").unwrap();
-        vm.exec("(define (test5 obje) (obje :doitb (lambda () (mut-locked? obje))))").unwrap();
+        vm.exec("(define (test5 obj) (obj :doitb (lambda () (mut-locked? obj))))").unwrap();
         let mut bobj = Obj(2);
         let mut hooks = TIFACE::default();
         hooks.link_events(&mut vm);
