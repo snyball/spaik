@@ -7,7 +7,7 @@ command -v jq &>/dev/null || { echo "jq not installed"; exit 1; }
 command -v fd &>/dev/null || { echo "fd not installed"; exit 1; } 
 
 function total() {
-    cloc --json src lisp \
+    cloc --json src proc-macros lisp \
     | jq '.["Rust"].code + .["C"].code + .["Lisp"].code + .["C/C++ Header"].code'
 }
 
