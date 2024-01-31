@@ -197,9 +197,9 @@ impl Visitor for ClzScoper<'_, '_, '_> {
             }
             M::Var(var) => {
                 if self.env.get_idx(var).is_some() {
-                } else if self.globals.get(&var).is_some() {
                 } else if let Some(bound) = self.outside.get_idx(var) {
                     self.lowered.insert((var, BoundVar::Local(bound)));
+                } else if self.globals.get(&var).is_some() {
                 } else if var != Builtin::Nil.sym_id() && !self.fns.contains_key(&var) {
                     return err_src!(elem.src.clone(), UndefinedVariable, var: var.into());
                 }
