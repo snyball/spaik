@@ -1089,4 +1089,38 @@ mod tests {
         let s: Sym = vm.eval("'x").unwrap();
         assert_eq!(s.as_ref(), "x");
     }
+
+    #[test]
+    fn result_bool() {
+        let mut vm = Spaik::new_no_core();
+        let s: bool = vm.eval("nil").unwrap();
+        assert!(!s);
+        let s: bool = vm.eval("1").unwrap();
+        assert!(s);
+        let s: bool = vm.eval("'x").unwrap();
+        assert!(s);
+        let s: bool = vm.eval("(cons 1 2)").unwrap();
+        assert!(s);
+        vm.exec("(define (f x) x)").unwrap();
+        let f = vm.getfn("f").unwrap();
+        let s: bool = vm.callfn(f, (1,)).unwrap();
+        assert!(s);
+        let s: Result<bool> = vm.callfn(f, (1,));
+        assert_eq!(s, Ok(true));
+    }
+
+    #[test]
+    fn result_bool_hook() {
+        struct Hooks {
+            f: Func,
+        }
+        // impl Hooks {
+        //     fn f(x: i32) -> Result<bool> {
+        //     }
+        // }
+        let mut vm = Spaik::new_no_core();
+        vm.exec("(define (f x) x)").unwrap();
+        let f = vm.getfn("f").unwrap();
+        let hooks = Hooks { f };
+    }
 }

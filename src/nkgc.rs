@@ -1629,27 +1629,21 @@ impl Arena {
                 unsafe { (*s).lock() }
             }
         }
-        self.borrow_locks.push(self.borrows.len());
-    }
-
-    pub fn unlock_borrows(&mut self) {
-        let from = self.borrow_locks
-                       .pop()
-                       .unwrap_or(0);
-        for obj in &mut self.borrows[from..] {
-            if let NkMut::Object(s) = to_fissile_mut(*obj) {
-                unsafe { (*s).unlock() }
-            }
-        }
+        self.borrow_locks.push(from);
     }
 
     pub fn pop_borrows(&mut self) {
-        let from = self.borrow_locks
-                       .pop()
-                       .unwrap_or(0);
-        for obj in self.borrows.drain(from..) {
-            if let NkMut::Object(s) = to_fissile_mut(obj) {
-                unsafe { (*s).void() }
+        if let Some(from) = self.borrow_locks.pop() {
+            for obj in &mut self.borrows[from..] {
+                if let NkMut::Object(s) = to_fissile_mut(*obj) {
+                    unsafe { (*s).unlock() }
+                }
+            }
+        } else {
+            for obj in self.borrows.drain(..) {
+                if let NkMut::Object(s) = to_fissile_mut(obj) {
+                    unsafe { (*s).void() }
+                }
             }
         }
     }

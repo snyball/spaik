@@ -227,6 +227,7 @@ pub enum ErrorKind {
     NotEnough { expect: usize,
                 got: usize },
     SomeError { msg: String },
+    UndefinedHook { name: OpName },
     UndefinedFunction { name: Sym },
     UndefinedVariable { var: Sym },
     ModuleLoadError { lib: Sym },
@@ -502,6 +503,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "expected {expect} stack element{s}, but got {got}")?;
         }
         SomeError { msg } => write!(f, "Error: {}", msg)?,
+        UndefinedHook { name } =>
+            write!(f, "Undefined Hook Function: Virtual call to undefined hook function {name}")?,
         UndefinedFunction { name } =>
             write!(f, "Undefined Function: Virtual call to undefined function {name}")?,
         UndefinedVariable { var } =>

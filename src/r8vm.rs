@@ -251,11 +251,11 @@ macro_rules! std_subrs {
 
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, borrow::Cow, io::BufWriter, fs};
+    use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId};
 
     use fnv::FnvHashMap;
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided}};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(args: IT, sep: S) -> String
@@ -597,6 +597,16 @@ mod sysfns {
                     return Ok(false.into())
                 };
                 Ok((*obj).cast::<Voided>().is_ok().into())
+            }
+        }
+
+        fn is_mut_locked(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            let Ok(p) = x.ref_inner() else { return Ok(false.into()) };
+            unsafe {
+                let Some(obj) = cast_mut::<crate::nuke::Object>(p) else {
+                    return Ok(false.into())
+                };
+                Ok(((*obj).type_id == TypeId::of::<Locked>()).into())
             }
         }
     }
@@ -1274,6 +1284,7 @@ impl R8VM {
         addfn!("sys/set-macro", set_macro);
         addfn!("sys/set-macro-character", set_macro_character);
         addfn!("void?", is_void);
+        addfn!("mut-locked?", is_mut_locked);
 
         // Debug
         #[cfg(feature = "extra")] {

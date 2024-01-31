@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use std::fmt::Display;
+use std::fmt::{Display, format};
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
@@ -154,6 +154,7 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
     });
     let wrappers = items.clone().map(|m| {
         let name = &m.sig.ident;
+        let fqn = format!("{}{}", prefix.value(), name);
         let out = match &m.sig.output {
             syn::ReturnType::Default => quote!(#root::Result<#root::Ignore>),
             syn::ReturnType::Type(_, ty) => quote!(#root::Result<#ty>),
@@ -171,13 +172,27 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
         });
         let inp = args.clone().map(|(arg, ty)| quote!(#arg : #ty));
         let arg_idents = args.clone().map(|(arg, _ty)| arg);
-        quote! {
-            pub fn #name(self, #(#inp),*) -> #out {
+        let body = match &m.sig.output {
+            syn::ReturnType::Default => quote! {
                 if let Some(f) = self.fns.#name {
                     self.vm.callfn(f, (#(#arg_idents,)*))
                 } else {
                     #root::_deps::PV::Nil.try_into()
                 }
+            },
+            syn::ReturnType::Type(_, ty) => quote! {
+                if let Some(f) = self.fns.#name {
+                    self.vm.callfn(f, (#(#arg_idents,)*))
+                } else {
+                    Err((#root::error::ErrorKind::UndefinedHook {
+                        name: #root::_deps::OpName::OpStr(#fqn)
+                    }).into())
+                }
+            },
+        };
+        quote! {
+            pub fn #name(self, #(#inp),*) -> #out {
+                #body
             }
         }
     });

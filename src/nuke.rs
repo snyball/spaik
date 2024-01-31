@@ -1983,6 +1983,9 @@ mod tests {
             fn doit(&mut self, x: i32, mut myfunk: impl FnMut(i32) -> Result<i32, Error>) -> Result<i32, Error> {
                 myfunk(1 + x)
             }
+            fn doitb(&mut self, mut myfunk: impl FnMut() -> Result<bool, Error>) -> Result<bool, Error> {
+                myfunk()
+            }
             fn sdoit(x: i32, mut myfunk: impl FnMut(i32) -> Result<i32, Error>) -> Result<i32, Error> {
                 myfunk(1 + x)
             }
@@ -1990,6 +1993,10 @@ mod tests {
         #[hooks("")]
         trait TIFACE {
             fn test1() -> i32;
+            fn test2() -> i32;
+            fn test3(bob: &mut Obj) -> i32;
+            fn test4(bob: &mut Obj) -> bool;
+            fn test5(bob: &mut Obj) -> bool;
         }
         let mut vm = Spaik::new_no_core();
         vm.defobj(Obj::vtable());
@@ -2001,13 +2008,19 @@ mod tests {
                    Ok(()));
 
         vm.exec("(define (test1) (obj/doit 2 (lambda (x) (+ x 2))))").unwrap();
+        vm.exec("(define (doit) (obj/doit 2 (lambda (x) (+ x 2))))").unwrap();
+        vm.exec("(define (test2) (doit) (doit) (doit))").unwrap();
+        vm.exec("(define (test3 obj) (obj :doit 3 (lambda (x) (+ x 4))))").unwrap();
+        vm.exec("(define (test4 obj) (obj :doitb (lambda () (void? obj))))").unwrap();
+        vm.exec("(define (test5 obje) (obje :doitb (lambda () (mut-locked? obje))))").unwrap();
         let mut bobj = Obj(2);
-        unsafe { vm.set_resource(&mut bobj) }
-        let out: PV = vm.eval("(obj/doit 2 (lambda (x) (+ x 2)))").unwrap();
-        println!("{out}");
         let mut hooks = TIFACE::default();
         hooks.link_events(&mut vm);
         assert_eq!(hooks.on(&mut vm).with_resource(&mut bobj).test1(), Ok(5));
+        assert_eq!(hooks.on(&mut vm).with_resource(&mut bobj).test2(), Ok(5));
+        assert_eq!(hooks.on(&mut vm).test3(&mut bobj), Ok(8));
+        assert_eq!(hooks.on(&mut vm).test4(&mut bobj), Ok(false));
+        assert_eq!(hooks.on(&mut vm).test5(&mut bobj), Ok(true));
 
     }
 }
