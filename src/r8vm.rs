@@ -1415,9 +1415,14 @@ impl R8VM {
         let key = ((*obj).type_id , kw);
         match self.obj_methods.get(&key) {
             Some(f) => (f)((*obj).mem, self, &args[1..]),
-            None => err!(NoSuchMethod,
-                         strucc: (*obj).vt.type_name,
-                         method: key.1.into()),
+            // FIXME: Check if object is locked here, and give a different error
+            None => if (*obj).type_id == TypeId::of::<Locked>() {
+                err!(MutLocked, vt: (*obj).vt)
+            } else {
+                err!(NoSuchMethod,
+                     strucc: (*obj).vt.type_name,
+                     method: key.1.into())
+            }
         }
     }
 
@@ -2042,6 +2047,10 @@ impl R8VM {
             };
 
             let frame = self.frame;
+            if frame >= self.mem.stack.len() || frame+nargs >= self.mem.stack.len() {
+                log::warn!("Incomplete stack trace!");
+                break;
+            }
             let args = self.mem.stack.drain(frame..frame+nargs)
                                      .map(|v| v.to_string())
                                      .collect();
@@ -2052,20 +2061,20 @@ impl R8VM {
 
             self.mem.stack.drain(frame..frame+nenv).for_each(drop);
             if frame >= self.mem.stack.len() {
-                vmprintln!(self, "Warning: Incomplete stack trace!");
+                log::warn!("Incomplete stack trace!");
                 break;
             }
             ip = match self.mem.stack[frame] {
                 PV::UInt(x) => x,
                 _ => {
-                    vmprintln!(self, "Warning: Incomplete stack trace!");
+                    log::warn!("Incomplete stack trace!");
                     break;
                 }
             };
             self.frame = match self.mem.stack[frame+1] {
                 PV::UInt(x) => x,
                 _ => {
-                    vmprintln!(self, "Warning: Incomplete stack trace!");
+                    log::warn!("Incomplete stack trace!");
                     break;
                 }
             };

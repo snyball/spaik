@@ -470,23 +470,6 @@ fn get_fn_type(arg: &FnArg) -> Option<FnSig> {
     }
 }
 
-fn get_fn_wrapper(name: &Ident, arg: &FnArg) -> proc_macro2::TokenStream {
-    if let Some(funk) = get_fn_type(arg) {
-        let args = (0..funk.nargs).map(|i| format_ident!("local_{i}"));
-        let args_2 = (0..funk.nargs).map(|i| format_ident!("local_{i}"));
-        quote! {
-            let mut #name = |#(#args),*| {
-                vm.mem.lock_borrows();
-                let r = #name.on_raw(vm).call((#(#args_2),*));
-                vm.mem.unlock_borrows();
-                r
-            };
-        }
-    } else {
-        quote!()
-    }
-}
-
 fn make_setargs(nargs: impl Iterator<Item = usize>) -> impl Iterator<Item = proc_macro2::TokenStream> {
      nargs.map(move |nargs| {
         let setarg = (0..nargs).map(|idx| {

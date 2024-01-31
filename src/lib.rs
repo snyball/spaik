@@ -1108,19 +1108,4 @@ mod tests {
         let s: Result<bool> = vm.callfn(f, (1,));
         assert_eq!(s, Ok(true));
     }
-
-    #[test]
-    fn result_bool_hook() {
-        struct Hooks {
-            f: Func,
-        }
-        // impl Hooks {
-        //     fn f(x: i32) -> Result<bool> {
-        //     }
-        // }
-        let mut vm = Spaik::new_no_core();
-        vm.exec("(define (f x) x)").unwrap();
-        let f = vm.getfn("f").unwrap();
-        let hooks = Hooks { f };
-    }
 }

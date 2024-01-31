@@ -1881,11 +1881,13 @@ impl PtrMap {
 
 #[cfg(test)]
 mod tests {
+    use std::num::IntErrorKind;
+
     #[cfg(feature = "derive")]
     use spaik_proc_macros::Fissile;
     use spaik_proc_macros::{Obj, methods, hooks};
 
-    use crate::{Spaik, r8vm::{R8VM, ArgSpec}, Lispify, Lambda, FromLisp3, error::Source, __spaik_call_builder::IntoCallBuilder, LinkedEvents};
+    use crate::{Spaik, r8vm::{R8VM, ArgSpec}, Lispify, Lambda, FromLisp3, error::{Source, ErrorKind}, __spaik_call_builder::IntoCallBuilder, LinkedEvents};
 
     use super::*;
 
@@ -1989,6 +1991,9 @@ mod tests {
             fn sdoit(x: i32, mut myfunk: impl FnMut(i32) -> Result<i32, Error>) -> Result<i32, Error> {
                 myfunk(1 + x)
             }
+            fn f(&mut self) -> i32 {
+                1
+            }
         }
         #[hooks("")]
         trait TIFACE {
@@ -1997,6 +2002,7 @@ mod tests {
             fn test3(bob: &mut Obj) -> i32;
             fn test4(bob: &mut Obj) -> bool;
             fn test5(bob: &mut Obj) -> bool;
+            fn test6(bob: &mut Obj) -> bool;
         }
         let mut vm = Spaik::new_no_core();
         vm.defobj(Obj::vtable());
@@ -2013,6 +2019,7 @@ mod tests {
         vm.exec("(define (test3 obj) (obj :doit 3 (lambda (x) (+ x 4))))").unwrap();
         vm.exec("(define (test4 obj) (obj :doitb (lambda () (void? obj))))").unwrap();
         vm.exec("(define (test5 obj) (obj :doitb (lambda () (mut-locked? obj))))").unwrap();
+        vm.exec("(define (test6 obj) (obj :doitb (lambda () (obj :f))))").unwrap();
         let mut bobj = Obj(2);
         let mut hooks = TIFACE::default();
         hooks.link_events(&mut vm);
@@ -2021,6 +2028,9 @@ mod tests {
         assert_eq!(hooks.on(&mut vm).test3(&mut bobj), Ok(8));
         assert_eq!(hooks.on(&mut vm).test4(&mut bobj), Ok(false));
         assert_eq!(hooks.on(&mut vm).test5(&mut bobj), Ok(true));
-
+        let res: Result<bool, Error> = hooks.on(&mut vm).test6(&mut bobj);
+        dbg!(&res);
+        assert!(matches!(res.map_err(|e| e.cause().cause().kind().clone()),
+                         Err(ErrorKind::MutLocked { .. })));
     }
 }
