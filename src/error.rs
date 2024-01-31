@@ -1,5 +1,6 @@
 //! Structured Errors
 
+use crate::nkgc::PV;
 use crate::nuke::VTable;
 use crate::{Builtin, Sym};
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
@@ -49,7 +50,7 @@ pub struct SourceRef<'a> {
     pub col: u32,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum OpName {
     OpSym(Sym),
     OpStr(&'static str),
@@ -369,6 +370,10 @@ impl Error {
         &self.inner.ty
     }
 
+    pub fn kind_mut(&mut self) -> &mut ErrorKind {
+        &mut self.inner.ty
+    }
+
     pub fn meta(&self) -> &MetaSet {
         &self.inner.meta
     }
@@ -678,6 +683,17 @@ impl Error {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn insert_traceframe(mut self, src: Source, func: OpName, args: &[PV]) -> Self {
+        if let ErrorKind::Traceback { ref mut tb } = self.kind_mut() {
+            tb.frames.push(TraceFrame {
+                src,
+                func,
+                args: args.iter().map(|v| v.to_string()).collect()
+            })
+        }
+        self
     }
 }
 

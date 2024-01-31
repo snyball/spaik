@@ -10,7 +10,7 @@ use serde::{Serialize, Deserialize};
 macro_rules! builtins {
     ($(($sym:ident, $str:expr)),*) => {
         #[repr(u8)]
-        #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+        #[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub enum Builtin { $($sym),* }
 

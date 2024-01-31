@@ -155,7 +155,7 @@ const TABLE_STYLE: &str = comfy_table::presets::UTF8_BORDERS_ONLY;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct TraceFrame {
     pub src: Source,
-    pub func: SymRef,
+    pub func: OpName,
     pub args: Vec<String>,
 }
 
@@ -1408,13 +1408,18 @@ impl R8VM {
         }
     }
 
-    pub unsafe fn call_method(&mut self, obj: *mut Object, args: &[PV]) -> Result<PV> {
+    pub unsafe fn call_method(&mut self, ip: *mut r8c::Op, obj: *mut Object, args: &[PV]) -> Result<PV> {
         let kw = args.first()
                      .ok_or_else(|| error!(NoMethodGiven, vt: (*obj).vt))
                      .and_then(|f| f.sym())?;
         let key = ((*obj).type_id , kw);
         match self.obj_methods.get(&key) {
-            Some(f) => (f)((*obj).mem, self, &args[1..]),
+            Some(f) => (f)((*obj).mem, self, &args[1..]).map_err(|e| {
+                let ipd = self.ip_delta(ip) - 1;
+                e.insert_traceframe(self.get_source(ipd),
+                                    OpName::OpStr((*obj).vt.type_name),
+                                    &args[..])
+            }),
             // FIXME: Check if object is locked here, and give a different error
             None => if (*obj).type_id == TypeId::of::<Locked>() {
                 err!(MutLocked, vt: (*obj).vt)
@@ -2056,7 +2061,7 @@ impl R8VM {
                                      .collect();
             let src = self.get_source(ip);
             frames.push(TraceFrame { args,
-                                     func: name.into(),
+                                     func: OpName::OpSym(name.into()),
                                      src });
 
             self.mem.stack.drain(frame..frame+nenv).for_each(drop);
@@ -2182,7 +2187,12 @@ impl R8VM {
                 let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
 
                 let dip = self.ip_delta(ip);
-                let res = (*subr).call(self, &args[..]);
+                let res = (*subr).call(self, &args[..]).map_err(|e| {
+                    let ipd = self.ip_delta(ip) - 1;
+                    e.insert_traceframe(self.get_source(ipd),
+                                        OpName::OpStr((*subr).name()),
+                                        &args[..])
+                });
                 invalid!(args, subr); // (*subr).call
                 self.mem.stack.drain(idx..).for_each(drop); // drain gang
                 self.mem.push(res?);
@@ -2202,7 +2212,7 @@ impl R8VM {
                 let top = self.mem.stack.len();
                 let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
                 let dip = self.ip_delta(ip);
-                let res = self.call_method(s, &args[..]);
+                let res = self.call_method(ip, s, &args[..]);
                 self.mem.stack.drain(idx..).for_each(drop); // drain gang
                 self.mem.push(res?);
                 Ok(self.ret_to(dip))
