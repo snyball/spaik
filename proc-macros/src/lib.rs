@@ -437,9 +437,10 @@ impl<'a> Display for KebabTypeName<'a> {
     }
 }
 
-#[derive(Debug)]
 struct FnSig {
     nargs: usize,
+    inputs: Vec<Type>,
+    output: syn::ReturnType,
 }
 
 fn get_fn_type(arg: &FnArg) -> Option<FnSig> {
@@ -454,7 +455,9 @@ fn get_fn_type(arg: &FnArg) -> Option<FnSig> {
                             syn::PathArguments::None => None,
                             syn::PathArguments::AngleBracketed(_) => None,
                             syn::PathArguments::Parenthesized(s) =>
-                                Some(FnSig { nargs: s.inputs.len() }),
+                                Some(FnSig { nargs: s.inputs.len(),
+                                             inputs: s.inputs.iter().cloned().collect(),
+                                             output: s.output.clone() }),
                         }
                     } else {
                         None
@@ -485,7 +488,10 @@ fn make_wrappers(skip: usize, methods: impl Iterator<Item = ImplItemMethod>) -> 
         let wraps = x.sig.inputs.iter().skip(skip).enumerate().filter_map(|(idx, arg)| {
             get_fn_type(arg).map(|funk| {
                 let name = format_ident!("arg_{idx}");
-                let args = (0..funk.nargs).map(|i| format_ident!("local_{i}"));
+                let args = funk.inputs.iter().enumerate().map(|(i, ty)| {
+                    let name = format_ident!("local_{i}");
+                    quote!(#name : #ty)
+                });
                 let args_2 = (0..funk.nargs).map(|i| format_ident!("local_{i}"));
                 quote! {
                     let #name: Lambda = #name;
