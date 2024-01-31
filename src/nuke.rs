@@ -2003,6 +2003,7 @@ mod tests {
             fn test4(bob: &mut Obj) -> bool;
             fn test5(bob: &mut Obj) -> bool;
             fn test6(bob: &mut Obj) -> bool;
+            fn test7() -> i32;
         }
         let mut vm = Spaik::new_no_core();
         vm.defobj(Obj::vtable());
@@ -2020,6 +2021,7 @@ mod tests {
         vm.exec("(define (test4 obj) (obj :doitb (lambda () (void? obj))))").unwrap();
         vm.exec("(define (test5 obj) (obj :doitb (lambda () (mut-locked? obj))))").unwrap();
         vm.exec("(define (test6 obj) (obj :doitb (lambda () (obj :f))))").unwrap();
+        vm.exec("(define (test7) (obj/sdoit 3 (lambda (x) (+ x 4))))").unwrap();
         let mut bobj = Obj(2);
         let mut hooks = TIFACE::default();
         hooks.link_events(&mut vm);
@@ -2031,5 +2033,7 @@ mod tests {
         let res: Result<bool, Error> = hooks.on(&mut vm).test6(&mut bobj);
         assert!(matches!(res.map_err(|e| e.cause().kind().clone()),
                          Err(ErrorKind::MutLocked { .. })));
+        assert_eq!(hooks.on(&mut vm).test7(), Ok(8i32));
+        // hooks.on(&mut vm).test6(&mut bobj).unwrap();
     }
 }
