@@ -9,6 +9,7 @@ use crate::subrs::{IntoLisp, FromLisp, self};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
 use std::io::{Write, Read};
+use std::marker::PhantomData;
 use std::mem::{self, size_of, align_of, MaybeUninit};
 use std::ptr::{drop_in_place, self, null_mut};
 use std::cmp::{Ordering, PartialEq, PartialOrd};
@@ -297,6 +298,7 @@ impl Iterator for Iter {
 pub struct VTable {
     /// Result of `Any::type_name`
     pub type_name: &'static str,
+    pub type_id: TypeId,
     /// Get reference count
     get_rc: unsafe fn(*mut u8) -> Option<*mut GcRc>,
     /// `Drop::drop`
@@ -375,6 +377,8 @@ pub struct Object {
     /// See RcMem<T> for the actual layout of this memory.
     pub(crate) mem: *mut u8,
 }
+
+pub struct Locked;
 
 impl Clone for Object {
     fn clone(&self) -> Self {
@@ -614,6 +618,7 @@ impl Object {
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     type_name: type_name::<T>(),
+                    type_id: TypeId::of::<T>(),
                     drop: |obj| unsafe {
                         let rc_mem = obj as *mut RcMem<T>;
                         if (*rc_mem).rc.is_dropped() {
@@ -720,6 +725,7 @@ impl Object {
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     clone: None,
+                    type_id: TypeId::of::<T>(),
                     type_name: type_name::<T>(),
                     drop: |_| {},
                     get_rc: |_| None,
@@ -752,6 +758,7 @@ impl Object {
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
                     clone: None,
+                    type_id: TypeId::of::<Void>(),
                     type_name: "void",
                     drop: |_| {},
                     get_rc: |_| None,
@@ -776,6 +783,18 @@ impl Object {
         unsafe { (self.vt.drop)(self.mem) };
         self.vt = Self::void_vtable();
         self.mem = null_mut();
+    }
+
+    pub fn lock(&mut self) {
+        self.type_id = TypeId::of::<Locked>();
+    }
+
+    pub fn unlock(&mut self) {
+        self.type_id = self.vt.type_id;
+    }
+
+    pub fn is_locked(&self) -> bool {
+        self.type_id == TypeId::of::<Locked>()
     }
 
     pub fn take<T: 'static>(&mut self) -> Result<T, Error> {

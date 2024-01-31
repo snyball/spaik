@@ -1209,6 +1209,7 @@ pub struct Arena {
     extdrop_recv: Receiver<ExtRefMsg>,
     extdrop_send: Sender<ExtRefMsg>,
     borrows: Vec<*mut NkAtom>,
+    borrow_locks: Vec<usize>,
     state: GCState,
     extref_id_cnt: u32,
     no_reorder: bool,
@@ -1271,6 +1272,7 @@ impl Arena {
             conts: Vec::new(),
             extref_id_cnt: 0,
             borrows: Vec::new(),
+            borrow_locks: Vec::new(),
         };
         for blt in BUILTIN_SYMS.iter() {
             ar.symdb.put_static(blt);
@@ -1618,6 +1620,27 @@ impl Arena {
             cont.update_ptrs(self.nuke.reloc());
         }
         self.nuke.confirm_relocation(tok);
+    }
+
+    pub fn lock_borrows(&mut self) {
+        let from = self.borrow_locks.last().copied().unwrap_or(0);
+        for obj in &mut self.borrows[from..] {
+            if let NkMut::Object(s) = to_fissile_mut(*obj) {
+                unsafe { (*s).lock() }
+            }
+        }
+        self.borrow_locks.push(self.borrows.len());
+    }
+
+    pub fn unlock_borrows(&mut self) {
+        let from = self.borrow_locks
+                       .pop()
+                       .expect("attempted to unlock borrows, but none were locked");
+        for obj in &mut self.borrows[from..] {
+            if let NkMut::Object(s) = to_fissile_mut(*obj) {
+                unsafe { (*s).unlock() }
+            }
+        }
     }
 
     pub fn pop_borrows(&mut self) {
