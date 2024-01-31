@@ -666,7 +666,7 @@ impl Error {
     pub fn cause(&self) -> &Error {
         match self.kind() {
             ErrorKind::Traceback { tb } => {
-                &tb.err
+                tb.err.cause()
             },
             _ => self
         }

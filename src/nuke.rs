@@ -2030,7 +2030,7 @@ mod tests {
         assert_eq!(hooks.on(&mut vm).test5(&mut bobj), Ok(true));
         let res: Result<bool, Error> = hooks.on(&mut vm).test6(&mut bobj);
         dbg!(&res);
-        assert!(matches!(res.map_err(|e| e.cause().cause().kind().clone()),
+        assert!(matches!(res.map_err(|e| e.cause().kind().clone()),
                          Err(ErrorKind::MutLocked { .. })));
     }
 }
