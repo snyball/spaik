@@ -1649,6 +1649,7 @@ impl Arena {
                 unsafe { (*s).void() }
             }
         }
+        self.borrow_locks.drain(..).for_each(drop);
     }
 
     pub fn push_borrow(&mut self, rf: *mut NkAtom) {
