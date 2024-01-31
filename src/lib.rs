@@ -691,6 +691,7 @@ impl Lispify<(), (), ()> for Result<PV> {
 }
 
 pub type Any = Result<PV>;
+pub const NIL: Result<PV> = Ok(PV::Nil);
 
 impl FromLisp<Lambda> for PV {
     fn from_lisp(self, mem: &mut _deps::Arena) -> std::result::Result<Lambda, Error> {
