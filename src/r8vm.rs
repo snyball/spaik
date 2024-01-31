@@ -2130,6 +2130,7 @@ impl R8VM {
                 Err(self.unwind_traceback(ip, e))
             },
         };
+        self.mem.pop_borrows();
         self.frame = pframe;
         self.catch_pop();
         res
@@ -2644,7 +2645,6 @@ impl R8VM {
         };
 
         let res = run();
-        self.mem.pop_borrows();
         let dip = self.ip_delta(ip);
         match res {
             Ok(_) => Ok(dip),
