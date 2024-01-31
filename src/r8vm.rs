@@ -1002,7 +1002,7 @@ macro_rules! call_with {
         $vm.mem.push(PV::UInt(0));
         $vm.mem.push(PV::UInt(frame));
         unsafe {
-            $vm.run_from_unwind($pos)?;
+            $vm.run_from_unwind($pos, frame)?;
         }
         let res = $vm.mem.pop().expect(
             "Function did not return a value"
@@ -1026,7 +1026,7 @@ macro_rules! symcall_with {
         $vm.mem.push(PV::UInt(frame));
         let pos = func.pos;
         unsafe {
-            $vm.run_from_unwind(pos)?;
+            $vm.run_from_unwind(pos, frame)?;
         }
         let res = $vm.mem.pop().expect(
             "Function did not return a value"
@@ -1752,7 +1752,7 @@ impl R8VM {
             self.mem.push(PV::UInt(0));
             self.mem.push(PV::UInt(frame));
             let pos = func.pos;
-            unsafe { self.run_from_unwind(pos)?; }
+            unsafe { self.run_from_unwind(pos, frame)?; }
             let res = self.mem.pop().expect("Function did not return a value");
             self.mem.pop().expect("op name missing from stack");
             res
@@ -1838,7 +1838,7 @@ impl R8VM {
                 // Push previous call-frame and run macro
                 self.mem.push(PV::UInt(0));
                 self.mem.push(PV::UInt(frame));
-                unsafe { self.run_from_unwind(func.pos)?; }
+                unsafe { self.run_from_unwind(func.pos, frame)?; }
 
                 // Set new expand-candidate to the result of the macro
                 invalid!(v); // run_from_unwind
@@ -2122,7 +2122,7 @@ impl R8VM {
         }
     }
 
-    unsafe fn run_from_unwind(&mut self, offs: usize) -> std::result::Result<usize, Traceback> {
+    unsafe fn run_from_unwind(&mut self, offs: usize, pframe: usize) -> std::result::Result<usize, Traceback> {
         self.catch();
         let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
@@ -2130,6 +2130,7 @@ impl R8VM {
                 Err(self.unwind_traceback(ip, e))
             },
         };
+        self.frame = pframe;
         self.catch_pop();
         res
     }
@@ -2728,7 +2729,7 @@ impl R8VM {
         let pos = clzcall_pad_dip(args.nargs() as u16);
         args.pusharg(&mut self.mem)?;
         unsafe {
-            self.run_from_unwind(pos)?;
+            self.run_from_unwind(pos, frame)?;
         }
         self.mem.pop()
     }
@@ -2742,7 +2743,7 @@ impl R8VM {
         let pos = clzcall_pad_dip(args.inner_nargs() as u16);
         args.inner_pusharg(&mut self.mem)?;
         unsafe {
-            self.run_from_unwind(pos)?;
+            self.run_from_unwind(pos, frame)?;
         }
         self.mem.pop()
     }
