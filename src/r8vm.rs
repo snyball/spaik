@@ -13,13 +13,13 @@ use crate::{
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
     fmt::LispFmt,
     nuke::{*},
-    nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int},
+    nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int, ConsOption},
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32}, path::Path, any::{TypeId, type_name}};
+use std::{io, fs, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32}, path::Path, any::{TypeId, type_name}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -249,13 +249,60 @@ macro_rules! std_subrs {
     };
 }
 
+pub unsafe fn merge_sort(mut head: Option<*mut Cons>) -> Result<Option<*mut Cons>> {
+    if head.is_none() || head.next().is_none() {
+        return Ok(head)
+    }
+    let (a, b) = split_list(head);
+    merge(merge_sort(a)?, merge_sort(b)?)
+}
+
+unsafe fn merge(a: Option<*mut Cons>,
+                b: Option<*mut Cons>)
+                -> Result<Option<*mut Cons>> {
+    let Some(ap) = a else { return Ok(b) };
+    let Some(bp) = b else { return Ok(a) };
+    match (*ap).car.partial_cmp(&(*bp).car) {
+        Some(cmp::Ordering::Greater | cmp::Ordering::Equal) => {
+            (*bp).cdr = merge(a, (*bp).next())?.as_pv();
+            Ok(Some(bp))
+        }
+        Some(cmp::Ordering::Less) => {
+            (*ap).cdr = merge((*ap).next(), b)?.as_pv();
+            Ok(Some(ap))
+        }
+        None => err!(IfaceNotImplemented,
+                     got: vec![(*ap).car.type_of().into(),
+                               (*bp).car.type_of().into()]).map_err(|e: Error| {
+                         e.bop(Builtin::Cmp)
+                     })
+    }
+}
+
+pub unsafe fn split_list(mut head: Option<*mut Cons>)
+                         -> (Option<*mut Cons>, Option<*mut Cons>)
+{
+    let mut slow = head;
+    let mut fast = head.next();
+    while let Some(fst) = fast {
+        fast = (*fst).next();
+        if let Some(fst) = fast {
+            slow = slow.next();
+            fast = (*fst).next();
+        }
+    }
+    let r = (head, slow.next());
+    slow.map(|p| (*p).cdr = PV::Nil);
+    r
+}
+
 #[allow(non_camel_case_types)]
 mod sysfns {
     use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId, hash::Hash, collections::hash_map::DefaultHasher, cmp::Ordering};
 
     use fnv::FnvHashMap;
 
-    use crate::{subrs::{Subr, IntoLisp}, nkgc::PV, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}};
+    use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, Cons}, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}, r8vm::merge_sort};
     use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(args: IT, sep: S) -> String
@@ -610,7 +657,22 @@ mod sysfns {
             }
         }
 
+        fn split_list(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            let (atom, cns) = vm.mem.put(Cons { car: PV::Nil, cdr: PV::Nil });
+            let pv = PV::Ref(atom);
+            with_ref_mut!(*x, Cons(head) => {
+                use crate::nkgc::ConsOption;
+                let (a, b) = crate::r8vm::split_list(Some(head));
+                unsafe {
+                    (*cns).car = a.as_pv();
+                    (*cns).cdr = b.as_pv();
+                }
+                Ok(pv)
+            })
+        }
+
         fn sort_inplace(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            use crate::nkgc::ConsOption;
             with_ref_mut!(*x, Vector(xs) => {
                 let mut res = Ok(*x);
                 (*xs).sort_by(|u, v| {
@@ -626,6 +688,8 @@ mod sysfns {
                     })
                 });
                 res
+            }, Cons(head) => {
+                merge_sort(Some(head)).map(|x| x.as_pv())
             })
         }
     }
@@ -1366,6 +1430,7 @@ impl R8VM {
 
         // Utils
         addfn!("sort!", sort_inplace);
+        addfn!("split!", split_list);
 
         let src = Some(Cow::Borrowed("<ζ>::boot-stage0"));
         vm.read_compile(include_str!("../lisp/boot-stage0.lisp"),

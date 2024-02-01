@@ -890,6 +890,30 @@ impl Cons {
     pub fn new(car: PV, cdr: PV) -> Cons {
         Cons { car, cdr }
     }
+
+    pub fn next(&mut self) -> Option<*mut Cons> {
+        let PV::Ref(p) = self.cdr else { return None };
+        cast_mut(p)
+    }
+}
+
+pub trait ConsOption {
+    fn next(&mut self) -> Option<*mut Cons>;
+    fn as_pv(&self) -> PV;
+}
+
+impl ConsOption for Option<*mut Cons> {
+    fn next(&mut self) -> Option<*mut Cons> {
+        let Some(v) = *self else { return None };
+        unsafe { (*v).next() }
+    }
+
+    fn as_pv(&self) -> PV {
+        match self {
+            Some(p) => NkAtom::make_ref(*p),
+            None => PV::Nil
+        }
+    }
 }
 
 impl Traceable for Cons {
