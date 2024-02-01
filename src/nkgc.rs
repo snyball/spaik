@@ -783,6 +783,13 @@ impl PV {
     cmp_op!(lte, Lte, Less, Equal);
     cmp_op!(gte, Gte, Greater, Equal);
 
+    pub fn heap_size_of(&self) -> usize {
+        match self {
+            PV::Ref(p) => unsafe { deep_size_of_atom(*p) },
+            _ => 0,
+        }
+    }
+
     pub fn deep_clone(self, mem: &mut Arena) -> Result<PV, Error> {
         Ok(match self {
             PV::Ref(p) => PV::Ref(clone_atom(p, mem)?),
