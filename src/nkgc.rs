@@ -798,6 +798,7 @@ impl PartialOrd for PV {
             (PV::Int(x), PV::Int(y)) => Some(x.cmp(&y)),
             (PV::Real(x), PV::Real(y)) => x.partial_cmp(&y),
             (PV::Real(x), PV::Int(y)) => x.partial_cmp(&(y as f32)),
+            (PV::Sym(x), PV::Sym(y)) => x.as_ref().partial_cmp(y.as_ref()),
             (PV::Ref(l), PV::Ref(r)) => unsafe {
                 let tl = atom_kind(l);
                 if tl == NkT::String && tl == atom_kind(r) {
@@ -831,7 +832,7 @@ impl Hash for PV {
             PV::Vec3(Vec3 { x, y, z }) => { x.to_ne_bytes().hash(state);
                                             y.to_ne_bytes().hash(state);
                                             z.to_ne_bytes().hash(state) },
-            PV::Ref(_) => unimplemented!("Hash is unimplemented for references"),
+            PV::Ref(p) => p.hash(state),
         }
     }
 }

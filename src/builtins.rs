@@ -92,6 +92,7 @@ builtins! {
     (Lte, "<="),
     (Gte, ">="),
     (Eq, "="),
+    (Cmp, "cmp"),
     (Eqp, "eq?"),
     (Not, "not"),
     (Define, "define"),

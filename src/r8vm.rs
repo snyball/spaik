@@ -251,7 +251,7 @@ macro_rules! std_subrs {
 
 #[allow(non_camel_case_types)]
 mod sysfns {
-    use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId};
+    use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId, hash::Hash, collections::hash_map::DefaultHasher, cmp::Ordering};
 
     use fnv::FnvHashMap;
 
@@ -608,6 +608,25 @@ mod sysfns {
                 };
                 Ok(((*obj).type_id == TypeId::of::<Locked>()).into())
             }
+        }
+
+        fn sort_inplace(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            with_ref_mut!(*x, Vector(xs) => {
+                let mut res = Ok(*x);
+                (*xs).sort_by(|u, v| {
+                    u.partial_cmp(v).unwrap_or_else(|| {
+                        if res.is_ok() {
+                            res = err!(IfaceNotImplemented,
+                                       got: vec![u.type_of().into(),
+                                                 v.type_of().into()]).map_err(|e: Error| {
+                                           e.bop(Builtin::Cmp)
+                                       });
+                        }
+                        Ordering::Equal
+                    })
+                });
+                res
+            })
         }
     }
 
@@ -1345,6 +1364,9 @@ impl R8VM {
         // Iter
         addfn!(iter);
 
+        // Utils
+        addfn!("sort!", sort_inplace);
+
         let src = Some(Cow::Borrowed("<ζ>::boot-stage0"));
         vm.read_compile(include_str!("../lisp/boot-stage0.lisp"),
                         src.clone()).unwrap();
@@ -1656,6 +1678,7 @@ impl R8VM {
                             let pv = self.mem.pop().unwrap();
                             self.macroexpand_pv(pv, false)?
                         };
+                        // dbg!(PVSrcFmt { v, mem: &self.mem }.lisp_to_string());
                         // ^ macroexpand can eval/defun, so update offsets
                         cc.set_offsets(self);
 
@@ -1664,6 +1687,7 @@ impl R8VM {
 
                         let excv = Excavator::new(&self.mem);
                         let mut ast = excv.to_ast(v, fst_src)?;
+                        //dbg!(&ast);
                         self.mem.clear_tags();
                         let mut opto = Optomat::new();
                         opto.visit(&mut ast)?;
