@@ -274,7 +274,7 @@ unsafe fn merge(a: Option<*mut Cons>,
         None => err!(IfaceNotImplemented,
                      got: vec![(*ap).car.type_of().into(),
                                (*bp).car.type_of().into()]).map_err(|e: Error| {
-                         e.bop(Builtin::Cmp)
+                         e.bop(Builtin::Gte)
                      })
     }
 }
@@ -681,7 +681,7 @@ mod sysfns {
                             res = err!(IfaceNotImplemented,
                                        got: vec![u.type_of().into(),
                                                  v.type_of().into()]).map_err(|e: Error| {
-                                           e.bop(Builtin::Cmp)
+                                           e.bop(Builtin::Gte)
                                        });
                         }
                         Ordering::Equal
