@@ -1429,8 +1429,8 @@ impl R8VM {
         addfn!(iter);
 
         // Utils
-        // addfn!("sort!", sort_inplace);
-        // addfn!("split!", split_list);
+        addfn!("sort!", sort_inplace);
+        addfn!("split!", split_list);
 
         let src = Some(Cow::Borrowed("<ζ>::boot-stage0"));
         vm.read_compile(include_str!("../lisp/boot-stage0.lisp"),
