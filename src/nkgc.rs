@@ -783,7 +783,7 @@ impl PV {
     cmp_op!(lte, Lte, Less, Equal);
     cmp_op!(gte, Gte, Greater, Equal);
 
-    pub fn heap_size_of(&self) -> usize {
+    pub fn heap_size(&self) -> usize {
         match self {
             PV::Ref(p) => unsafe { deep_size_of_atom(*p) },
             _ => 0,
