@@ -1241,8 +1241,13 @@ pub unsafe fn deep_size_of_atom(atom: *const NkAtom) -> usize {
                 s
             }).sum::<usize>()
         },
-        NkRef::Continuation(_c) => unimplemented!(),
-        NkRef::Subroutine(_s) => unimplemented!(),
+        NkRef::Continuation(c) => {
+            sz += (*c).stack.iter().map(|x| if let PV::Ref(p) = x {
+                deep_size_of_atom(*p)
+            } else {
+                0
+            }).sum::<usize>()
+        },
         _ => ()
     }
     sz
