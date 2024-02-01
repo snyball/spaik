@@ -1211,7 +1211,52 @@ pub unsafe fn destroy_atom(atom: *mut NkAtom) {
     DESTRUCTORS[(*atom).meta.typ() as usize](fastcast_mut::<u8>(atom));
 }
 
-pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, Error> {
+pub unsafe fn deep_size_of_atom(atom: *const NkAtom) -> usize {
+    let mut sz = (*atom).full_size();
+    match to_fissile_ref(atom) {
+        NkRef::Cons(cns) => {
+            if let PV::Ref(p) = (*cns).car {
+                sz += deep_size_of_atom(p);
+            }
+            if let PV::Ref(p) = (*cns).cdr {
+                sz += deep_size_of_atom(p);
+            }
+        }
+        NkRef::Intr(intr) => if let PV::Ref(p) = (*intr).arg {
+            sz += deep_size_of_atom(p);
+        },
+        NkRef::PV(pv) => if let PV::Ref(p) = *pv { sz += deep_size_of_atom(p) },
+        NkRef::Vector(xs) => {
+            sz += (*xs).iter().map(|x| if let PV::Ref(p) = x {
+                deep_size_of_atom(*p)
+            } else {
+                0
+            }).sum::<usize>()
+        }
+        NkRef::Table(hm) => unsafe {
+            sz += (*hm).iter().map(|(x, y)| {
+                let mut s = 0;
+                if let PV::Ref(p) = x { s += deep_size_of_atom(*p) }
+                if let PV::Ref(p) = y { s += deep_size_of_atom(*p) }
+                s
+            }).sum::<usize>()
+        },
+        NkRef::Continuation(_c) => unimplemented!(),
+        NkRef::Subroutine(_s) => unimplemented!(),
+        _ => ()
+    }
+    sz
+}
+
+pub fn clone_atom(mut atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, Error> {
+    unsafe {
+        atom = mem.mem_fit_bytes(atom, deep_size_of_atom(atom));
+        clone_atom_rec(atom, mem)
+    }
+}
+
+/// SAFETY: Must make sure the full recursive clone can fit in memory before calling
+pub unsafe fn clone_atom_rec(atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, Error> {
     macro_rules! clone {
         ($x:expr) => {{
             let (rf, _) = mem.put(unsafe { (*$x).clone() });
@@ -1222,8 +1267,8 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, E
         NkRef::Void(v) => clone!(v),
         NkRef::Cons(cns) => {
             unsafe {
-                let car = (*cns).car.deep_clone(mem)?;
-                let cdr = (*cns).cdr.deep_clone(mem)?;
+                let car = (*cns).car.deep_clone_unchecked(mem)?;
+                let cdr = (*cns).cdr.deep_clone_unchecked(mem)?;
                 let (rf, _) = mem.put(Cons { car, cdr });
                 rf
             }
@@ -1232,7 +1277,7 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, E
             unsafe {
                 let intr = Intr {
                     op: (*intr).op,
-                    arg: (*intr).arg.deep_clone(mem)?,
+                    arg: (*intr).arg.deep_clone_unchecked(mem)?,
                 };
                 let (rf, _) = mem.put(intr);
                 rf
@@ -1242,13 +1287,14 @@ pub fn clone_atom(atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, E
         NkRef::String(s) => clone!(s),
         NkRef::PV(_p) => todo!(),
         NkRef::Vector(xs) => unsafe {
-            let nxs = (*xs).iter().map(|p| p.deep_clone(mem)).collect::<Result<Vec<_>, _>>()?;
+            let nxs = (*xs).iter().map(|p| p.deep_clone_unchecked(mem)).collect::<Result<Vec<_>, _>>()?;
             let (rf, _) = mem.put(nxs);
             rf
         },
         NkRef::Table(hm) => unsafe {
-            let nxs = (*hm).iter().map(|(k, v)| -> Result<_,Error> { Ok((*k, v.deep_clone(mem)?)) })
-                                  .collect::<Result<FnvHashMap<_, _>,_>>()?;
+            let nxs = (*hm).iter().map(|(k, v)| -> Result<_,Error> {
+                Ok((*k, v.deep_clone_unchecked(mem)?))
+            }).collect::<Result<FnvHashMap<_, _>,_>>()?;
             let (rf, _) = mem.put(nxs);
             rf
         },
@@ -1630,7 +1676,7 @@ impl Nuke {
 
     #[inline]
     pub fn size_of<T: Fissile>() -> usize {
-        mem::size_of::<T>() + mem::size_of::<NkAtom>() + ALIGNMENT - 1
+        mem::size_of::<T>() + mem::size_of::<NkAtom>() + ALIGNMENT
     }
 
     pub fn will_overflow(&mut self, sz: usize) -> bool {
@@ -1642,6 +1688,15 @@ impl Nuke {
         let full_sz = Nuke::size_of::<T>() * num;
         if self.will_overflow(full_sz) {
             self.make_room(full_sz)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub unsafe fn fit_bytes(&mut self, sz: usize) -> Option<RelocateToken> {
+        if self.will_overflow(sz) {
+            self.make_room(sz)
         } else {
             None
         }

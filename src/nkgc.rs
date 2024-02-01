@@ -789,6 +789,14 @@ impl PV {
             x => x,
         })
     }
+
+    /// SAFETY: Must make sure the full recursive clone can fit in memory before calling
+    pub unsafe fn deep_clone_unchecked(self, mem: &mut Arena) -> Result<PV, Error> {
+        Ok(match self {
+            PV::Ref(p) => PV::Ref(clone_atom_rec(p, mem)?),
+            x => x,
+        })
+    }
 }
 
 impl PartialOrd for PV {
@@ -1677,12 +1685,22 @@ impl Arena {
         self.borrows.push(rf)
     }
 
-    fn mem_fit<T: Fissile>(&mut self, n: usize) {
+    pub fn mem_fit<T: Fissile>(&mut self, n: usize) {
         unsafe {
             if let Some(tok) = self.nuke.fit::<T>(n) {
                 self.update_ptrs(tok);
             }
         }
+    }
+
+    pub fn mem_fit_bytes(&mut self, mut p: *const NkAtom, sz: usize) -> *const NkAtom {
+        unsafe {
+            if let Some(tok) = self.nuke.fit_bytes(sz) {
+                p = self.nuke.reloc().get(p);
+                self.update_ptrs(tok);
+            }
+        }
+        p
     }
 
     pub fn put_pv<T>(&mut self, v: T) -> PV where T: Fissile {

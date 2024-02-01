@@ -537,7 +537,7 @@ impl<'de, 'a> VariantAccess<'de> for Enum<'a, 'de> {
 mod tests {
     use serde::Serialize;
 
-    use crate::{r8vm::R8VM, nkgc::SymID};
+    use crate::{r8vm::R8VM, nkgc::SymID, logging::setup_logging};
 
     use super::*;
 
@@ -639,5 +639,11 @@ mod tests {
         let s = vm.eval(r#" '(asdfgh) "#).unwrap();
         let u = from_pv::<Abc>(s).unwrap();
         assert_eq!(u, Abc::Asdfgh);
+    }
+
+    #[test]
+    fn min_cons_use_after_free() {
+        let mut vm = R8VM::no_std();
+        vm.eval(r#"'(qwerty :k (1 0))"#).unwrap();
     }
 }
