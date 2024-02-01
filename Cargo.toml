@@ -25,7 +25,7 @@ opt-level = "z"
 codegen-units = 1
 
 [features]
-default = ["math", "extra", "readline", "derive", "modules", "freeze"]
+default = ["math", "extra", "readline", "derive", "modules", "freeze", "pretty_env_logger"]
 extra = ["comfy-table", "owo-colors"]
 readline = ["rustyline", "dirs"]
 wasm = ["wasm-bindgen"]
@@ -54,6 +54,7 @@ owo-colors = { version = "3.5.0", optional = true, features = ["supports-colors"
 mint = { version = "0.5.9", optional = true }
 sptr = "0.3.2"
 shipyard = { version = "0.6.2", optional = true }
+pretty_env_logger = { version = "0.5.0", optional = true }
 
 [target.'cfg(all(target_env = "musl", target_pointer_width = "64"))'.dependencies.jemallocator]
 version = "0.3.2"
@@ -73,7 +74,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "repl"
 path = "src/bin/readline-repl.rs"
-required-features = ["readline"]
+required-features = ["readline", "pretty_env_logger"]
 
 [[bin]]
 name = "main"
