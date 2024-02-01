@@ -50,6 +50,7 @@ builtins! {
     (Join, "join"),
     (Error, "error"),
     (MakeSymbol, "make-symbol"),
+    (Intern, "intern"),
     (Pow, "pow"),
     (Modulo, "%"),
     (And, "and"),

@@ -9,6 +9,6 @@
                    `(let ,defs
                       (unless (,op ,@vars)
                         (list :fail ',test (list ',op ,@vars))))))))
-    `(defun ,(make-symbol (concat 'tests/ name)) ()
+    `(defun ,(intern (concat 'tests/ name)) ()
        (or (or ,@(map check tests))
            '(:pass)))))

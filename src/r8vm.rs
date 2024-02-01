@@ -695,9 +695,9 @@ mod sysfns {
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct make_symbol;
+    pub struct intern;
 
-    unsafe impl Subr for make_symbol {
+    unsafe impl Subr for intern {
         fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             match args {
                 [s @ PV::Sym(_)] => Ok(*s),
@@ -707,10 +707,10 @@ mod sysfns {
                 _ => Err(error!(ArgError,
                                 expect: ArgSpec::normal(1),
                                 got_num: args.len() as u32)
-                         .bop(Builtin::MakeSymbol))
+                         .bop(Builtin::Intern))
             }
         }
-        fn name(&self) -> &'static str { "make-symbol" }
+        fn name(&self) -> &'static str { "intern" }
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -1359,7 +1359,7 @@ impl R8VM {
         addfn!(read);
         addfn!(macroexpand);
         addfn!(clone);
-        addfn!("make-symbol", make_symbol);
+        addfn!(intern);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
         addfn!("type-of", type_of);

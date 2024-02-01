@@ -10,7 +10,7 @@
         (define (,mac-fn-name ,@args)
           ,@body)
         (set-macro! ,name ,mac-fn-name)))
-   (make-symbol (concat '<ξ>- name))))
+   (intern (concat '<ξ>- name))))
 (set-macro! defmacro <ξ>-defmacro)
 
 (defun head (x)
@@ -105,7 +105,7 @@
 
 (define <β>-num 0)
 (defun gensym ()
-  (let ((sym (make-symbol (concat "<β>-" <β>-num))))
+  (let ((sym (intern (concat "<β>-" <β>-num))))
     (inc! <β>-num)
     sym))
 
@@ -256,7 +256,7 @@
     `(progn ,@(reverse p))))
 
 (defmacro make-tcheck (type)
-  (let ((name (make-symbol (concat type '?))))
+  (let ((name (intern (concat type '?))))
     `(defun ,name (x)
        (= (type-of x) ',type))))
 
@@ -319,7 +319,7 @@
       (when (= c end)
         (unless in-sub
           (error 'trailing-delimiter))
-        (set out (cons (make-symbol (join span)) out))
+        (set out (cons (intern (join span)) out))
         (set span (vec))
         (set in-sub false)
         (next))
