@@ -147,14 +147,16 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
         let name = &m.sig.ident;
         quote!(#name: Option<#root::Func>)
     });
+    let make_name = |ident: &Ident| format!("{}{}", prefix.value(),
+                                            format!("{ident}").to_case(Case::Kebab));
     let set_fields = items.clone().map(|m| {
         let name = &m.sig.ident;
-        let sname = format!("{}{}", prefix.value(), name);
+        let sname = make_name(name);
         quote!(self.#name = vm.getfn(#sname).ok())
     });
     let wrappers = items.clone().map(|m| {
         let name = &m.sig.ident;
-        let fqn = format!("{}{}", prefix.value(), name);
+        let fqn = make_name(name);
         let out = match &m.sig.output {
             syn::ReturnType::Default => quote!(#root::Result<#root::Ignore>),
             syn::ReturnType::Type(_, ty) => quote!(#root::Result<#ty>),
@@ -320,7 +322,7 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
     let variant_macro_strs = variants.clone().filter_map(|v| {
         if let Fields::Named(fs) = &v.fields {
             let keys = fs.named.iter().map(|i| {
-                format!(":{}", i.ident.clone().unwrap())
+                format!(":{}", i.ident.clone().unwrap()).to_case(Case::Kebab)
             });
             let variant = format!("{prefix}{}",
                                   format!("{}", v.ident).to_case(Case::Kebab));

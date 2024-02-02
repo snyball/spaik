@@ -2074,14 +2074,14 @@ mod tests {
         assert_eq!(vm.eval("(obj :doit 2 (lambda (x) (+ x 2))) (if (void? obj) (error 'err))"),
                    Ok(()));
 
-        vm.exec("(define (test1) (obj/doit 2 (lambda (x) (+ x 2))))").unwrap();
+        vm.exec("(define (test-1) (obj/doit 2 (lambda (x) (+ x 2))))").unwrap();
         vm.exec("(define (doit) (obj/doit 2 (lambda (x) (+ x 2))))").unwrap();
-        vm.exec("(define (test2) (doit) (doit) (doit))").unwrap();
-        vm.exec("(define (test3 obj) (obj :doit 3 (lambda (x) (+ x 4))))").unwrap();
-        vm.exec("(define (test4 obj) (obj :doitb (lambda () (void? obj))))").unwrap();
-        vm.exec("(define (test5 obj) (obj :doitb (lambda () (mut-locked? obj))))").unwrap();
-        vm.exec("(define (test6 obj) (obj :doitb (lambda () (obj :f))))").unwrap();
-        vm.exec("(define (test7) (obj/sdoit 3 (lambda (x) (+ x 4))))").unwrap();
+        vm.exec("(define (test-2) (doit) (doit) (doit))").unwrap();
+        vm.exec("(define (test-3 obj) (obj :doit 3 (lambda (x) (+ x 4))))").unwrap();
+        vm.exec("(define (test-4 obj) (obj :doitb (lambda () (void? obj))))").unwrap();
+        vm.exec("(define (test-5 obj) (obj :doitb (lambda () (mut-locked? obj))))").unwrap();
+        vm.exec("(define (test-6 obj) (obj :doitb (lambda () (obj :f))))").unwrap();
+        vm.exec("(define (test-7) (obj/sdoit 3 (lambda (x) (+ x 4))))").unwrap();
         let mut bobj = Obj(2);
         let mut hooks = TIFACE::default();
         hooks.link_events(&mut vm);

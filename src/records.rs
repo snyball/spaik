@@ -99,7 +99,7 @@ pub struct MacroNewVariant {
 pub fn into_macro_news(parts: &'static [MacroNewVariant]) -> impl Iterator<Item = MacroNew> {
     parts.iter().map(|MacroNewVariant { variant, variant_maker, key_strings }:
                      &MacroNewVariant| MacroNew {
-        name: "enum-example",
+        name: "unknown",
         variant,
         variant_maker,
         key_strings,
