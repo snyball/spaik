@@ -217,8 +217,8 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
     }.into()
 }
 
-#[proc_macro_derive(Fissile)]
-pub fn derive_fissile(item: TokenStream) -> TokenStream {
+#[proc_macro_derive(Userdata)]
+pub fn derive_userdata(item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();

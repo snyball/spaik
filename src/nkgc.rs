@@ -1967,7 +1967,7 @@ impl Drop for SPV {
 mod tests {
     use super::*;
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::Fissile;
+    use spaik_proc_macros::Userdata;
 
     #[test]
     fn spv() {
@@ -1983,7 +1983,9 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn virtual_destructors() {
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        use spaik_proc_macros::Userdata;
+
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Userdata)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {
             hello: Vec<u64>,

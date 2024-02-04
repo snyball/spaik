@@ -84,7 +84,7 @@ pub(crate) mod stylize;
 pub mod records;
 
 #[cfg(feature = "derive")]
-pub use spaik_proc_macros::{Fissile, kebabify, methods, hooks, Obj};
+pub use spaik_proc_macros::{Userdata, kebabify, methods, hooks, Obj};
 pub use nkgc::SPV;
 pub(crate) use nkgc::SymID;
 pub(crate) use nkgc::ObjRef;
@@ -144,7 +144,7 @@ pub mod prelude {
                     Ignore, BoxSubr, plug::SpaikPlug, Spaik, Gc, CanClone,
                     GetOptVTable};
     #[cfg(feature = "derive")]
-    pub use spaik_proc_macros::Fissile;
+    pub use spaik_proc_macros::Userdata;
 }
 
 #[cfg(feature = "math")]
@@ -723,7 +723,7 @@ impl Lambda {
 mod tests {
     use serde::{Deserialize, Serialize};
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::Fissile;
+    use spaik_proc_macros::Userdata;
     use std::sync::atomic::{AtomicI32, Ordering};
 
     use crate::error::ErrorKind;
@@ -823,16 +823,18 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn register_fn_mutate_struct() {
+        use spaik_proc_macros::Userdata;
+
         use crate::error::ErrorKind;
 
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Userdata)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {
             x: f32,
             y: f32,
         }
 
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Userdata)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj2 {
             x: f32,

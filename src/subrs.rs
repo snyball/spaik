@@ -661,7 +661,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::Fissile;
+    use spaik_proc_macros::Userdata;
 
     use crate::{Spaik, PList, logging};
 
@@ -709,11 +709,11 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn method_calls() {
-        use spaik_proc_macros::methods;
+        use spaik_proc_macros::{methods, Userdata};
 
         let mut vm = Spaik::new_no_core();
 
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Userdata)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         struct Lmao {}
 

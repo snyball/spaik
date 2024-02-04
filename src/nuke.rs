@@ -1950,7 +1950,7 @@ mod tests {
     use std::num::IntErrorKind;
 
     #[cfg(feature = "derive")]
-    use spaik_proc_macros::Fissile;
+    use spaik_proc_macros::Userdata;
     use spaik_proc_macros::{Obj, methods, hooks};
 
     use crate::{Spaik, r8vm::{R8VM, ArgSpec}, Lispify, Lambda, FromLisp3, error::{Source, ErrorKind}, __spaik_call_builder::IntoCallBuilder, LinkedEvents};
@@ -1986,7 +1986,9 @@ mod tests {
     #[cfg(feature = "derive")]
     #[test]
     fn userdata_ref() {
-        #[derive(Debug, Clone, Fissile)]
+        use spaik_proc_macros::Userdata;
+
+        #[derive(Debug, Clone, Userdata)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         struct Data {
             x: String
