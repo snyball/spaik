@@ -799,6 +799,12 @@ impl Object {
 
     pub fn take<T: 'static>(&mut self) -> Result<T, Error> {
         let mut obj: MaybeUninit<T> = MaybeUninit::uninit();
+        if self.type_id == TypeId::of::<Voided>() {
+            return err!(TypeError, expect: Builtin::Object, got: Builtin::Void)
+        }
+        if self.type_id == TypeId::of::<Locked>() {
+            return err!(MutLocked, vt: self.vt)
+        }
         unsafe {
             let rc_mem = self.mem as *mut RcMem<T>;
             if !(*rc_mem).rc.is_owned() {
