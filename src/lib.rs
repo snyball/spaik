@@ -936,7 +936,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_illegal_fork() {
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Fissile)]
+        #[derive(Debug, Clone, PartialEq, PartialOrd, Userdata)]
         #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
         pub struct TestObj {
             x: f32,
