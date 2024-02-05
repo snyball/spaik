@@ -1098,8 +1098,9 @@ impl R8Compiler {
 
         match kind {
             M::Var(var) => match self.get_var_idx(var, &src) {
-                Ok(BoundVar::Local(idx)) => asm!(MOV idx),
-                Ok(BoundVar::Env(idx)) => asm!(GET idx),
+                Ok(BoundVar::Local(idx)) if ret => asm!(MOV idx),
+                Ok(BoundVar::Env(idx)) if ret => asm!(GET idx),
+                Ok(_) => (),
                 Err(e) => match self.fns.get(&var) {
                     Some(funk) => {
                         let s = funk.args;
