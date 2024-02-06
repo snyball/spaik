@@ -364,11 +364,18 @@
 (defmacro eval-when-compile (&body b)
   (eval `(progn ,@b)))
 
+(defun _require (lib)
+  (require lib))
+
 (defun _load (lib)
   (load lib))
 
 (defmacro load (lib)
   (_load lib)
+  nil)
+
+(defmacro require (lib)
+  (_require lib)
   nil)
 
 (defmacro dbg (obj)

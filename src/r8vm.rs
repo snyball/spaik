@@ -19,7 +19,7 @@ use crate::{
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32}, path::Path, any::{TypeId, type_name}};
+use std::{io, fs, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32}, path::{Path, PathBuf}, any::{TypeId, type_name}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -544,6 +544,11 @@ mod sysfns {
             vm.load_eval((*lib).try_into()?)
         }
 
+        fn require(&mut self, vm: &mut R8VM, args: (lib)) -> Result<PV> {
+            vm.require((*lib).try_into()?)?;
+            Ok(PV::Nil)
+        }
+
         fn pow(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
             x.pow(y)
         }
@@ -1008,6 +1013,7 @@ pub struct R8VM {
     func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
     pub(crate) srctbl: SourceList,
     catch: Vec<usize>,
+    libs: FnvHashMap<SymID, (PathBuf, fs::Metadata)>,
 
     obj_methods: FnvHashMap<(TypeId, SymID), ObjMethod>,
 
@@ -1023,6 +1029,7 @@ impl Default for R8VM {
         R8VM {
             pmem: Default::default(),
             resources: Default::default(),
+            libs: Default::default(),
             reader_macros: Default::default(),
             tok_tree: tokit::standard_lisp_tok_tree(),
             catch: Default::default(),
@@ -1350,6 +1357,7 @@ impl R8VM {
         // Modules
         #[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))] {
             addfn!(load);
+            addfn!(require);
             addfn!(instant);
             addfn!("read-compile-from", read_compile_from);
         }
@@ -1596,6 +1604,54 @@ impl R8VM {
 
     pub fn get_func(&self, name: SymID) -> Option<&Func> {
         self.funcs.get(&name)
+    }
+
+    /// Find a library by name, returns the path to the library if it is found
+    /// and should be loaded, and returns Ok(None) if it is found and has
+    /// already been loaded.
+    pub fn find_lib_src(&mut self, lib: SymID) -> Result<Option<&Path>> {
+        let it = self.var(Builtin::SysLoadPath.sym_id())?
+                     .make_iter()
+                     .map_err(|e| e.bop(Builtin::SysLoad))?;
+        for (i, p) in it.enumerate() {
+            let mut path = PathBuf::from(with_ref!(p, String(s) => {Ok(&(*s)[..])})
+                                         .map_err(|e| e.argn(i as u32)
+                                                  .bop(Builtin::SysLoadPath))?);
+            for ext in &["sp", "lisp"] {
+                path.push(format!("{}.{ext}", lib.as_ref()));
+                dbg!(&path);
+                if let Ok(meta) = fs::metadata(&path) {
+                    if meta.is_file() {
+                        match self.libs.entry(lib) {
+                            Entry::Occupied(mut e) => {
+                                if e.get().1.modified()? == meta.modified()? {
+                                    return Ok(None)
+                                }
+                                e.insert((path, meta));
+                            },
+                            Entry::Vacant(e) => {
+                                e.insert((path, meta));
+                            },
+                        }
+                        return Ok(Some(self.libs[&lib].0.as_ref()));
+                    }
+                }
+                path.pop();
+            }
+        }
+        err!(ModuleNotFound, lib: lib.into())
+    }
+
+    pub fn require(&mut self, lib: SymID) -> Result<()> {
+        let Some(path) = self.find_lib_src(lib).map(|x| x.clone())? else {
+            return Ok(())
+        };
+        let src = fs::read_to_string(path)?;
+        let Ok(s) = path.to_owned().into_os_string().into_string() else {
+            bail!(Utf8DecodingError)
+        };
+        self.read_compile(&src, Some(Cow::from(s)))?;
+        Ok(())
     }
 
     pub fn load_eval(&mut self, lib: SymID) -> Result<PV> {

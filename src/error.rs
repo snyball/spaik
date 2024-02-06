@@ -261,6 +261,7 @@ pub enum ErrorKind {
     IDError { id: usize },
     NoMethodGiven { vt: &'static VTable },
     CloneNotImplemented { obj: OpName },
+    Utf8DecodingError,
     None,
     VoidVariable,
 }
@@ -591,6 +592,9 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Reference types cannot be used as keys: {key}")?,
         CloneNotImplemented { obj } =>
             write!(f, "Cannot clone: clone not implemented for type {obj}")?,
+        Utf8DecodingError => {
+            write!(f, "UTF-8 Encoding Error: ")?
+        },
     }
 
     if let Some(src) = meta.src() {
