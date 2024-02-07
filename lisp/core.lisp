@@ -153,6 +153,10 @@
                (break))
              ,@body))))
 
+(defun map! (f xs)
+  (dolist (x xs)
+    (f x)))
+
 (defun member? (x xs)
   (dolist (y xs)
     (when (eq? x y)
@@ -330,6 +334,18 @@
     (if (= (len out) 2)
         (car out)
         (reverse out))))
+
+;; Functions for builtins, these do not override the builtins when used in
+;; function-position, but allow them to be passed as closures
+(defun cons (x y) (cons x y))
+(defun car (x) (car x))
+(defun cdr (x) (cdr x))
+(defun pop (xs) (pop xs))
+(defun push (xs y) (push xs y))
+(defun get (xs i) (get xs i))
+(defun len (xs) (len xs))
+(defun not (x) (not x))
+(defun apply (f xs) (apply f xs))
 
 (defun _println (x)
   (println x))
