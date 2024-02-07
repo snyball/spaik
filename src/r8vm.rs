@@ -463,8 +463,13 @@ mod sysfns {
             x.make_iter().map_err(|e| e.argn(1))?.into_pv(&mut vm.mem)
         }
 
-        fn gc(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+        fn gc(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             vm.mem.full_collection();
+            Ok(PV::Nil)
+        }
+
+        fn dump_mem(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
+            dbg!(&vm.mem.nuke);
             Ok(PV::Nil)
         }
 
@@ -1427,6 +1432,7 @@ impl R8VM {
             #[cfg(debug_assertions)]
             addfn!("debug-mode", debug_mode);
             addfn!(disassemble);
+            addfn!("dump-mem", dump_mem);
         }
 
         // Tables

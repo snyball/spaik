@@ -1813,7 +1813,7 @@ impl fmt::Debug for Nuke {
         f.debug_struct("Nuke")
          .field("sz", &self.sz)
          .field("used", &self.used)
-         .field("mem", &self.iter().collect::<Vec<_>>())
+         .field("mem", &self.iter().map(|p| unsafe { atom_kind(p) }).collect::<Vec<_>>())
          .finish()
     }
 }

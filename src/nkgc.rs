@@ -1238,7 +1238,7 @@ struct ExtRefMsg {
 /// Come and fight in the arena!
 #[derive(Debug)]
 pub struct Arena {
-    nuke: Nuke,
+    pub(crate) nuke: Nuke,
     tags: FnvHashMap<*mut NkAtom, Source>,
     pub(crate) stack: Vec<PV>,
     pub(crate) symdb: SwymDb,

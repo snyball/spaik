@@ -713,6 +713,25 @@ impl<'a> Excavator<'a> {
         Ok(AST2 { kind: M::Append(li), src: root_src })
     }
 
+    fn quote(&self, args: PV, src: Source) -> Result<AST2> {
+        if args.is_atom() { return Ok(AST2 { src, kind: M::Atom(args) }) }
+        let root_src = src;
+        let mut li = vec![];
+        for (item, src) in args.iter_src(self.mem, root_src.clone()) {
+            li.push(match item {
+                ConsItem::Car(x) => {
+                    AST2 { kind: M::List(vec![self.quote(x, src.clone())?]),
+                           src }
+                }
+                ConsItem::Cdr(x) => self.quote(x, src.clone())?,
+            })
+        }
+        if li.len() == 1 {
+            return Ok(li.pop().unwrap());
+        }
+        Ok(AST2 { kind: M::Append(li), src: root_src })
+    }
+
     fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2> {
         match bt {
             Builtin::Not => self.wrap_one_arg(M::Not, args, src),
@@ -734,8 +753,7 @@ impl<'a> Excavator<'a> {
             Builtin::Define => self.bt_define(args, src),
             Builtin::Set => self.bt_set(args, src),
             Builtin::Lambda => self.bt_lambda(args, src),
-            Builtin::Quote => Ok(AST2 { src,
-                                        kind: M::Atom(args.car().expect("car")) }),
+            Builtin::Quote => self.quote(args.car().expect("car"), src),
             Builtin::Quasi => self.quasi(args.car().expect("car"), src),
             Builtin::Break => self.wrap_maybe_arg(M::Break, args, src),
             Builtin::Car => self.wrap_one_arg(M::Car, args, src),
