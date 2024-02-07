@@ -476,6 +476,10 @@ impl Spaik {
                .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
     }
 
+    pub fn eval_fmt(&mut self, expr: impl AsRef<str>) -> Result<String> {
+        self.vm.eval(expr.as_ref()).map(|r| r.to_string())
+    }
+
     pub fn take<T>(&mut self, var: impl AsSym) -> Result<T>
         where T: 'static
     {
