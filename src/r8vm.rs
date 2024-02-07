@@ -1920,7 +1920,7 @@ impl R8VM {
         }
     }
 
-    pub fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV> {
+    fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV> {
         let op = self.mem.from_top(n as usize);
         let v = if let Some(m) = op.sym().ok().and_then(|op| self.macros.get(&op)).copied() {
             if dot {
