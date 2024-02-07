@@ -584,7 +584,8 @@ impl<'a> Excavator<'a> {
             move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
         };
         let mut it = args.iter();
-        let name = match it.next().ok_or_else(err(0))? {
+        let pat = it.next().ok_or_else(err(0))?;
+        let name = match pat {
             PV::Sym(name) => name,
             PV::Ref(p) => {
                 let Cons { car, cdr } = unsafe { *cast_err::<Cons>(p)? };
@@ -600,12 +601,13 @@ impl<'a> Excavator<'a> {
                             src
                         })
                     }
-                    _ => todo!("error message, like 'unknown set pattern (set (...) ...)")
+                    _ => bail!((UnknownSetPattern { pat: format!("(set {pat} ...)") })
+                               .src(self.mem.get_tag(p).unwrap_or(&src).clone())
+                               .argn(1))
                 }
             }
-            e => return Err(error!(TypeError,
-                                   expect: Builtin::Symbol,
-                                   got: e.bt_type_of()).argn(1))
+            e => bail!((TypeError { expect: Builtin::Symbol, got: e.bt_type_of() })
+                       .argn(1).src(src.clone()))
         };
         let init = Box::new(self.dig(it.next().ok_or_else(err(1))?, src.clone())?);
         let extra = it.count() as u32;

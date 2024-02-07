@@ -264,6 +264,7 @@ pub enum ErrorKind {
     Utf8DecodingError,
     None,
     VoidVariable,
+    UnknownSetPattern { pat: String },
 }
 
 impl From<std::io::Error> for Error {
@@ -594,7 +595,9 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Cannot clone: clone not implemented for type {obj}")?,
         Utf8DecodingError => {
             write!(f, "UTF-8 Encoding Error: ")?
-        },
+        }
+        UnknownSetPattern { pat } =>
+            write!(f, "Unknown Set Pattern: {pat}")?,
     }
 
     if let Some(src) = meta.src() {
@@ -773,6 +776,12 @@ macro_rules! err {
 }
 
 macro_rules! bail {
+    (($kind:ident $($init:tt)*)$($extra:tt)*) => {
+        return Err({
+            let err: $crate::error::Error = (crate::error::ErrorKind::$kind  $($init)* ).into();
+            err$($extra)*
+        })
+    };
     ($kind:ident $($init:tt)*) => {
         return Err((crate::error::ErrorKind::$kind  $($init)* ).into())
     };
