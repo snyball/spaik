@@ -368,8 +368,11 @@ mod sysfns {
         }
 
         fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-            vm.read(&tostring(*x))?;
-            vm.mem.pop()
+            vm.read(&tostring(*x))
+        }
+
+        fn read_from(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            vm.read_from(&tostring(*x))
         }
 
         fn vec2(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
@@ -1314,6 +1317,32 @@ const fn clzcall_pad_dip(nargs: u16) -> usize {
     1 | (nargs as usize) << 1
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum LibrarySrc<'a> {
+    New(&'a Path),
+    Exists(&'a Path),
+}
+
+impl<'a> AsRef<Path> for LibrarySrc<'a> {
+    fn as_ref(&self) -> &'a Path {
+        match self {
+            LibrarySrc::New(p) => p,
+            LibrarySrc::Exists(p) => p,
+        }
+    }
+}
+
+impl<'a> TryInto<SourceFileName> for LibrarySrc<'a> {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<SourceFileName, Self::Error> {
+        let Ok(s) = self.as_ref().to_owned().into_os_string().into_string() else {
+            bail!(Utf8DecodingError)
+        };
+        Ok(Some(Cow::from(s)))
+    }
+}
+
 impl R8VM {
     pub fn no_std() -> R8VM {
         let mut vm = R8VM {
@@ -1359,6 +1388,7 @@ impl R8VM {
             addfn!(load);
             addfn!(require);
             addfn!(instant);
+            addfn!("read-from", read_from);
             addfn!("read-compile-from", read_compile_from);
         }
 
@@ -1606,10 +1636,10 @@ impl R8VM {
         self.funcs.get(&name)
     }
 
-    /// Find a library by name, returns the path to the library if it is found
-    /// and should be loaded, and returns Ok(None) if it is found and has
-    /// already been loaded.
-    pub fn find_lib_src(&mut self, lib: SymID) -> Result<Option<&Path>> {
+    /// Find a library by name, returns the path to the library as a LibrarySrc,
+    /// which will be New(path) if the file is modified or has not been loaded,
+    /// or Exists(path) if the file is already loaded and has not been modified.
+    pub fn find_lib_src(&mut self, lib: SymID) -> Result<LibrarySrc> {
         let it = self.var(Builtin::SysLoadPath.sym_id())?
                      .make_iter()
                      .map_err(|e| e.bop(Builtin::SysLoad))?;
@@ -1619,13 +1649,12 @@ impl R8VM {
                                                   .bop(Builtin::SysLoadPath))?);
             for ext in &["sp", "lisp"] {
                 path.push(format!("{}.{ext}", lib.as_ref()));
-                dbg!(&path);
                 if let Ok(meta) = fs::metadata(&path) {
                     if meta.is_file() {
                         match self.libs.entry(lib) {
                             Entry::Occupied(mut e) => {
                                 if e.get().1.modified()? == meta.modified()? {
-                                    return Ok(None)
+                                    return Ok(LibrarySrc::Exists(self.libs[&lib].0.as_ref()));
                                 }
                                 e.insert((path, meta));
                             },
@@ -1633,7 +1662,7 @@ impl R8VM {
                                 e.insert((path, meta));
                             },
                         }
-                        return Ok(Some(self.libs[&lib].0.as_ref()));
+                        return Ok(LibrarySrc::New(self.libs[&lib].0.as_ref()));
                     }
                 }
                 path.pop();
@@ -1643,39 +1672,23 @@ impl R8VM {
     }
 
     pub fn require(&mut self, lib: SymID) -> Result<()> {
-        let Some(path) = self.find_lib_src(lib).map(|x| x.clone())? else {
+        let LibrarySrc::New(path) = self.find_lib_src(lib).map(|x| x.clone())? else {
             return Ok(())
         };
         let src = fs::read_to_string(path)?;
         let Ok(s) = path.to_owned().into_os_string().into_string() else {
             bail!(Utf8DecodingError)
         };
+        // let src_name = path.try_into()?;
         self.read_compile(&src, Some(Cow::from(s)))?;
         Ok(())
     }
 
     pub fn load_eval(&mut self, lib: SymID) -> Result<PV> {
-        let mut path = String::new();
-        let it = self.var(Builtin::SysLoadPath.sym_id())?
-                     .make_iter()
-                     .map_err(|e| e.bop(Builtin::SysLoad))?;
-        for (i, p) in it.enumerate() {
-            path.push_str(with_ref!(p, String(s) => {Ok(&(*s)[..])})
-                          .map_err(|e| e.argn(i as u32)
-                                        .bop(Builtin::SysLoadPath))?);
-            path.push('/');
-            path.push_str(lib.as_ref());
-            let extd = path.len();
-            for ext in &[".sp", ".spk", ".lisp"] {
-                path.push_str(ext);
-                if let Ok(src) = fs::read_to_string(&path) {
-                    return self.read_compile(&src, Some(Cow::from(path)));
-                }
-                path.drain(extd..).for_each(drop);
-            }
-            path.clear();
-        }
-        err!(ModuleNotFound, lib: lib.into())
+        let path = self.find_lib_src(lib)?;
+        let src = fs::read_to_string(path)?;
+        let src_name = path.try_into()?;
+        self.read_compile(&src, src_name)
     }
 
     pub fn var(&self, sym: SymID) -> Result<PV> {
@@ -1689,8 +1702,17 @@ impl R8VM {
     }
 
     /// Reads LISP code into an AST.
-    pub fn read(&mut self, _lisp: &str) -> Result<()> {
-        todo!()
+    pub fn read(&mut self, sexpr: &str) -> Result<PV> {
+        self.read_compile(&format!("'({sexpr})"), None)
+    }
+
+    /// Reads LISP code into an AST from file.
+    pub fn read_from(&mut self, path: impl AsRef<Path>) -> Result<PV> {
+        let sexpr = fs::read_to_string(path.as_ref())?;
+        let name = path.as_ref().file_stem().map(|p| {
+            p.to_string_lossy().into_owned()
+        }).map(Cow::from);
+        self.read_compile(&format!("'({sexpr})"), name)
     }
 
     pub fn read_compile_from(&mut self, path: impl AsRef<Path>) -> Result<PV> {
