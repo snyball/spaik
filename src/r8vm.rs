@@ -1532,7 +1532,6 @@ impl R8VM {
     pub unsafe fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
         let obj = rf.into_pv(&mut self.mem).unwrap();
         let idx = self.resource_idx::<T>();
-        log::trace!("bind resource {} at {}", type_name::<T>(), idx);
         self.mem.set_env(idx as usize, obj);
     }
 
