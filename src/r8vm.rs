@@ -463,6 +463,11 @@ mod sysfns {
             x.make_iter().map_err(|e| e.argn(1))?.into_pv(&mut vm.mem)
         }
 
+        fn gc(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            vm.mem.full_collection();
+            Ok(PV::Nil)
+        }
+
         fn exit(&mut self, _vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             let status = args.first().copied()
                                      .unwrap_or_else(
@@ -1398,6 +1403,7 @@ impl R8VM {
         addfn!(macroexpand);
         addfn!(clone);
         addfn!(intern);
+        addfn!(gc);
         addfn!("sys/freeze", sys_freeze);
         addfn!("read-compile", read_compile);
         addfn!("type-of", type_of);
