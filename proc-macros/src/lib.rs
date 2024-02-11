@@ -233,6 +233,17 @@ pub fn derive_userdata(item: TokenStream) -> TokenStream {
                 Ok(mem.put_pv(#root::_deps::Object::new(self)))
             }
         }
+
+        impl TryFrom<#root::_deps::PV> for #name {
+            type Error = #root::error::Error;
+            fn try_from(pv: #root::_deps::PV) -> std::result::Result<Self, Self::Error> {
+                let p = pv.ref_inner()?;
+                unsafe {
+                    let obj = #root::_deps::cast_mut_err::<#root::_deps::Object>(p)?;
+                    (*obj).take()
+                }
+            }
+        }
     };
 
     out.into()
