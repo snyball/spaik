@@ -313,6 +313,10 @@ impl Spaik {
         self.vm.catch(0, tag);
     }
 
+    pub fn catch_all(&mut self) {
+        self.vm.catch(0, None);
+    }
+
     pub fn catch_pop(&mut self) {
         self.vm.catch_pop();
     }
