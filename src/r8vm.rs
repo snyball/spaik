@@ -64,7 +64,8 @@ chasm_def! {
     ZCALL(nargs: u16),
     RET(),
     CCONT(dip: i32),
-    CTH(),
+    CTH(dip: i32),
+    CTHPOP(),
     UWND(),
     HCF(),
 
@@ -1027,7 +1028,7 @@ pub struct R8VM {
     pub(crate) labels: LblMap,
     func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
     pub(crate) srctbl: SourceList,
-    catch: Vec<(usize, Option<usize>)>,
+    catch: Vec<(usize, usize, Option<usize>)>,
     libs: FnvHashMap<SymID, (PathBuf, fs::Metadata)>,
 
     obj_methods: FnvHashMap<(TypeId, SymID), ObjMethod>,
@@ -1625,33 +1626,35 @@ impl R8VM {
         self.debug_mode
     }
 
-    pub fn catch(&mut self, sym: Option<SymID>) {
+    pub fn catch(&mut self, dip: usize, sym: Option<SymID>) {
         let top = self.mem.stack.len();
-        self.catch.push((top, sym.map(|s| s.as_int() as usize)))
+        self.catch.push((top, dip, sym.map(|s| s.as_int() as usize)))
     }
 
     pub fn catch_pop(&mut self) {
         self.catch.pop();
     }
 
-    pub fn unwind(&mut self) -> Result<()> {
+    pub fn unwind(&mut self) -> Result<usize> {
         let tag_sym = self.mem.pop()?.sym()?;
         let tag = tag_sym.as_int() as usize;
         let val = self.mem.pop()?;
-        let catchp = loop {
-            let Some((catchp, sym)) = self.catch.pop() else {
+        let (catchp, dip) = loop {
+            let Some((catchp, dip, sym)) = self.catch.pop() else {
                 bail!(Throw { tag: tag_sym.to_string(),
                               obj: val.lisp_to_string() })
             };
-            if sym == Some(tag) {
-                break catchp;
+            match sym {
+                Some(stag) if tag == stag => break (catchp, dip),
+                None => break (catchp, dip),
+                _ => ()
             }
         };
         unsafe {
             self.mem.stack.set_len(catchp);
         }
         self.mem.stack.push(val);
-        Ok(())
+        Ok(dip)
     }
 
     pub fn get_func(&self, name: SymID) -> Option<&Func> {
@@ -2321,7 +2324,6 @@ impl R8VM {
     unsafe fn run_from_unwind(&mut self, offs: usize, pframe: usize, internal: bool)
                               -> std::result::Result<usize, Traceback>
     {
-        self.catch(None);
         let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
             Err((ip, e)) => {
@@ -2332,7 +2334,6 @@ impl R8VM {
             self.mem.pop_borrows();
         }
         self.frame = pframe;
-        self.catch_pop();
         res
     }
 
@@ -2792,17 +2793,19 @@ impl R8VM {
                     self.mem.push(cnt);
                     ip = self.op_clzcall(ip, 1)?;
                 }
-                CTH() => {
+                CTHPOP() => self.catch_pop(),
+                CTH(dip) => {
+                    let dip = self.ip_delta(ip) + dip as usize - 1;
                     let tag = self.mem.pop()
                                       .and_then(|pv| pv.sym())
                                       .map_err(|e| e.bop(Builtin::Catch)
                                                .argn(1)
                                                .arg_name(Builtin::Tag))?;
-                    self.catch(Some(tag));
+                    self.catch(dip, Some(tag));
                 }
                 UWND() => {
-                    self.unwind()?;
-                    return Ok(())
+                    let dip = self.unwind()?;
+                    ip = self.ret_to(dip);
                 }
 
                 // Stack manipulation

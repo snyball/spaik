@@ -1158,13 +1158,11 @@ impl R8Compiler {
                 let catch_jmp = self.unit().label("catch-jmp");
 
                 self.compile(true, *tag)?;
-                asm!(CTH);
-                asm!(JMP catch_jmp);
+                asm!(CTH catch_jmp);
                 self.unit().mark(catch);
                 self.compile_seq(true, seq)?;
-                asm!(RET);
+                asm!(CTHPOP);
                 self.unit().mark(catch_jmp);
-                asm!(DCL catch);
             }
             M::Throw(tag, arg) => {
                 self.compile(true, *arg)?;
