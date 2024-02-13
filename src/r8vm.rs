@@ -57,7 +57,6 @@ chasm_def! {
     JN(dip: i32),
     JZ(dip: i32),
     JNZ(dip: i32),
-    DCL(dip: i32),
     CALL(pos: u32, nargs: u16),
     VCALL(func: u32, nargs: u16),
     APL(),
@@ -2764,10 +2763,6 @@ impl R8VM {
                     self.call_pre(ip);
                     self.frame = self.mem.stack.len() - 2 - (nargs as usize);
                     ip = self.ret_to(pos as usize);
-                }
-                DCL(d) => {
-                    self.call_pre(ip);
-                    ip = ip.offset(d as isize - 1);
                 }
                 RET() => {
                     let rv = self.mem.pop()?;
