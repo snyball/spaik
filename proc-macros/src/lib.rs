@@ -222,9 +222,16 @@ pub fn derive_userdata(item: TokenStream) -> TokenStream {
     let root = crate_root();
     let input = parse_macro_input!(item as DeriveInput);
     let name = input.ident.clone();
+    let name_s = format!("{}", name).to_case(Case::Kebab);
 
     let out = quote! {
         impl #root::Userdata for #name {}
+
+        impl #root::KebabTypeName for #name {
+            fn kebab_type_name() -> &'static str {
+                #name_s
+            }
+        }
 
         impl #root::IntoLisp for #name {
             fn into_pv(self, mem: &mut #root::_deps::Arena)
