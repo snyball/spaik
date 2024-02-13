@@ -24,8 +24,13 @@ macro_rules! def_call_builder {
                                   catch: self.catch }
                 }
 
-                pub fn catch(mut self, tag: Option<impl $crate::AsSym>) -> Self {
-                    self.catch = Some(tag.map(|t| t.as_sym_spaik(self.vm)));
+                pub fn catch(mut self, tag: impl $crate::AsSym) -> Self {
+                    self.catch = Some(Some(tag.as_sym_spaik(self.vm)));
+                    self
+                }
+
+                pub fn catch_all(mut self) -> Self {
+                    self.catch = Some(None);
                     self
                 }
             }
