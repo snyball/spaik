@@ -84,6 +84,7 @@ builtins! {
     (True, "true"),
     (False, "false"),
     (Add, "+"),
+    (Tag, "tag"),
     (MakeTable, "make-table"),
     (Sub, "-"),
     (Div, "/"),

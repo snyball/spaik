@@ -2,7 +2,7 @@
 
 use crate::nkgc::PV;
 use crate::nuke::VTable;
-use crate::{Builtin, Sym};
+use crate::{Builtin, Sym, SPV};
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
@@ -55,6 +55,12 @@ pub enum OpName {
     OpSym(Sym),
     OpStr(&'static str),
     OpBt(Builtin),
+}
+
+impl Into<OpName> for Builtin {
+    fn into(self) -> OpName {
+        OpName::OpBt(self)
+    }
 }
 
 impl OpName {
@@ -265,6 +271,7 @@ pub enum ErrorKind {
     None,
     VoidVariable,
     UnknownSetPattern { pat: String },
+    Throw { tag: String, obj: String },
 }
 
 impl From<std::io::Error> for Error {
@@ -598,6 +605,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         }
         UnknownSetPattern { pat } =>
             write!(f, "Unknown Set Pattern: {pat}")?,
+        Throw { tag, obj } =>
+            write!(f, "{tag}: {obj}")?,
     }
 
     if let Some(src) = meta.src() {
@@ -663,8 +672,8 @@ impl Error {
         self
     }
 
-    pub fn arg_name(mut self, n: OpName) -> Error {
-        self.inner.meta.amend(Meta::OpArgName(n));
+    pub fn arg_name(mut self, n: impl Into<OpName>) -> Error {
+        self.inner.meta.amend(Meta::OpArgName(n.into()));
         self
     }
 

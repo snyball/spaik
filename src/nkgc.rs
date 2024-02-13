@@ -1927,6 +1927,14 @@ pub struct SPV {
     id: ExtRefID,
 }
 
+impl PartialEq for SPV {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for SPV {}
+
 impl SPV {
     pub(crate) fn pv(&self, ar: &Arena) -> PV {
         ar.extref[&self.id].1

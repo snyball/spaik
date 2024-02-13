@@ -58,7 +58,8 @@ pub enum M {
     Break(Option<Prog>),
     TailCall(Progn),
     Next,
-    Throw(Prog),
+    Throw(Prog, Prog),
+    Catch(Prog, Progn),
     Var(SymID),
 
     // Builtin ops
@@ -188,7 +189,12 @@ impl Display for M {
             M::Break(Some(val)) => write!(f, "(break {val})")?,
             M::Break(None) => write!(f, "(break)")?,
             M::Next => write!(f, "(next)")?,
-            M::Throw(x) => write!(f, "(throw {x})")?,
+            M::Throw(x, y) => write!(f, "(throw {x} {y})")?,
+            M::Catch(x, body) => {
+                write!(f, "(catch {x} ")?;
+                for x in body.iter() { write!(f, " {x}")? }
+                write!(f, ")")?;
+            },
             M::Not(x) => write!(f, "(not {x})")?,
             M::And(xs) => vop!("and", xs),
             M::Or(xs) => vop!("or", xs),
@@ -320,7 +326,11 @@ impl Visitable for AST2 {
             M::Break(Some(ref mut init)) => visit!(init),
             M::Break(None) => (),
             M::Next => (),
-            M::Throw(ref mut init) => visit!(init),
+            M::Throw(ref mut tag, ref mut init) => visit!(tag, init),
+            M::Catch(ref mut tag, ref mut body) => {
+                visit!(tag);
+                vvisit!(body);
+            }
             M::Var(_) => (),
             M::Not(ref mut x) => visit!(x),
             M::And(ref mut xs) => vvisit!(xs),
@@ -734,6 +744,21 @@ impl<'a> Excavator<'a> {
         Ok(AST2 { kind: M::Append(li), src: root_src })
     }
 
+    fn bt_catch(&self, args: PV, src: Source) -> Result<AST2> {
+        let expect = ArgSpec::normal(2);
+        let err = |n| {
+            let src = &src;
+            move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
+        };
+        let mut it = args.iter();
+        let tag = Box::new(self.dig(it.next().ok_or_else(err(0))?, src.clone())?);
+        let init = it.map(|a| self.dig(a, src.clone())).collect::<Result<_>>()?;
+        Ok(AST2 {
+            kind: M::Catch(tag, init),
+            src
+        })
+    }
+
     fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2> {
         match bt {
             Builtin::Not => self.wrap_one_arg(M::Not, args, src),
@@ -768,7 +793,8 @@ impl<'a> Excavator<'a> {
             Builtin::Vector => self.wrap_any_args(M::Vector, args, src),
             Builtin::Push => self.wrap_two_args(M::Push, args, src),
             Builtin::Get => self.wrap_two_args(M::Get, args, src),
-            Builtin::Throw => self.wrap_one_arg(M::Throw, args, src),
+            Builtin::Throw => self.wrap_two_args(M::Throw, args, src),
+            Builtin::Catch => self.bt_catch(args, src),
             Builtin::Len => self.wrap_one_arg(|a| M::Bt1(Builtin::Len, a), args, src),
             Builtin::Apply =>
                 self.wrap_two_args(|a0, a1| M::Bt2(Builtin::Apply, a0, a1), args, src),

@@ -1153,8 +1153,22 @@ impl R8Compiler {
             },
             M::Break(arg) => self.bt_break(src, arg)?,
             M::Next => self.bt_loop_next(src)?,
-            M::Throw(arg) => {
+            M::Catch(tag, seq) => {
+                let catch = self.unit().label("catch");
+                let catch_jmp = self.unit().label("catch-jmp");
+
+                self.compile(true, *tag)?;
+                asm!(CTH);
+                asm!(JMP catch_jmp);
+                self.unit().mark(catch);
+                self.compile_seq(true, seq)?;
+                asm!(RET);
+                self.unit().mark(catch_jmp);
+                asm!(DCL catch);
+            }
+            M::Throw(tag, arg) => {
                 self.compile(true, *arg)?;
+                self.compile(true, *tag)?;
                 asm!(UWND);
             },
             M::Not(x) => self.opcall(ret, NOT, [x])?,

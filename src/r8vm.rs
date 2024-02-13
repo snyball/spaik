@@ -17,7 +17,7 @@ use crate::{
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
-    chasm::LblMap, opt::Optomat, swym::SymRef, tokit, AsSym, IntoLisp};
+    chasm::LblMap, opt::Optomat, swym::{SymRef, self}, tokit, AsSym, IntoLisp};
 use fnv::FnvHashMap;
 use std::{io, fs, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32}, path::{Path, PathBuf}, any::{TypeId, type_name}};
 #[cfg(feature = "freeze")]
@@ -57,12 +57,14 @@ chasm_def! {
     JN(dip: i32),
     JZ(dip: i32),
     JNZ(dip: i32),
+    DCL(dip: i32),
     CALL(pos: u32, nargs: u16),
     VCALL(func: u32, nargs: u16),
     APL(),
     ZCALL(nargs: u16),
     RET(),
     CCONT(dip: i32),
+    CTH(),
     UWND(),
     HCF(),
 
@@ -1025,7 +1027,7 @@ pub struct R8VM {
     pub(crate) labels: LblMap,
     func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
     pub(crate) srctbl: SourceList,
-    catch: Vec<usize>,
+    catch: Vec<(usize, Option<usize>)>,
     libs: FnvHashMap<SymID, (PathBuf, fs::Metadata)>,
 
     obj_methods: FnvHashMap<(TypeId, SymID), ObjMethod>,
@@ -1623,24 +1625,33 @@ impl R8VM {
         self.debug_mode
     }
 
-    pub fn catch(&mut self) {
+    pub fn catch(&mut self, sym: Option<SymID>) {
         let top = self.mem.stack.len();
-        self.catch.push(top)
+        self.catch.push((top, sym.map(|s| s.as_int() as usize)))
     }
 
     pub fn catch_pop(&mut self) {
         self.catch.pop();
     }
 
-    pub fn unwind(&mut self) {
-        let top_v = self.mem.stack.last().copied();
-        let catchp = self.catch.pop().unwrap_or(0);
+    pub fn unwind(&mut self) -> Result<()> {
+        let tag_sym = self.mem.pop()?.sym()?;
+        let tag = tag_sym.as_int() as usize;
+        let val = self.mem.pop()?;
+        let catchp = loop {
+            let Some((catchp, sym)) = self.catch.pop() else {
+                bail!(Throw { tag: tag_sym.to_string(),
+                              obj: val.lisp_to_string() })
+            };
+            if sym == Some(tag) {
+                break catchp;
+            }
+        };
         unsafe {
             self.mem.stack.set_len(catchp);
         }
-        if let Some(pv) = top_v {
-            self.mem.stack.push(pv);
-        }
+        self.mem.stack.push(val);
+        Ok(())
     }
 
     pub fn get_func(&self, name: SymID) -> Option<&Func> {
@@ -2310,7 +2321,7 @@ impl R8VM {
     unsafe fn run_from_unwind(&mut self, offs: usize, pframe: usize, internal: bool)
                               -> std::result::Result<usize, Traceback>
     {
-        self.catch();
+        self.catch(None);
         let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
             Err((ip, e)) => {
@@ -2753,6 +2764,10 @@ impl R8VM {
                     self.frame = self.mem.stack.len() - 2 - (nargs as usize);
                     ip = self.ret_to(pos as usize);
                 }
+                DCL(d) => {
+                    self.call_pre(ip);
+                    ip = ip.offset(d as isize - 1);
+                }
                 RET() => {
                     let rv = self.mem.pop()?;
                     let old_frame = self.frame;
@@ -2777,8 +2792,16 @@ impl R8VM {
                     self.mem.push(cnt);
                     ip = self.op_clzcall(ip, 1)?;
                 }
+                CTH() => {
+                    let tag = self.mem.pop()
+                                      .and_then(|pv| pv.sym())
+                                      .map_err(|e| e.bop(Builtin::Catch)
+                                               .argn(1)
+                                               .arg_name(Builtin::Tag))?;
+                    self.catch(Some(tag));
+                }
                 UWND() => {
-                    self.unwind();
+                    self.unwind()?;
                     return Ok(())
                 }
 
