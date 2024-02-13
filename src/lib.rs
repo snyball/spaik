@@ -186,7 +186,7 @@ impl IntoLisp for ExampleObject {
 
 /// A SPAIK Context, this is the main way to use SPAIK
 pub struct Spaik {
-    vm: R8VM
+    vm: R8VM,
 }
 
 unsafe impl Send for Spaik {}
@@ -212,6 +212,9 @@ impl<T> AsFn for T where T: AsSym {
 
 pub trait AsSym {
     fn as_sym(&self, vm: &mut R8VM) -> SymID;
+    fn as_sym_spaik(&self, vm: &mut Spaik) -> SymID {
+        self.as_sym(&mut vm.vm)
+    }
 }
 
 impl AsSym for &str {
@@ -303,6 +306,19 @@ impl Spaik {
 
     pub fn set_stdout(&mut self, out: Box<dyn OutStream>) {
         self.vm.set_stdout(out)
+    }
+
+    pub fn catch(&mut self, tag: Option<impl AsSym>) {
+        let tag = tag.map(|t| t.as_sym(&mut self.vm));
+        self.vm.catch(0, tag);
+    }
+
+    pub fn catch_pop(&mut self) {
+        self.vm.catch_pop();
+    }
+
+    pub fn catch_clear(&mut self) {
+        self.vm.catch_clear();
     }
 
     #[cfg(feature = "derive")]

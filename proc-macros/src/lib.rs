@@ -176,20 +176,30 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
         let arg_idents = args.clone().map(|(arg, _ty)| arg);
         let body = match &m.sig.output {
             syn::ReturnType::Default => quote! {
-                if let Some(f) = self.fns.#name {
+                if let Some(c) = self.catch {
+                    self.vm.catch(c);
+                }
+                let r = if let Some(f) = self.fns.#name {
                     self.vm.callfn(f, (#(#arg_idents,)*))
                 } else {
                     #root::_deps::PV::Nil.try_into()
-                }
+                };
+                self.vm.catch_clear();
+                r
             },
             syn::ReturnType::Type(_, ty) => quote! {
-                if let Some(f) = self.fns.#name {
+                if let Some(c) = self.catch {
+                    self.vm.catch(c);
+                }
+                let r = if let Some(f) = self.fns.#name {
                     self.vm.callfn(f, (#(#arg_idents,)*))
                 } else {
                     Err((#root::error::ErrorKind::UndefinedHook {
                         name: #root::_deps::OpName::OpStr(#fqn)
                     }).into())
-                }
+                };
+                self.vm.catch_clear();
+                r
             },
         };
         quote! {

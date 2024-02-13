@@ -9,6 +9,7 @@ macro_rules! def_call_builder {
             pub struct CallBuilder<'a, 'b, 'c, T> {
                 pub fns: &'a mut T,
                 pub vm: &'b mut $crate::Spaik,
+                pub catch: Option<Option<$crate::_deps::SymID>>,
                 _ph: std::marker::PhantomData<&'c ()>
             }
 
@@ -17,7 +18,15 @@ macro_rules! def_call_builder {
                     where G: $crate::Userdata
                 {
                     unsafe { self.vm.set_resource(global) };
-                    CallBuilder { fns: self.fns, vm: self.vm, _ph: Default::default() }
+                    CallBuilder { fns: self.fns,
+                                  vm: self.vm,
+                                  _ph: Default::default(),
+                                  catch: self.catch }
+                }
+
+                pub fn catch(mut self, tag: Option<impl $crate::AsSym>) -> Self {
+                    self.catch = Some(tag.map(|t| t.as_sym_spaik(self.vm)));
+                    self
                 }
             }
 
@@ -27,11 +36,18 @@ macro_rules! def_call_builder {
 
             impl<T> IntoCallBuilder for T where T: $crate::LinkedEvents {
                 fn on<'a, 'b>(&'a mut self, vm: &'b mut $crate::Spaik) -> CallBuilder<'a, 'b, 'b, T> {
-                    CallBuilder { fns: self, vm, _ph: Default::default() }
+                    CallBuilder { fns: self, vm, _ph: Default::default(), catch: None }
                 }
             }
         }
     };
+}
+
+#[macro_export]
+macro_rules! init {
+    () => {
+        $crate::def_call_builder!();
+    }
 }
 
 pub use crate::__spaik_call_builder::*;

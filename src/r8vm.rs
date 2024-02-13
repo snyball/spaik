@@ -1634,6 +1634,10 @@ impl R8VM {
         self.catch.pop();
     }
 
+    pub fn catch_clear(&mut self) {
+        self.catch.clear()
+    }
+
     pub fn unwind(&mut self) -> Result<usize> {
         let tag_sym = self.mem.pop()?.sym()?;
         let tag = tag_sym.as_int() as usize;
