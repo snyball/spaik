@@ -306,6 +306,14 @@ struct DataRepr {
     fields: Fields
 }
 
+fn fn_name(name: impl AsRef<str>) -> String {
+    let name = name.as_ref().to_case(Case::Kebab);
+    if name.starts_with("is-") && name.len() > 3 {
+        return format!("{}?", &name[3..])
+    }
+    name
+}
+
 #[proc_macro_derive(Obj)]
 pub fn derive_obj(item: TokenStream) -> TokenStream {
     let root = crate_root();
@@ -553,7 +561,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     });
     let nargs = methods.clone().map(|x| x.sig.inputs.len() as u16 - 1);
     let mnames = methods.clone().map(|x| x.sig.ident.clone());
-    let kwnames = methods.clone().map(|x| format!(":{}", x.sig.ident).to_case(Case::Kebab));
+    let kwnames = methods.clone().map(|x| format!(":{}", fn_name(x.sig.ident.to_string())));
     let args = nargs.clone().map(|nargs| {
         let idx = 0..(nargs as usize);
         quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
@@ -587,7 +595,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     let st_names = st_methods.clone().map(|x| {
         format!("{}/{}",
                 KebabTypeName(&name),
-                format!("{}", x.sig.ident).to_case(Case::Kebab))
+                fn_name(x.sig.ident.to_string()))
     });
     let st_args = st_nargs.clone().map(|nargs| {
         let idx = 0..(nargs as usize);
