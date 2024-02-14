@@ -587,18 +587,24 @@ impl Spaik {
         Ok(())
     }
 
+    /// Perform incremental garbage collection.
+    #[inline]
+    pub fn gc(&mut self) {
+        self.vm.mem.collect()
+    }
+
     /// Perform a full GC collection, this may finish a currently ongoing collection
     /// and start a new one afterwards.
     #[inline]
-    pub fn gc(&mut self) {
+    pub fn full_gc(&mut self) {
         self.vm.mem.full_collection()
     }
 
     /// Fulfil a `Promise<T>` by running its continuation with value `ans`
-    pub fn fulfil<R,A,T,O>/*🐀*/(&mut self,
-                                 pr: Promise<T>,
-                                 ans: A) -> Result<R>
-        where PV: FromLisp3<R,O,()>,
+    pub fn fulfil<R,A,T,S>/*🐀🐀🐀*/(&mut self,
+                                     pr: Promise<T>,
+                                     ans: A) -> Result<R>
+        where PV: FromLisp3<R,S,()>,
               A: IntoLisp + Clone + Send + 'static,
     {
         if let Some(cont) = pr.cont {
