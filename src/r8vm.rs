@@ -19,7 +19,7 @@ use crate::{
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::{SymRef, self}, tokit, AsSym, IntoLisp};
 use fnv::FnvHashMap;
-use std::{io, fs, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32}, path::{Path, PathBuf}, any::{TypeId, type_name}};
+use std::{io, fs, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32, Arc}, path::{Path, PathBuf}, any::{TypeId, type_name}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -1008,7 +1008,7 @@ impl<T> InStream for T where T: io::Read + Debug + Send {}
 
 pub type ObjMethod = unsafe fn(*mut u8, &mut R8VM, &[PV]) -> Result<PV>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct R8VM {
     /// Memory
     pub(crate) pmem: Vec<r8c::Op>,
@@ -1032,7 +1032,7 @@ pub struct R8VM {
 
     obj_methods: FnvHashMap<(TypeId, SymID), ObjMethod>,
 
-    stdout: Mutex<Box<dyn OutStream>>,
+    stdout: Arc<Mutex<Box<dyn OutStream>>>,
 
     debug_mode: bool,
 
@@ -1056,7 +1056,7 @@ impl Default for R8VM {
             func_labels: Default::default(),
             obj_methods: Default::default(),
             func_arg_syms: Default::default(),
-            stdout: Mutex::new(Box::new(io::stdout())),
+            stdout: Arc::new(Mutex::new(Box::new(io::stdout()))),
             labels: Default::default(),
             debug_mode: false,
             frame: Default::default(),
