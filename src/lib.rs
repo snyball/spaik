@@ -923,7 +923,7 @@ mod tests {
     #[test]
     fn test_yield() {
         let mut vm = Spaik::new();
-        vm.exec(r#"(defun test-yield () (+ (yield "value") 2))"#).unwrap();
+        vm.exec(r#"(defun test-yield () (catch 'yield (+ (yield "value") 2)))"#).unwrap();
         let pr: Promise<String> = vm.call("test-yield", ()).unwrap();
         assert_eq!(&*pr, "value");
         let res: i32 = vm.fulfil(pr, 5).unwrap();

@@ -307,7 +307,7 @@
 
 ;;; ---[ continuations ]---------------------------------
 (test continuations
-      (= (+ (call/cc (lambda (k) (throw (k 1)))) 1) 2))
+      (= (catch 'a (+ (call/cc (lambda (k) (throw 'a (k 1)))) 1)) 2))
 
 ;;; ---[ apply ]-----------------------------------------
 (test apply
