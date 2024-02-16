@@ -432,15 +432,10 @@ impl Zubr {
     }
 }
 
-#[cfg(not(feature = "freeze"))]
-pub unsafe trait Subr: Send + 'static {
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
-    fn name(&self) -> &'static str;
-}
-#[cfg(feature = "freeze")]
 pub unsafe trait Subr: SubrClone + Send + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
     fn name(&self) -> &'static str;
+    #[cfg(feature = "freeze")]
     fn freeze(&self) -> Zubr {
         Zubr { name: TypePath::of::<Self>(), data: None }
     }
