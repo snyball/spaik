@@ -311,6 +311,16 @@ pub struct SwymDb {
     map: FnvHashSet<SymKeyRef>,
 }
 
+impl Clone for SwymDb {
+    fn clone(&self) -> Self {
+        let map = self.map.clone();
+        for sym in map.iter() {
+            unsafe { (*sym.0.0).rc.inc() }
+        }
+        Self { map }
+    }
+}
+
 impl Debug for SwymDb {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SwymDb").field("map", &"...").finish()

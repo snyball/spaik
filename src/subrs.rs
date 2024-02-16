@@ -363,25 +363,25 @@ impl<T, E> IntoLisp for Result<T, E>
     }
 }
 
-pub trait CloneSubr: Subr {
-    fn clone_subr(&self) -> Box<dyn Subr>;
-}
+// pub trait CloneSubr: Subr {
+//     fn clone_subr(&self) -> Box<dyn Subr>;
+// }
 
-impl<T> CloneSubr for T
-where
-    T: 'static + Subr + Clone
-{
-    fn clone_subr(&self) -> Box<dyn Subr> {
-        Box::new(self.clone())
-    }
-}
+// impl<T> CloneSubr for T
+// where
+//     T: 'static + Subr
+// {
+//     fn clone_subr(&self) -> Box<dyn Subr> {
+//         Box::new(self.clone())
+//     }
+// }
 
 #[cfg(feature = "freeze")]
 pub type SubrThawFn = fn(from: &mut dyn Read) -> Result<Box<dyn Subr>, Error>;
 #[cfg(feature = "freeze")]
 static SUBR_THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, SubrThawFn>>> = OnceLock::new();
-#[cfg(feature = "freeze")]
-static SUBRS: OnceLock<Mutex<FnvHashMap<TypePath, Box<dyn CloneSubr>>>> = OnceLock::new();
+// #[cfg(feature = "freeze")]
+// static SUBRS: OnceLock<Mutex<FnvHashMap<TypePath, Box<dyn CloneSubr>>>> = OnceLock::new();
 
 #[cfg(feature = "freeze")]
 pub struct Zubr {
@@ -409,14 +409,14 @@ impl Zubr {
               F: Funcable<A, R> + IntoSubr<A, R> + Clone + 'static
     {
         let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
-        let subrs = SUBRS.get_or_init(|| Mutex::new(FnvHashMap::default()));
-        if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<F>()) {
-            subrs.lock().unwrap().insert(TypePath::of::<F>(), Box::new(RLambda::new(f)));
-            e.insert(|_| {
-                let subrs = SUBRS.get_or_init(|| Mutex::new(FnvHashMap::default()));
-                Ok(subrs.lock().unwrap()[&TypePath::of::<F>()].clone_subr())
-            });
-        }
+        // let subrs = SUBRS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        // if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<F>()) {
+        //     subrs.lock().unwrap().insert(TypePath::of::<F>(), Box::new(RLambda::new(f)));
+        //     e.insert(|_| {
+        //         let subrs = SUBRS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        //         Ok(subrs.lock().unwrap()[&TypePath::of::<F>()].clone_subr())
+        //     });
+        // }
     }
 
     pub fn thaw(&self) -> Result<Box<dyn Subr>, Error> {
@@ -438,11 +438,27 @@ pub unsafe trait Subr: Send + 'static {
     fn name(&self) -> &'static str;
 }
 #[cfg(feature = "freeze")]
-pub unsafe trait Subr: Send + 'static {
+pub unsafe trait Subr: SubrClone + Send + 'static {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error>;
     fn name(&self) -> &'static str;
     fn freeze(&self) -> Zubr {
         Zubr { name: TypePath::of::<Self>(), data: None }
+    }
+}
+
+impl Clone for Box<dyn Subr> {
+    fn clone(&self) -> Self {
+        self.clone_inner_subr()
+    }
+}
+
+pub trait SubrClone {
+    fn clone_inner_subr(&self) -> Box<dyn Subr>;
+}
+
+impl<T> SubrClone for T where T: Clone + Subr {
+    fn clone_inner_subr(&self) -> Box<dyn Subr> {
+        Box::new(self.clone())
     }
 }
 
@@ -480,7 +496,7 @@ macro_rules! impl_funcable {
         }
 
         impl<Funk, Rt, $($x),*> IntoSubr<($($x,)*), Rt> for Funk
-            where Funk: FnMut($($x),*) -> Rt + Funcable<($($x,)*), Rt> + 'static,
+            where Funk: Clone + FnMut($($x),*) -> Rt + Funcable<($($x,)*), Rt> + 'static,
                   $($x: Send + 'static,)*
                   Rt: Send + IntoLisp + 'static,
         {
@@ -531,7 +547,7 @@ impl<F, A, R> Clone for RLambda<F, A, R>
 }
 
 unsafe impl<F, A, R> Subr for RLambda<F, A, R>
-    where A: Send, R: Send, F: Funcable<A, R> + Any
+    where A: Send, R: Send, F: Clone + Funcable<A, R> + Any
 {
     fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV, Error> {
         self.f.call(vm, args)

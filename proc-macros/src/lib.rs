@@ -300,6 +300,7 @@ fn maker(p: proc_macro2::TokenStream,
         Fields::Unit => (name, quote! { #p }),
     };
     quote! {
+        #[derive(Clone)]
         struct #rs_struct_name;
         unsafe impl #root::Subr for #rs_struct_name {
             fn call(&mut self, vm: &mut #root::_deps::R8VM,
@@ -643,7 +644,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #root::SubrSet<#spec> for #name {
             fn subrs() -> impl Iterator<Item = Box<dyn #root::Subr>> {
                 use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
-                #(struct #st_rs_names;
+                #(#[derive(Clone)] struct #st_rs_names;
                   unsafe impl #root::Subr for #st_rs_names {
                       fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
                           use #root::{Lispify, FromLisp, FromLisp3, _deps::*};

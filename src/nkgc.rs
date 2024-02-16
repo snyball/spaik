@@ -1255,6 +1255,30 @@ pub struct Arena {
     no_reorder: bool,
 }
 
+impl Clone for Arena {
+    fn clone(&self) -> Self {
+        let (rx, tx) = channel();
+        let mut ar = Self { nuke: self.nuke.deep_clone(),
+                            tags: self.tags.clone(),
+                            stack: self.stack.clone(),
+                            symdb: self.symdb.clone(),
+                            conts: self.conts.clone(),
+                            env: self.env.clone(),
+                            gray: self.gray.clone(),
+                            extref: Default::default(),
+                            extdrop_recv: tx,
+                            extdrop_send: rx,
+                            borrows: self.borrows.clone(),
+                            borrow_locks: Default::default(),
+                            state: self.state.clone(),
+                            extref_id_cnt: 0,
+                            no_reorder: self.no_reorder.clone() };
+        ar.update_ptrs(RelocateToken);
+        ar.pop_borrows();
+        ar
+    }
+}
+
 // /// Serialized arena, suitable for freezing the state of a VM.
 // #[derive(Debug)]
 // struct ColdArena {
@@ -1865,7 +1889,7 @@ impl Arena {
 
     #[cfg(feature = "freeze")]
     pub fn freeze(&self) -> i32 {
-        let nk = self.nuke.shallow_clone();
+        let nk = self.nuke.deep_clone();
 
         let mut out: Vec<u8> = vec![];
         let base = nk.fst() as usize;

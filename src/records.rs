@@ -33,6 +33,7 @@ enum EnumExample {
     Zed,
 }
 
+#[derive(Clone)]
 pub struct MacroNew {
     name: &'static str,
     variant: &'static str,

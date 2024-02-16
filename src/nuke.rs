@@ -1266,6 +1266,25 @@ pub fn clone_atom(mut atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAto
     }
 }
 
+pub unsafe fn clone_atom_inplace_or_void(atom: *mut NkAtom) {
+    match to_fissile_mut(atom) {
+        NkMut::Lambda(l) => ptr::write(l, (*l).clone()),
+        NkMut::String(s) => ptr::write(s, (*s).clone()),
+        NkMut::Vector(xs) => ptr::write(xs, (*xs).clone()),
+        NkMut::Table(hm) => ptr::write(hm, (*hm).clone()),
+        NkMut::Object(obj) => {
+            if let Ok(cloned) = (*obj).deep_clone() {
+                ptr::write(obj, cloned);
+            } else {
+                (*obj).void()
+            }
+        }
+        NkMut::Iter(i) => ptr::write(i, (*i).clone()),
+        NkMut::Continuation(c) => ptr::write(c, (*c).clone()),
+        NkMut::Subroutine(s) => ptr::write(s, (*s).clone()),
+        _ => ()
+    }}
+
 /// SAFETY: Must make sure the full recursive clone can fit in memory before calling
 pub unsafe fn clone_atom_rec(atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, Error> {
     macro_rules! clone {
@@ -1585,8 +1604,7 @@ impl Nuke {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn shallow_clone(&self) -> Nuke {
+    pub fn deep_clone(&self) -> Nuke {
         let mut nk = Nuke::new(self.sz);
 
         let mut mem = nk.mem;
@@ -1598,6 +1616,7 @@ impl Nuke {
                 memcpy(mem, node, sz);
                 nk.reloc.push(node, mem);
                 new_node = mem as *mut NkAtom;
+                clone_atom_inplace_or_void(new_node);
                 let nmem = mem.add(sz);
                 mem = align_mut(nmem, ALIGNMENT);
                 (*new_node).next = mem as *mut NkAtom;
