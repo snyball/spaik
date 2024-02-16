@@ -185,6 +185,7 @@ impl IntoLisp for ExampleObject {
 }
 
 /// A SPAIK Context, this is the main way to use SPAIK
+#[derive(Clone)]
 pub struct Spaik {
     vm: R8VM,
 }
