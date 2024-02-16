@@ -1997,6 +1997,8 @@ impl Drop for SPV {
 
 #[cfg(test)]
 mod tests {
+    use crate::Spaik;
+
     use super::*;
     #[cfg(feature = "derive")]
     use spaik_proc_macros::Userdata;
@@ -2037,5 +2039,17 @@ mod tests {
         }
         drop(ar);
         println!("phew");
+    }
+
+    #[test]
+    fn clone_arena() {
+        let mut vm = Spaik::new();
+        vm.exec(r#"(define ayy "lmao")"#).unwrap();
+        let mut vm2 = Spaik::new_no_core();
+        let ar = vm.vm.mem.clone();
+        vm2.vm.globals = vm.vm.globals.clone();
+        vm2.vm.mem = ar;
+        let s: String = vm2.eval("ayy").unwrap();
+        assert_eq!(s, "lmao");
     }
 }
