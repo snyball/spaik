@@ -252,6 +252,7 @@ pub enum ErrorKind {
     LibError { name: Sym },
     TrailingDelimiter { close: &'static str },
     UnclosedDelimiter { open: &'static str },
+    UnlinkedFunction,
     TrailingModifiers { mods: String },
     TrailingEscape,
     NoSuchEscapeChar { chr: char },
@@ -607,6 +608,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Unknown Set Pattern: {pat}")?,
         Throw { tag, obj } =>
             write!(f, "{tag}: {obj}")?,
+        // FIXME: Better error message
+        UnlinkedFunction => write!(f, "Unlinked functino")?,
     }
 
     if let Some(src) = meta.src() {
