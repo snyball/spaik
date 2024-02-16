@@ -18,6 +18,7 @@ jobs:
     - uses: actions/checkout@v3
     - name: Setup
       run: |
+        sudo apt-get update
         sudo snap install --edge just --classic
         sudo apt install valgrind wine gcc-mingw-w64 binutils-mingw-w64 gcc-i686-linux-gnu binutils-i686-linux-gnu
         rustup target add wasm32-wasi
