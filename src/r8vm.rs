@@ -1008,7 +1008,7 @@ impl<T> InStream for T where T: io::Read + Debug + Send {}
 
 pub type ObjMethod = unsafe fn(*mut u8, &mut R8VM, &[PV]) -> Result<PV>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct R8VM {
     /// Memory
     pub(crate) pmem: Vec<r8c::Op>,
