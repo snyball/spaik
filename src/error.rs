@@ -215,7 +215,7 @@ impl fmt::Display for SyntaxErrorKind {
 }
 
 #[derive(Clone)]
-pub struct ExtError(pub Arc<Box<dyn std::error::Error + Send>>);
+pub struct ExtError(pub Arc<Box<dyn std::error::Error + Send + Sync>>);
 
 impl PartialEq for ExtError {
     fn eq(&self, other: &Self) -> bool {

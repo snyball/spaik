@@ -354,7 +354,7 @@ impl<'a> TryFrom<PV> for &'a str {
 }
 
 impl<T, E> IntoLisp for Result<T, E>
-    where T: IntoLisp, E: Into<Box<dyn std::error::Error + Send>>
+    where T: IntoLisp, E: Into<Box<dyn std::error::Error + Send + Sync>>
 {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
         match self {
