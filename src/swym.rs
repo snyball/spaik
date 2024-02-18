@@ -47,6 +47,7 @@ unsafe impl Sync for Sym {}
 
 pub struct SymRef(*mut Sym);
 unsafe impl Send for SymRef {}
+unsafe impl Sync for SymRef {}
 
 impl SymRef {
     pub fn eq_pv(&self, pv: PV) -> bool {

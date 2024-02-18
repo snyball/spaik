@@ -312,6 +312,8 @@ pub struct VTable {
     freeze: unsafe fn(*const u8, into: &mut dyn Write) -> usize,
 }
 
+unsafe impl Sync for VTable {}
+
 pub struct OptVTable<T: Userdata> {
     /// `core::clone::Clone`
     clone: Option<unsafe fn(*const u8) -> Object>,
