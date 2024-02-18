@@ -354,12 +354,12 @@ impl<'a> TryFrom<PV> for &'a str {
 }
 
 impl<T, E> IntoLisp for Result<T, E>
-    where T: IntoLisp, E: Into<Box<dyn std::error::Error>>
+    where T: IntoLisp, E: Into<Box<dyn std::error::Error + Send>>
 {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
         match self {
             Ok(v) => v.into_pv(mem),
-            Err(e) => Err(ErrorKind::ExtError(ExtError(Rc::new(e.into()))).into()),
+            Err(e) => Err(ErrorKind::ExtError(ExtError(Arc::new(e.into()))).into()),
         }
     }
 }
