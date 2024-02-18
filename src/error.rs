@@ -10,6 +10,7 @@ use std::mem::{discriminant, replace};
 use std::error;
 use std::fmt::{self, Debug, Display, Write};
 use std::num::TryFromIntError;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc::SendError;
 
@@ -213,6 +214,15 @@ impl fmt::Display for SyntaxErrorKind {
     }
 }
 
+#[derive(Clone)]
+pub struct ExtError(pub Rc<Box<dyn std::error::Error>>);
+
+impl PartialEq for ExtError {
+    fn eq(&self, other: &Self) -> bool {
+        false
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub enum ErrorKind {
     SendError { obj_dbg: String },
@@ -273,6 +283,7 @@ pub enum ErrorKind {
     VoidVariable,
     UnknownSetPattern { pat: String },
     Throw { tag: String, obj: String },
+    ExtError(ExtError),
 }
 
 impl From<std::io::Error> for Error {
@@ -610,6 +621,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{tag}: {obj}")?,
         // FIXME: Better error message
         UnlinkedFunction => write!(f, "Unlinked functino")?,
+        ExtError(err) => write!(f, "{:?}", err.0)?,
     }
 
     if let Some(src) = meta.src() {

@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::r8vm::{R8VM, ArgSpec};
 use crate::nkgc::{PV, SPV, Arena, ObjRef};
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, ExtError};
 use crate::{nuke::*, SymID, Builtin, deserialize};
 use crate::fmt::{LispFmt, VisitSet};
 use std::any::Any;
@@ -17,7 +17,8 @@ use std::fmt;
 use std::io::{Read, Cursor};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
-use std::sync::{OnceLock, Mutex};
+use std::rc::Rc;
+use std::sync::{OnceLock, Mutex, Arc};
 
 /// The `mem` parameter is necessary here, because some of the conversions
 /// may need to create an SPV reference-counter
@@ -353,12 +354,12 @@ impl<'a> TryFrom<PV> for &'a str {
 }
 
 impl<T, E> IntoLisp for Result<T, E>
-    where T: IntoLisp, E: Into<Error>
+    where T: IntoLisp, E: Into<Box<dyn std::error::Error>>
 {
     fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
         match self {
             Ok(v) => v.into_pv(mem),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(ErrorKind::ExtError(ExtError(Rc::new(e.into()))).into()),
         }
     }
 }
