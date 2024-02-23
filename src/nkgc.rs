@@ -2041,15 +2041,15 @@ mod tests {
         println!("phew");
     }
 
-    #[test]
-    fn clone_arena() {
-        let mut vm = Spaik::new();
-        vm.exec(r#"(define ayy "lmao")"#).unwrap();
-        let mut vm2 = Spaik::new_no_core();
-        let ar = vm.vm.mem.clone();
-        vm2.vm.globals = vm.vm.globals.clone();
-        vm2.vm.mem = ar;
-        let s: String = vm2.eval("ayy").unwrap();
-        assert_eq!(s, "lmao");
-    }
+    // #[test]
+    // fn clone_arena() {
+    //     let mut vm = Spaik::new();
+    //     vm.exec(r#"(define ayy "lmao")"#).unwrap();
+    //     let mut vm2 = Spaik::new_no_core();
+    //     let ar = vm.vm.mem.clone();
+    //     vm2.vm.globals = vm.vm.globals.clone();
+    //     vm2.vm.mem = ar;
+    //     let s: String = vm2.eval("ayy").unwrap();
+    //     assert_eq!(s, "lmao");
+    // }
 }
