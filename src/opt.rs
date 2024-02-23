@@ -1,12 +1,11 @@
 use std::mem::{take, replace};
 
-use fnv::FnvHashSet;
-
 use crate::{ast::{AST2, M, Visitor, VarDecl, Visitable}, nkgc::PV, error::Source, SymID, Builtin};
+use crate::utils::HSet;
 
 #[derive(Debug, Default)]
 pub struct Optomat {
-    varmod: FnvHashSet<SymID>,
+    varmod: HSet<SymID>,
 }
 
 impl Optomat {
@@ -101,7 +100,7 @@ impl Visitor for Optomat {
                 let mut dead_vars = consts.clone()
                                           .filter(|p| !self.varmod.contains(&p.0))
                                           .map(|LowerConst(sym, _)| sym)
-                                          .collect::<FnvHashSet<_>>();
+                                          .collect::<HSet<_>>();
                 for mut lower in consts {
                     for pt in body.iter_mut() {
                         match lower.visit(pt) {

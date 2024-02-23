@@ -39,8 +39,8 @@ shipyard = ["dep:shipyard"]
 cleanup-vtables = []
 
 [dependencies]
-fnv = "1.0"
 log = "0.4"
+ahash = "0.8.9"
 serde = { version = "1.0.143", features = ["derive"], optional = true }
 
 spaik-proc-macros = { path = "proc-macros", optional = true }

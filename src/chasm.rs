@@ -6,7 +6,7 @@ use std::io::{Read, Write, self};
 use std::fmt::{self, Display};
 use crate::error::{ErrorKind, Result};
 use std::convert::{TryInto, TryFrom};
-use fnv::FnvHashMap;
+use crate::utils::{HMap, HSet};
 
 pub type OpCode = u8;
 
@@ -294,7 +294,7 @@ macro_rules! chasm_def {
 pub struct ChASM<T: ASMOp> {
     ops: Vec<ChOp<T::OpName>>,
     label_names: Vec<&'static str>,
-    marks: FnvHashMap<u32, isize>,
+    marks: HMap<u32, isize>,
 }
 
 impl<T: ASMOp> Default for ChASM<T> {
@@ -307,7 +307,7 @@ impl<T: ASMOp> Default for ChASM<T> {
     }
 }
 
-pub type LblMap = FnvHashMap<u32, Lbl>;
+pub type LblMap = HMap<u32, Lbl>;
 
 impl<T: ASMOp> ChASM<T> {
     #[allow(dead_code)]

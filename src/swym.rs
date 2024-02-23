@@ -7,7 +7,7 @@ use std::{ptr::NonNull, mem, ptr};
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 use std::fmt::{Debug, Display};
 
-use fnv::FnvHashSet;
+use crate::utils::{HMap, HSet};
 use serde::{Deserialize, Serialize};
 
 use crate::AsSym;
@@ -309,7 +309,7 @@ impl Drop for SymRef {
 
 #[derive(Default)]
 pub struct SwymDb {
-    map: FnvHashSet<SymKeyRef>,
+    map: HSet<SymKeyRef>,
 }
 
 impl Clone for SwymDb {
@@ -477,9 +477,9 @@ mod tests {
         let (p_ayy, p_lmao) = unsafe { ((*ayy.0).ptr.as_ptr(),
                                         (*lmao1.0).ptr.as_ptr()) };
 
-        let hm: FnvHashSet<String> = swym.into();
+        let hm: HashSet<String> = swym.into();
 
-        let mut hm_cmp = FnvHashSet::default();
+        let mut hm_cmp = HashSet::default();
         hm_cmp.insert(String::from("ayy"));
         hm_cmp.insert(String::from("lmao"));
         assert_eq!(hm, hm_cmp);
@@ -511,9 +511,9 @@ mod tests {
                       (*lmao1.0).ptr.as_ptr()) }
         };
 
-        let hm: FnvHashSet<String> = swym.into();
+        let hm: HashSet<String> = swym.into();
 
-        let mut hm_cmp = FnvHashSet::default();
+        let mut hm_cmp = HashSet::default();
         hm_cmp.insert(String::from("ayy"));
         hm_cmp.insert(String::from("lmao"));
         assert_eq!(hm, hm_cmp);

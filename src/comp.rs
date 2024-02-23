@@ -5,8 +5,8 @@ use std::{iter, mem};
 use std::sync::atomic::{Ordering, AtomicUsize};
 
 use chasm::LblMap;
-use fnv::{FnvHashSet, FnvHashMap};
 
+use crate::utils::{HSet, HMap};
 use crate::nkgc::{PV, SymID, Int};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
 use crate::chasm::{ChOp, ChASM, Lbl, self, Arg};
@@ -55,7 +55,7 @@ pub enum BoundVar {
 struct Env {
     name: Option<SymID>,
     vars: Vec<SymID>,
-    statics: FnvHashMap<SymID, usize>,
+    statics: HMap<SymID, usize>,
 }
 
 // FIXME: Statics and locals need to be merged somehow, right
@@ -66,7 +66,7 @@ impl Env {
         let mut env = Env {
             name,
             vars: args,
-            statics: FnvHashMap::default()
+            statics: Default::default()
         };
         env.defvar(Builtin::IP.sym_id());
         env.defvar(Builtin::Frame.sym_id());
@@ -83,7 +83,7 @@ impl Env {
     }
 
     pub fn none(name: Option<SymID>) -> Env {
-        Env { vars: vec![], statics: FnvHashMap::default(), name }
+        Env { vars: vec![], statics: Default::default(), name }
     }
 
     pub fn defvar(&mut self, var: SymID) {
@@ -143,9 +143,9 @@ pub struct R8Compiler {
     code_offset: usize,
     new_fns: Vec<(Sym, ArgSpec, Vec<SymID>, usize, usize)>,
     new_envs: Vec<(SymID, usize, usize)>,
-    env: FnvHashMap<SymID, usize>,
-    fns: FnvHashMap<SymID, Func>,
-    unlinked_fns: FnvHashMap<SymID, Vec<usize>>,
+    env: HMap<SymID, usize>,
+    fns: HMap<SymID, Func>,
+    unlinked_fns: HMap<SymID, Vec<usize>>,
     #[allow(dead_code)]
     debug_mode: bool,
 }
@@ -164,15 +164,15 @@ struct LoopCtx {
     height: usize,
 }
 
-type VarSet = FnvHashSet<(SymID, BoundVar)>;
-type FnSet = FnvHashMap<SymID, Func>;
+type VarSet = HSet<(SymID, BoundVar)>;
+type FnSet = HMap<SymID, Func>;
 
 struct ClzScoper<'a, 'b, 'c> {
     env: Env,
     outside: &'a Env,
     fns: &'b FnSet,
     lowered: VarSet,
-    globals: &'c FnvHashMap<SymID, usize>,
+    globals: &'c HMap<SymID, usize>,
 }
 
 impl Visitor for ClzScoper<'_, '_, '_> {
@@ -212,12 +212,12 @@ impl Visitor for ClzScoper<'_, '_, '_> {
 
 impl ClzScoper<'_, '_, '_> {
     pub fn scope<'a, 'b>(args: Vec<SymID>,
-                         globals: &FnvHashMap<SymID, usize>,
+                         globals: &HMap<SymID, usize>,
                          outside: &Env,
                          fns: &'b FnSet,
                          body: impl Iterator<Item = &'a mut AST2>) -> Result<VarSet> {
         let mut scoper = ClzScoper {
-            lowered: FnvHashSet::default(),
+            lowered: Default::default(),
             env: Env::new(None, args),
             fns,
             outside,
@@ -230,7 +230,7 @@ impl ClzScoper<'_, '_, '_> {
     }
 }
 
-fn add_unlinked(ufns: &mut FnvHashMap<SymID, Vec<usize>>, name: SymID, pos: usize) {
+fn add_unlinked(ufns: &mut HMap<SymID, Vec<usize>>, name: SymID, pos: usize) {
     match ufns.entry(name) {
         hash_map::Entry::Occupied(mut e) => e.get_mut().push(pos),
         hash_map::Entry::Vacant(e) => {e.insert(vec![pos]);}
@@ -256,7 +256,7 @@ impl R8Compiler {
             env: vm.globals.clone(),
             unlinked_fns: Default::default(),
             fns: {
-                let mut map: FnvHashMap<SymID, Func> = Default::default();
+                let mut map: HMap<SymID, Func> = Default::default();
                 for (sym, funk) in vm.funcs.iter() {
                     map.insert(*sym, *funk);
                 }

@@ -18,7 +18,7 @@ use core::fmt::Debug;
 use std::sync::atomic::AtomicU32;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
-use fnv::FnvHashMap;
+use crate::utils::{HMap, HSet};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use std::sync::{Mutex, OnceLock};
@@ -532,18 +532,18 @@ impl TypePath {
     }
 }
 
-static VTABLES: OnceLock<Mutex<FnvHashMap<TypeId, &'static VTable>>> = OnceLock::new();
-static THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, ThawFn>>> = OnceLock::new();
+static VTABLES: OnceLock<Mutex<HMap<TypeId, &'static VTable>>> = OnceLock::new();
+static THAW_FNS: OnceLock<Mutex<HMap<TypePath, ThawFn>>> = OnceLock::new();
 #[cfg(all(not(miri), any(test, feature = "cleanup-vtables")))]
 pub static NUM_VMS: Mutex<i32> = Mutex::new(0);
 
-pub fn get_vtables() -> &'static Mutex<FnvHashMap<TypeId, &'static VTable>> {
-    VTABLES.get_or_init(|| Mutex::new(FnvHashMap::default()))
+pub fn get_vtables() -> &'static Mutex<HMap<TypeId, &'static VTable>> {
+    VTABLES.get_or_init(|| Mutex::new(HMap::default()))
 }
 
 #[allow(dead_code)]
-pub fn get_thaw_fns() -> &'static Mutex<FnvHashMap<TypePath, ThawFn>> {
-    THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()))
+pub fn get_thaw_fns() -> &'static Mutex<HMap<TypePath, ThawFn>> {
+    THAW_FNS.get_or_init(|| Mutex::new(HMap::default()))
 }
 
 pub fn vm_begin() {
@@ -604,7 +604,7 @@ impl Object {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
         #[cfg(feature = "freeze")]
-        let thaw_fns = THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let thaw_fns = THAW_FNS.get_or_init(|| Mutex::new(HMap::default()));
         #[cfg(feature = "freeze")]
         if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<T>()) {
             e.insert(|from| {
@@ -1026,7 +1026,7 @@ fissile_types! {
     (String, Builtin::String, std::string::String),
     (PV, Builtin::Ref, crate::nkgc::PV),
     (Vector, Builtin::Vector, Vec<PV>),
-    (Table, Builtin::Table, FnvHashMap<PV, PV>),
+    (Table, Builtin::Table, HMap<PV, PV>),
     (Vec4, Builtin::Vec4, glam::Vec4),
     (Mat2, Builtin::Mat2, glam::Mat2),
     (Mat3, Builtin::Mat3, glam::Mat3),
@@ -1044,7 +1044,7 @@ fissile_types! {
     (Intr, Builtin::Intr, crate::nuke::Intr),
     (Lambda, Builtin::Lambda, crate::nkgc::Lambda),
     (String, Builtin::String, std::string::String),
-    (Table, Builtin::Table, FnvHashMap<PV, PV>),
+    (Table, Builtin::Table, HMap<PV, PV>),
     (PV, Builtin::Ref, crate::nkgc::PV),
     (Vector, Builtin::Vector, Vec<PV>),
     (Object, Builtin::Object, crate::nuke::Object),
@@ -1053,7 +1053,7 @@ fissile_types! {
     (Subroutine, Builtin::Subr, Box<dyn crate::subrs::Subr>)
 }
 
-impl Traceable for FnvHashMap<PV, PV> {
+impl Traceable for HMap<PV, PV> {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
         for (_k, v) in self.iter() {
             // XXX: Keys cannot be references, so they do not need to be traced
@@ -1069,7 +1069,7 @@ impl Traceable for FnvHashMap<PV, PV> {
     }
 }
 
-impl LispFmt for FnvHashMap<PV, PV> {
+impl LispFmt for HMap<PV, PV> {
     fn lisp_fmt(&self,
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1326,7 +1326,7 @@ pub unsafe fn clone_atom_rec(atom: *const NkAtom, mem: &mut Arena) -> Result<*mu
         NkRef::Table(hm) => unsafe {
             let nxs = (*hm).iter().map(|(k, v)| -> Result<_,Error> {
                 Ok((*k, v.deep_clone_unchecked(mem)?))
-            }).collect::<Result<FnvHashMap<_, _>,_>>()?;
+            }).collect::<Result<HMap<_, _>,_>>()?;
             let (rf, _) = mem.put(nxs);
             rf
         },

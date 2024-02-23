@@ -1,6 +1,8 @@
 //! Miscellaneous Utilities
 
 use std::convert::Infallible;
+pub use ahash::AHashMap as HMap;
+pub use ahash::AHashSet as HSet;
 
 pub type Success = Result<(), Infallible>;
 

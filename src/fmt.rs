@@ -3,10 +3,10 @@
 use crate::nkgc::{ConsElem, ConsIter};
 use crate::nuke::*;
 use std::fmt;
-use fnv::FnvHashSet;
+use crate::utils::{HMap, HSet};
 use std::slice::Iter;
 
-pub type VisitSet = FnvHashSet<*const NkAtom>;
+pub type VisitSet = HSet<*const NkAtom>;
 
 pub struct FmtWrap<'a, T> where T: ?Sized {
     pub val: &'a T,
@@ -15,7 +15,7 @@ pub struct FmtWrap<'a, T> where T: ?Sized {
 impl<T> fmt::Display for FmtWrap<'_, T> where T: LispFmt + ?Sized {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut visited = FnvHashSet::default();
+        let mut visited = HSet::default();
         self.val.lisp_fmt(&mut visited, f)
     }
 }

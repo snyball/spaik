@@ -1,9 +1,9 @@
 //! Rust Subroutines for SPAIK LISP
 
-use fnv::FnvHashMap;
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 
+use crate::utils::{HMap, HSet};
 use crate::r8vm::{R8VM, ArgSpec};
 use crate::nkgc::{PV, SPV, Arena, ObjRef};
 use crate::error::{Error, ErrorKind, ExtError};
@@ -337,7 +337,7 @@ impl<K, V> IntoLisp for HashMap<K, V>
                       .map(|(k, v)| -> Result<_, Error> {
                           Ok((k.into_pv(mem)?, v.into_pv(mem)?))
                       })
-                      .collect::<Result<FnvHashMap<PV, PV>, _>>()?;
+                      .collect::<Result<HMap<PV, PV>, _>>()?;
         Ok(mem.put_pv(arr))
     }
 }
@@ -380,9 +380,9 @@ impl<T, E> IntoLisp for Result<T, E>
 #[cfg(feature = "freeze")]
 pub type SubrThawFn = fn(from: &mut dyn Read) -> Result<Box<dyn Subr>, Error>;
 #[cfg(feature = "freeze")]
-static SUBR_THAW_FNS: OnceLock<Mutex<FnvHashMap<TypePath, SubrThawFn>>> = OnceLock::new();
+static SUBR_THAW_FNS: OnceLock<Mutex<HMap<TypePath, SubrThawFn>>> = OnceLock::new();
 // #[cfg(feature = "freeze")]
-// static SUBRS: OnceLock<Mutex<FnvHashMap<TypePath, Box<dyn CloneSubr>>>> = OnceLock::new();
+// static SUBRS: OnceLock<Mutex<HMap<TypePath, Box<dyn CloneSubr>>>> = OnceLock::new();
 
 #[cfg(feature = "freeze")]
 pub struct Zubr {
@@ -393,7 +393,7 @@ pub struct Zubr {
 #[cfg(feature = "freeze")]
 impl Zubr {
     pub fn funmut<T: Subr + DeserializeOwned>() {
-        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(HMap::default()));
         if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<T>()) {
             e.insert(|from| {
                 use bincode::Options;
@@ -409,19 +409,19 @@ impl Zubr {
               R: Send + 'static,
               F: Funcable<A, R> + IntoSubr<A, R> + Clone + 'static
     {
-        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
-        // let subrs = SUBRS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(HMap::default()));
+        // let subrs = SUBRS.get_or_init(|| Mutex::new(HMap::default()));
         // if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<F>()) {
         //     subrs.lock().unwrap().insert(TypePath::of::<F>(), Box::new(RLambda::new(f)));
         //     e.insert(|_| {
-        //         let subrs = SUBRS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        //         let subrs = SUBRS.get_or_init(|| Mutex::new(HMap::default()));
         //         Ok(subrs.lock().unwrap()[&TypePath::of::<F>()].clone_subr())
         //     });
         // }
     }
 
     pub fn thaw(&self) -> Result<Box<dyn Subr>, Error> {
-        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(FnvHashMap::default()));
+        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(HMap::default()));
         // let mut cr = Cursor::new(&self.data);
         let empty = [];
         let mut cr = if let Some(ref data) = self.data {

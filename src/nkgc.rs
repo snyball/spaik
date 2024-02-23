@@ -11,7 +11,7 @@ use crate::swym::{SwymDb, SymRef};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::mpsc::{Receiver, Sender, channel};
-use fnv::FnvHashMap;
+use crate::utils::HMap;
 #[cfg(feature = "math")]
 use glam::{Vec2, Vec3};
 use serde::{Serialize, Deserialize};
@@ -1239,13 +1239,13 @@ struct ExtRefMsg {
 #[derive(Debug)]
 pub struct Arena {
     pub(crate) nuke: Nuke,
-    tags: FnvHashMap<*mut NkAtom, Source>,
+    tags: HMap<*mut NkAtom, Source>,
     pub(crate) stack: Vec<PV>,
     pub(crate) symdb: SwymDb,
     pub(crate) conts: Vec<Vec<PV>>,
     pub(crate) env: Vec<PV>,
     gray: Vec<*mut NkAtom>,
-    extref: FnvHashMap<ExtRefID, (i32, PV)>,
+    extref: HMap<ExtRefID, (i32, PV)>,
     extdrop_recv: Receiver<ExtRefMsg>,
     extdrop_send: Sender<ExtRefMsg>,
     borrows: Vec<*mut NkAtom>,
@@ -1330,8 +1330,8 @@ impl Arena {
             extdrop_recv: tx,
             extdrop_send: rx,
             state: GCState::Sleep(GC_SLEEP_MEM_BYTES),
-            extref: FnvHashMap::default(),
-            tags: FnvHashMap::default(),
+            extref: Default::default(),
+            tags: Default::default(),
             no_reorder: false,
             conts: Vec::new(),
             extref_id_cnt: 0,

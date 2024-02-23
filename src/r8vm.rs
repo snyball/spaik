@@ -18,7 +18,7 @@ use crate::{
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::{SymRef, self}, tokit, AsSym, IntoLisp};
-use fnv::FnvHashMap;
+use crate::utils::{HMap, HSet};
 use std::{io, fs, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32, Arc}, path::{Path, PathBuf}, any::{TypeId, type_name}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
@@ -302,7 +302,7 @@ pub unsafe fn split_list(mut head: Option<*mut Cons>)
 mod sysfns {
     use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId, hash::Hash, collections::hash_map::DefaultHasher, cmp::Ordering};
 
-    use fnv::FnvHashMap;
+    use crate::utils::{HMap, HSet};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, Cons}, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}, r8vm::merge_sort};
     use super::{R8VM, tostring, ArgSpec};
@@ -738,7 +738,7 @@ mod sysfns {
 
     unsafe impl Subr for make_table {
         fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
-            let mut hm = FnvHashMap::default();
+            let mut hm = HMap::default();
             let mut it = args.iter();
             loop {
                 let Some(k) = it.next() else { break };
@@ -1013,24 +1013,24 @@ pub struct R8VM {
     /// Memory
     pub(crate) pmem: Vec<r8c::Op>,
     pub mem: Arena,
-    pub(crate) globals: FnvHashMap<SymID, usize>,
-    resources: FnvHashMap<TypeId, usize>,
-    pub(crate) trace_counts: FnvHashMap<SymID, usize>,
+    pub(crate) globals: HMap<SymID, usize>,
+    resources: HMap<TypeId, usize>,
+    pub(crate) trace_counts: HMap<SymID, usize>,
     tok_tree: tokit::Fragment,
-    reader_macros: FnvHashMap<String, SymID>,
+    reader_macros: HMap<String, SymID>,
 
     // Named locations/objects
-    breaks: FnvHashMap<usize, r8c::Op>,
-    macros: FnvHashMap<SymID, SymID>,
-    pub(crate) funcs: FnvHashMap<SymID, Func>,
-    func_labels: FnvHashMap<SymID, FnvHashMap<u32, Lbl>>,
+    breaks: HMap<usize, r8c::Op>,
+    macros: HMap<SymID, SymID>,
+    pub(crate) funcs: HMap<SymID, Func>,
+    func_labels: HMap<SymID, HMap<u32, Lbl>>,
     pub(crate) labels: LblMap,
-    func_arg_syms: FnvHashMap<SymID, Vec<SymID>>,
+    func_arg_syms: HMap<SymID, Vec<SymID>>,
     pub(crate) srctbl: SourceList,
     catch: Vec<(usize, usize, Option<usize>)>,
-    libs: FnvHashMap<SymID, (PathBuf, fs::Metadata)>,
+    libs: HMap<SymID, (PathBuf, fs::Metadata)>,
 
-    obj_methods: FnvHashMap<(TypeId, SymID), ObjMethod>,
+    obj_methods: HMap<(TypeId, SymID), ObjMethod>,
 
     stdout: Arc<Mutex<Box<dyn OutStream>>>,
 
@@ -1507,7 +1507,7 @@ impl R8VM {
         use r8c::Op;
         let mut fns = vec![lambda.pos];
         let start = self.pmem.len();
-        let mut moved_fns = FnvHashMap::default();
+        let mut moved_fns = HMap::default();
         while let Some(fn_begin) = fns.pop() {
             moved_fns.insert(fn_begin, self.pmem.len());
             for pos_j in fn_begin..vm.pmem.len() {
@@ -2678,7 +2678,7 @@ impl R8VM {
                                 (*fastcast::<Vec<PV>>(p)).get(idx as usize).ok_or(error!(IndexError, idx: idx as usize)).copied(),
                             (PV::Ref(_), NkT::Table) => err!(KeyReference, key: idx.to_string()),
                             (idx, NkT::Table) =>
-                                Ok((*fastcast::<FnvHashMap<PV, PV>>(p)).get(&idx).copied().unwrap_or_default()),
+                                Ok((*fastcast::<HMap<PV, PV>>(p)).get(&idx).copied().unwrap_or_default()),
                             _ => Err(err())
                         }
                         #[cfg(feature = "math")] (PV::Int(0), PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
