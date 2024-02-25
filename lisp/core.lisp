@@ -137,6 +137,9 @@
          ,(let*/helper (cdr pairs) body))
     `(progn ,@body)))
 
+(defmacro defvar (var init)
+  `(define ,var ,init))
+
 (defmacro let* (pairs &body body)
   (let*/helper pairs body))
 
