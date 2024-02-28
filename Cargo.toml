@@ -40,7 +40,7 @@ cleanup-vtables = []
 
 [dependencies]
 log = "0.4"
-ahash = "0.8.9"
+ahash = "0.8"
 serde = { version = "1.0.143", features = ["derive"], optional = true }
 
 spaik-proc-macros = { path = "proc-macros", optional = true }
