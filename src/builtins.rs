@@ -112,6 +112,7 @@ builtins! {
     (Label, "label"),
     (Char, "char"),
     (Id, "id"),
+    (RigidBody, "rigid-body"),
     (CallCC, "call/cc"),
     (Integer, "integer"),
     (String, "string"),

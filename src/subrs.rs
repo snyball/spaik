@@ -136,6 +136,29 @@ impl IntoLisp for shipyard::EntityId {
     }
 }
 
+#[cfg(feature = "rapier2d")]
+impl TryFrom<PV> for rapier2d::prelude::RigidBodyHandle {
+    type Error = Error;
+
+    fn try_from(value: PV) -> Result<Self, Self::Error> {
+        if let PV::RigidBody(v) = value {
+            Ok(v)
+        } else {
+            err!(TypeError, expect: Builtin::RigidBody, got: value.bt_type_of())
+        }
+    }
+}
+
+#[cfg(feature = "rapier2d")]
+impl_objref!(rapier2d::prelude::RigidBodyHandle);
+
+#[cfg(feature = "rapier2d")]
+impl IntoLisp for rapier2d::prelude::RigidBodyHandle {
+    fn into_pv(self, _mem: &mut Arena) -> Result<PV, Error> {
+        Ok(PV::RigidBody(self))
+    }
+}
+
 #[cfg(feature = "math")]
 impl TryFrom<PV> for glam::Vec2 {
     type Error = Error;

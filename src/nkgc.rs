@@ -165,6 +165,10 @@ pub enum PV {
     Id(shipyard::EntityId),
     #[cfg(not(feature = "shipyard"))]
     Id(usize),
+    #[cfg(feature = "rapier2d")]
+    RigidBody(rapier2d::prelude::RigidBodyHandle),
+    #[cfg(not(feature = "rapier2d"))]
+    Body(usize),
     #[cfg(feature = "math")]
     Vec2(Vec2),
     #[cfg(feature = "math")]
@@ -465,6 +469,7 @@ impl PV {
             Sym(_) => Builtin::Symbol,
             Char(_) => Builtin::Char,
             Id(_) => Builtin::Id,
+            RigidBody(_) => Builtin::RigidBody,
             #[cfg(feature = "math")] Vec2(_) => Builtin::Vec2,
             #[cfg(feature = "math")] Vec3(_) => Builtin::Vec3,
             Ref(p) => unsafe {
@@ -840,6 +845,7 @@ impl Hash for PV {
             PV::Real(x) => x.to_ne_bytes().hash(state),
             PV::Char(x) => x.hash(state),
             PV::Id(x) => x.hash(state),
+            PV::RigidBody(x) => x.hash(state),
             #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => { x.to_ne_bytes().hash(state);
                                          y.to_ne_bytes().hash(state) },
@@ -866,6 +872,7 @@ impl LispFmt for PV {
             PV::Sym(id) => write!(f, "{id}"),
             PV::Char(c) => write!(f, "(char {c})"),
             PV::Id(c) => write!(f, "(id {c:?})"),
+            PV::RigidBody(b) => write!(f, "(rigid-body {b:?})"),
             #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => write!(f, "(vec2 {x} {y})"),
             #[cfg(feature = "math")]
