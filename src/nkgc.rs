@@ -168,7 +168,7 @@ pub enum PV {
     #[cfg(feature = "rapier2d")]
     RigidBody(rapier2d::prelude::RigidBodyHandle),
     #[cfg(not(feature = "rapier2d"))]
-    Body(usize),
+    RigidBody(usize),
     #[cfg(feature = "math")]
     Vec2(Vec2),
     #[cfg(feature = "math")]
