@@ -70,6 +70,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             PV::Bool(_) => self.deserialize_bool(visitor),
             PV::Char(_) => self.deserialize_char(visitor),
             PV::Id(_) => self.deserialize_u64(visitor),
+            PV::RigidBody(_) => self.deserialize_u64(visitor),
             #[cfg(feature = "math")]
             PV::Vec2(_) => self.deserialize_tuple(2, visitor),
             #[cfg(feature = "math")]
