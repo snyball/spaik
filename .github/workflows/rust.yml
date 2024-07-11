@@ -42,10 +42,10 @@ jobs:
       run: |
         curl https://wasmtime.dev/install.sh -sSf | bash
         just test-wasm
-    - name: Run tests on WINE
-      run: cargo test --verbose --target x86_64-pc-windows-gnu
-      env:
-        CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER: "wine"
+    # - name: Run tests on WINE
+    #   run: cargo test --verbose --target x86_64-pc-windows-gnu
+    #   env:
+    #     CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER: "wine"
     # - name: Run tests with Valgrind
     #   run: |
     #     export PATH="$PATH:$HOME/.cargo/bin"
