@@ -1491,65 +1491,6 @@ impl R8VM {
         vm
     }
 
-    fn import_env(&mut self, idx: u32, vm: &R8VM) -> usize {
-        let pv = vm.mem.get_env(idx as usize);
-        match pv {
-            PV::Ref(p) => todo!(),
-            PV::Sym(s) => {
-                let sym = self.sym_id(s.as_ref());
-                self.mem.push_env(PV::Sym(sym))
-            },
-            v => self.mem.push_env(v),
-        }
-    }
-
-    fn import_lambda(&mut self, lambda: Lambda, vm: &R8VM) -> Result<()> {
-        use r8c::Op;
-        let mut fns = vec![lambda.pos];
-        let start = self.pmem.len();
-        let mut moved_fns = HMap::default();
-        while let Some(fn_begin) = fns.pop() {
-            moved_fns.insert(fn_begin, self.pmem.len());
-            for pos_j in fn_begin..vm.pmem.len() {
-                let op = match vm.pmem[pos_j] {
-                    op @ Op::CALL(ppos, _) => {
-                        fns.push(ppos as usize);
-                        op
-                    },
-                    Op::INS(idx) =>
-                        Op::INS(self.import_env(idx, vm).try_into().unwrap()),
-                    Op::GET(idx) =>
-                        Op::GET(self.import_env(idx as u32, vm).try_into().unwrap()),
-                    Op::SET(idx) =>
-                        Op::SET(self.import_env(idx as u32, vm).try_into().unwrap()),
-                    Op::VCALL(_, _) => bail!(UnlinkedFunction),
-                    op @ Op::CLZ(pos, _) => {
-                        fns.push(pos as usize);
-                        op
-                    }
-                    op @ Op::RET() => {
-                        self.pmem.push(op);
-                        break;
-                    },
-                    op => op
-                };
-                if let Ok(i) = vm.srctbl.binary_search_by(|(u, _)| u.cmp(&pos_j)) {
-                    self.srctbl.push((self.pmem.len(), vm.srctbl[i].1.clone()));
-                }
-                vm.get_source(pos_j);
-                self.pmem.push(op);
-            }
-        }
-        for i in start..self.pmem.len() {
-            match &mut self.pmem[i] {
-                Op::CALL(ref mut pos, _) | Op::CLZ(ref mut pos, _) =>
-                    *pos = moved_fns[&(*pos as usize)] as u32,
-                _ => ()
-            }
-        }
-        Ok(())
-    }
-
     fn resource_idx<T: Userdata>(&mut self) -> u32 {
         match self.resources.entry(TypeId::of::<T>()) {
             Entry::Occupied(e) => *e.get(),
