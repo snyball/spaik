@@ -218,7 +218,7 @@ impl fmt::Display for SyntaxErrorKind {
 pub struct ExtError(pub Arc<Box<dyn std::error::Error + Send + Sync>>);
 
 impl PartialEq for ExtError {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         false
     }
 }
@@ -542,7 +542,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "Module Error: Unable to load module {lib}")?,
         ModuleNotFound { lib } =>
             write!(f, "Module Not Found: Could not find {lib}, check sys/load-path")?,
-        ErrorKind::Traceback { tb } => {
+        ErrorKind::Traceback { tb: _ } => {
             writeln!(f, "Traceback:")?;
             err.write_traceback(f)?;
             return fmt_error(err.cause(), f);

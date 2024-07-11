@@ -64,10 +64,6 @@ macro_rules! with_ref_mut {
     };
 }
 
-pub trait SymTypeOf {
-    fn sym_type_of(&self) -> SymID;
-}
-
 pub trait Traceable {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>);
     fn update_ptrs(&mut self, reloc: &PtrMap);
@@ -1159,43 +1155,6 @@ impl IntoIterator for PV {
     type IntoIter = PVIter;
     fn into_iter(self) -> Self::IntoIter {
         PVIter { item: self }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Stream {
-    name: String,
-    id: u32,
-}
-
-impl LispFmt for Stream {
-    fn lisp_fmt(&self, _: &mut VisitSet, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(stream {})", self.name)
-    }
-}
-
-impl Traceable for Stream {
-    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
-    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
-}
-
-#[repr(C)]
-pub struct ILambda {
-    pub pos: usize,
-    pub args: ArgSpec,
-    pub len: usize,
-    pub locals: [PV],
-}
-
-pub trait SizeOf {
-    fn size_of(&self) -> usize;
-}
-
-impl SizeOf for ILambda {
-    fn size_of(&self) -> usize {
-        let end = addr_of!(self.locals[self.len]);
-        let beg = addr_of!(self.pos);
-        end as usize - beg as usize
     }
 }
 

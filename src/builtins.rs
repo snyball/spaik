@@ -147,10 +147,7 @@ builtins! {
     (Epsilon, "")
 }
 
-pub trait Hexable {
-    fn fmt_hex(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
-}
-
+#[allow(unused)]
 struct Hex<T>(pub T) where T: LowerHex;
 
 impl<T> Display for Hex<T> where T: LowerHex {

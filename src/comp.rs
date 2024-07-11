@@ -272,7 +272,6 @@ impl R8Compiler {
     }
 
     // FIXME: This is SLOW and has to be REMOVED removed
-    #[deprecated]
     pub fn update_globals(&mut self, vm: &R8VM) {
         if vm.globals.len() != self.env.len() {
             for (k, v) in vm.globals.iter() {

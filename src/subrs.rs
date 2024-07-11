@@ -427,12 +427,12 @@ impl Zubr {
         }
     }
 
-    pub fn fun<A, R, F>(f: F)
+    pub fn fun<A, R, F>(_f: F)
         where A: Send + 'static,
               R: Send + 'static,
               F: Funcable<A, R> + IntoSubr<A, R> + Clone + 'static
     {
-        let thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(HMap::default()));
+        let _thaw_fns = SUBR_THAW_FNS.get_or_init(|| Mutex::new(HMap::default()));
         // let subrs = SUBRS.get_or_init(|| Mutex::new(HMap::default()));
         // if let Entry::Vacant(e) = thaw_fns.lock().unwrap().entry(TypePath::of::<F>()) {
         //     subrs.lock().unwrap().insert(TypePath::of::<F>(), Box::new(RLambda::new(f)));

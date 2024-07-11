@@ -27,6 +27,7 @@ macro_rules! invalid {
     ($($pv:ident),+) => {{}};
 }
 
+#[allow(unused_macros)]
 macro_rules! vm_assert {
     ($vm:expr, $ex:expr) => {
         assert!($vm.eval::<bool,_>($ex).unwrap(), $ex)

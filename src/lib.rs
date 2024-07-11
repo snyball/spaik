@@ -716,7 +716,7 @@ impl<'q: 'c, 'a, 'b, 'c> PrepLambda<'a, 'b, 'c> {
 }
 
 impl Lispify<(), (), ()> for Result<PV> {
-    fn lispify(self, mem: &mut _deps::Arena) -> std::result::Result<PV, Error> {
+    fn lispify(self, _mem: &mut _deps::Arena) -> std::result::Result<PV, Error> {
         self
     }
 }
@@ -1040,6 +1040,7 @@ mod tests {
         });
         let mut vm = Spaik::new_no_core();
         vm.f(10, 32.0);
+        vm.g(10, 32.0);
     }
 
     #[cfg(feature = "derive")]

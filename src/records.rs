@@ -7,6 +7,7 @@ use crate::r8vm::{ObjMethod, ArgSpec};
 use crate::{Subr, swym::SymRef, nkgc::PV, r8vm::R8VM};
 use crate::{Result, Error};
 
+#[allow(unused)]
 #[derive(Debug, Obj, Clone, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
 struct Example {
@@ -15,6 +16,7 @@ struct Example {
     z: String
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Obj, PartialEq)]
 #[cfg_attr(feature = "freeze", derive(serde::Serialize, serde::Deserialize))]
 enum EnumExample {

@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use std::fmt::{Display, format};
+use std::fmt::Display;
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
@@ -187,7 +187,7 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
                 self.vm.catch_clear();
                 r
             },
-            syn::ReturnType::Type(_, ty) => quote! {
+            syn::ReturnType::Type(_, _ty) => quote! {
                 if let Some(c) = self.catch {
                     self.vm.catch(c);
                 }
@@ -479,6 +479,7 @@ impl<'a> Display for KebabTypeName<'a> {
 struct FnSig {
     nargs: usize,
     inputs: Vec<Type>,
+    #[allow(dead_code)]
     output: syn::ReturnType,
 }
 
@@ -548,8 +549,6 @@ fn make_wrappers(skip: usize, methods: impl Iterator<Item = ImplItemMethod>) -> 
 
 fn make_getargs(skip: isize, methods: impl Iterator<Item = ImplItemMethod>) -> impl Iterator<Item = proc_macro2::TokenStream> {
     methods.map(move |x| {
-        let nargs: u16 = (x.sig.inputs.len() as isize - skip).try_into().unwrap();
-        let names = (0..nargs).map(|i| format_ident!("arg_{i}"));
         let getarg = x.sig.inputs.iter().skip(skip as usize).enumerate().map(|(idx, arg)| {
             let name = format_ident!("arg_{idx}");
             if get_fn_type(arg).is_some() {
@@ -580,10 +579,6 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     let nargs = methods.clone().map(|x| x.sig.inputs.len() as u16 - 1);
     let mnames = methods.clone().map(|x| x.sig.ident.clone());
     let kwnames = methods.clone().map(|x| format!(":{}", fn_name(x.sig.ident.to_string())));
-    let args = nargs.clone().map(|nargs| {
-        let idx = 0..(nargs as usize);
-        quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
-    });
     let set_args = make_setargs(methods.clone().map(|m| m.sig.inputs.len() - 1));
     let get_args = make_getargs(1, methods.clone().cloned());
     let wraps = make_wrappers(1, methods.clone().cloned());
@@ -614,10 +609,6 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         format!("{}/{}",
                 KebabTypeName(&name),
                 fn_name(x.sig.ident.to_string()))
-    });
-    let st_args = st_nargs.clone().map(|nargs| {
-        let idx = 0..(nargs as usize);
-        quote!(#(args[#idx].from_lisp_3(&mut vm.mem)?),*)
     });
     let st_set_args = make_setargs(st_methods.clone().map(|m| m.sig.inputs.len()));
     let st_get_args = make_getargs(0, st_methods.clone().cloned());

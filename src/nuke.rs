@@ -92,6 +92,7 @@ macro_rules! fissile_types {
         #[derive(Debug, PartialEq, Eq)]
         pub enum NkT { $($t),+ }
 
+        #[allow(dead_code)]
         #[derive(Debug)]
         pub enum NkMut { $($t(*mut $path)),+ }
 
@@ -1788,6 +1789,7 @@ impl Drop for Nuke {
     }
 }
 
+#[allow(unused)]
 struct RawDebugStr<'a>(&'a str);
 
 impl fmt::Debug for RawDebugStr<'_> {
@@ -1796,6 +1798,7 @@ impl fmt::Debug for RawDebugStr<'_> {
     }
 }
 
+#[allow(unused)]
 struct DebugHexBytes<'a>(&'a [u8]);
 
 impl fmt::Debug for DebugHexBytes<'_> {

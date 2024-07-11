@@ -96,7 +96,9 @@ pub enum M {
 pub enum M2<'a> {
     Add(&'a M, &'a M),
     Sub(&'a M, &'a M),
+    #[allow(unused)]
     Div(&'a M, &'a M),
+    #[allow(unused)]
     Mul(&'a M, &'a M),
 }
 

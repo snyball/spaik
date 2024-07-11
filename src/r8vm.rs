@@ -1003,9 +1003,6 @@ pub trait OutStream: io::Write + Debug + Send {}
 #[cfg(not(feature = "no-threading"))]
 impl<T> OutStream for T where T: io::Write + Debug + Send {}
 
-pub trait InStream: io::Read + Debug + Send {}
-impl<T> InStream for T where T: io::Read + Debug + Send {}
-
 pub type ObjMethod = unsafe fn(*mut u8, &mut R8VM, &[PV]) -> Result<PV>;
 
 #[derive(Clone)]
@@ -1730,13 +1727,13 @@ impl R8VM {
     }
 
     /// Reads LISP code into an AST.
-    pub fn read(&mut self, sexpr: &str) -> Result<PV> {
+    pub fn read(&mut self, _sexpr: &str) -> Result<PV> {
         unimplemented!();
         // self.read_compile(&format!("'({sexpr})"), None)
     }
 
     /// Reads LISP code into an AST from file.
-    pub fn read_from(&mut self, path: impl AsRef<Path>) -> Result<PV> {
+    pub fn read_from(&mut self, _path: impl AsRef<Path>) -> Result<PV> {
         unimplemented!();
         // let sexpr = fs::read_to_string(path.as_ref())?;
         // let name = path.as_ref().file_stem().map(|p| {

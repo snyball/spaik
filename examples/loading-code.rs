@@ -1,4 +1,4 @@
-use spaik::Spaik;
+use spaik::{Ignore, Spaik};
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut vm = Spaik::new();
@@ -6,7 +6,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     // We need to specify a load-path first
     vm.add_load_path("examples");
 
-    vm.load("to-be-loaded")?;
+    vm.load::<Ignore,_>("to-be-loaded")?;
 
     Ok(())
 }

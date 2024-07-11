@@ -145,6 +145,7 @@ pub trait ASMOp {
         where Self: std::marker::Sized;
 }
 
+#[allow(unused)]
 pub trait ChASMOpName {
     fn dialect(&self) -> &'static str;
     fn id(&self) -> OpCode;

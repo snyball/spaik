@@ -29,7 +29,6 @@ def_styles! {
     style_asm_label_ref { style().yellow() }
     style_asm_label { style().yellow().bold() }
     style_asm_fn { style().cyan().bold() }
-    style_asm_var { style().cyan().bold() }
     style_asm_op { style().cyan().bold() }
     style_warning { style().yellow().bold() }
     style_error { style().red().bold() }
