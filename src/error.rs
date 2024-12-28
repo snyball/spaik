@@ -8,7 +8,7 @@ use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::mem::{discriminant, replace};
 use std::error;
-use std::fmt::{self, Debug, Display, Write};
+use std::fmt::{self, write, Debug, Display, Write};
 use std::num::TryFromIntError;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -102,6 +102,7 @@ pub enum Meta {
     SourceFile(Cow<'static, str>),
     Source(LineCol),
     Related(Option<OpName>, Source),
+    Hint(String),
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -152,6 +153,7 @@ impl MetaSet {
     get_inner_meta!(src_line_col, Source, LineCol);
     get_inner_meta!(src_file, SourceFile, Cow<'static, str>);
     get_inner_meta!(var_name, VarName, OpName);
+    get_inner_meta!(hint, Hint, String);
 
     fn src(&self) -> Option<Source> {
         let line_col = self.src_line_col()?;
@@ -434,6 +436,20 @@ impl Display for OneOf<'_> {
     }
 }
 
+struct SourceDisplayHack<'a>(&'static str, &'a MetaSet, &'static str);
+
+impl Display for SourceDisplayHack<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(src) = self.1.src() {
+            write!(f, "{}{}{}", self.0, src, self.2)
+        } else if let Some(srcf) = self.1.src_file() {
+            write!(f, "{}[{}]{}", self.0, srcf, self.2)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub trait IsOne {
     fn is_one(&self) -> bool;
 }
@@ -624,9 +640,12 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         ExtError(err) => write!(f, "{:?}", err.0)?,
     }
 
-    if let Some(src) = meta.src() {
-        write!(f, " {}", src)?;
+    write!(f, "{}", SourceDisplayHack(" ", meta, ""))?;
+
+    if let Some(hint) = meta.hint() {
+        write!(f, " (hint: {hint})")?;
     }
+
     Ok(())
 }
 
@@ -858,5 +877,13 @@ mod tests {
         assert!(!2usize.is_one());
         assert!(1u32.is_one());
         assert!(!2u32.is_one());
+    }
+
+    #[test]
+    fn file_name_and_hint_but_no_lineno() {
+        let err = Error::new(ErrorKind::SomeError { msg: "thing".to_owned() })
+            .amend(Meta::SourceFile(Cow::Borrowed("filename")))
+            .amend(Meta::Hint("have you tried counseling?".to_owned()));
+        assert_eq!(format!("{err}"), "Error: thing [filename] (hint: have you tried counseling?)");
     }
 }
