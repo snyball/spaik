@@ -682,6 +682,19 @@ impl Error {
         self
     }
 
+    pub fn also_expected(mut self, ty: Builtin) -> Error {
+        match self.inner.ty {
+            ErrorKind::TypeError { expect, got } => {
+                self.inner.ty = ErrorKind::TypeNError { expect: vec![expect, ty], got }
+            }
+            ErrorKind::TypeNError { ref mut expect, .. } => {
+                expect.push(ty)
+            }
+            _ => ()
+        }
+        self
+    }
+
     pub fn argn(mut self, n: u32) -> Error {
         self.inner.meta.amend(Meta::OpArgn(n));
         self

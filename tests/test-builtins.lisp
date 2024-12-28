@@ -40,6 +40,28 @@
       (eq? (map math/factorial (range-list 0 13))
            '(1 1 2 6 24 120 720 5040 40320 362880 3628800 39916800 479001600)))
 
+;;; ---[ length ]--------------------------------------
+(test len
+      (= (len '(a b c)) 3)
+      (= (len '()) 0)
+      (= (len '(a b)) 2)
+      (= (len (vec 1 8 10 12)) 4)
+      (= (len (vec)) 0)
+      (= (len "abc") 3)
+      (= (len "") 0)
+      (= (len (let ((tbl (make-table)))
+                (set (get tbl :a) 1)
+                (set (get tbl :b) 2)
+                tbl))
+         2)
+      (= (len (make-table)) 0)
+      (= (len (vec2 1 1)) 1.4142135)
+      (= (len (vec2 0 0)) 0.0)
+      (= (len (vec3 1 1 1)) 1.7320508)
+      (= (len (vec3 0 0 0)) 0.0)
+      (= (len (vec4 1 1 1 1)) 2.0)
+      (= (len (vec4 0 0 0 0)) 0.0))
+
 ;;; ---[ loops ]---------------------------------------
 (test loops
       (= (loop (break 'ok)) 'ok)

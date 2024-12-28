@@ -2659,13 +2659,7 @@ impl R8VM {
                 }
                 LEN() => {
                     let li = self.mem.pop()?;
-                    let len = with_ref!(li,
-                                        Vector(v) => { Ok((*v).len()) },
-                                        String(s) => { Ok((*s).len()) },
-                                        Table(s) => { Ok((*s).len()) },
-                                        Cons(_) => { Ok(li.iter().count()) })
-                        .map_err(|e| e.bop(Builtin::Len))?;
-                    self.mem.push(PV::Int(len as Int));
+                    self.mem.push(li.len()?);
                 }
 
                 // Value creation

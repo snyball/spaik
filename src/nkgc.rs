@@ -455,6 +455,40 @@ impl PV {
         }
     }
 
+    pub fn len(&self) -> Result<PV, Error> {
+        let err = || crate::error::Error::new(
+            crate::error::ErrorKind::TypeNError {
+                expect: vec![
+                    Builtin::Nil,
+                    Builtin::Cons,
+                    Builtin::String,
+                    Builtin::Vector,
+                    Builtin::Table,
+                    Builtin::Vec2,
+                    Builtin::Vec3,
+                    Builtin::Vec4,
+                ],
+                got: self.bt_type_of(),
+            }
+        ).bop(Builtin::Len);
+        Ok(match self {
+            #[cfg(feature = "math")] PV::Vec2(v) => PV::Real(v.length()),
+            #[cfg(feature = "math")] PV::Vec3(v) => PV::Real(v.length()),
+            PV::Nil => PV::Int(0),
+            PV::Ref(p) => unsafe {
+                match to_fissile_ref(*p) {
+                    NkRef::Cons(_) => PV::Int(self.iter().count() as Int),
+                    NkRef::String(s) => PV::Int((*s).len() as Int),
+                    NkRef::Vector(v) => PV::Int((*v).len() as Int),
+                    NkRef::Table(t) => PV::Int((*t).len() as Int),
+                    #[cfg(feature = "math")] NkRef::Vec4(v) => PV::Real((*v).length()),
+                    _ => return Err(err())
+                }
+            }
+            _ => return Err(err())
+        })
+    }
+
     pub fn bt_type_of(&self) -> Builtin {
         use PV::*;
         match *self {
