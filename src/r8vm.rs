@@ -426,6 +426,38 @@ mod sysfns {
             })
         }
 
+        fn rot_x(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            featurefn!("math", Ok(vm.mem.put_pv(glam::Mat4::from_rotation_x(x.real()?))))
+        }
+
+        fn rot_y(&mut self, vm: &mut R8VM, args: (y)) -> Result<PV> {
+            featurefn!("math", Ok(vm.mem.put_pv(glam::Mat4::from_rotation_y(y.real()?))))
+        }
+
+        fn rot_z(&mut self, vm: &mut R8VM, args: (z)) -> Result<PV> {
+            featurefn!("math", Ok(vm.mem.put_pv(glam::Mat4::from_rotation_z(z.real()?))))
+        }
+
+        fn translate(&mut self, vm: &mut R8VM, args: (delta)) -> Result<PV> {
+            featurefn!("math", match delta {
+                PV::Vec2(delta) => Ok(vm.mem.put_pv(glam::Mat3::from_translation(*delta))),
+                PV::Vec3(delta) => Ok(vm.mem.put_pv(glam::Mat4::from_translation(*delta))),
+                _ => err!(TypeNError,
+                    expect: vec![Builtin::Vec2, Builtin::Vec3],
+                    got: delta.bt_type_of())
+            })
+        }
+
+        fn scale(&mut self, vm: &mut R8VM, args: (s)) -> Result<PV> {
+            featurefn!("math", match s {
+                PV::Vec2(s) => Ok(vm.mem.put_pv(glam::Mat3::from_scale(*s))),
+                PV::Vec3(s) => Ok(vm.mem.put_pv(glam::Mat4::from_scale(*s))),
+                _ => err!(TypeNError,
+                    expect: vec![Builtin::Vec2, Builtin::Vec3],
+                    got: s.bt_type_of())
+            })
+        }
+
         fn concat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             join_str(args.iter().copied(), "").into_pv(&mut vm.mem)
         }
@@ -1453,6 +1485,11 @@ impl R8VM {
         addfn!(vec2);
         addfn!(vec3);
         addfn!(vec4);
+        addfn!("rot-x", rot_x);
+        addfn!("rot-y", rot_y);
+        addfn!("rot-z", rot_z);
+        addfn!(scale);
+        addfn!(translate);
         addfn!(cos);
         addfn!(sin);
         addfn!(log10);
