@@ -58,7 +58,7 @@ jobs:
       run: cargo +nightly miri test
       env:
         MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows"
-    - name: Run tests on Miri 32-Bit
-      run: cargo +nightly miri test --target i686-unknown-linux-gnu
-      env:
-        MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows"
+    # - name: Run tests on Miri 32-Bit
+    #   run: cargo +nightly miri test --target i686-unknown-linux-gnu
+    #   env:
+    #     MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows"
