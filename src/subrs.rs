@@ -68,6 +68,17 @@ macro_rules! impl_objref {
     };
 }
 
+#[allow(unused_macros)]
+macro_rules! impl_objput {
+    ($($from_t:ty),*) => {
+        $(impl IntoLisp for $from_t {
+            fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
+                Ok(mem.put_pv(self))
+            }
+        })*
+    };
+}
+
 macro_rules! pv_convert {
     ($pvt:ident, $($from_t:ty),*) => {
         $(impl IntoLisp for $from_t {
@@ -209,11 +220,7 @@ impl IntoLisp for glam::Vec3 {
 }
 
 #[cfg(feature = "math")]
-impl IntoLisp for glam::Vec4 {
-    fn into_pv(self, mem: &mut Arena) -> Result<PV, Error> {
-        Ok(mem.put_pv(self))
-    }
-}
+impl_objput!(glam::Vec4, glam::Mat2, glam::Mat3, glam::Mat4);
 
 #[cfg(feature = "math")]
 impl_objref!(glam::Vec2, glam::Vec3, glam::Vec4);
