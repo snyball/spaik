@@ -56,6 +56,18 @@ impl<T> RefIntoLisp for T
 }
 
 #[allow(unused_macros)]
+macro_rules! impl_glam_tryfrom {
+    ($($from_t:tt),*) => {
+        $(impl TryFrom<PV> for glam::$from_t {
+            type Error = Error;
+            fn try_from(value: PV) -> Result<Self, Self::Error> {
+                with_ref!(value, $from_t(v) => { Ok(*v) })
+            }
+        })*
+    };
+}
+
+#[allow(unused_macros)]
 macro_rules! impl_objref {
     ($($from_t:ty),*) => {
         $(impl TryFrom<PV> for ObjRef<$from_t> {
@@ -197,13 +209,7 @@ impl TryFrom<PV> for glam::Vec3 {
 }
 
 #[cfg(feature = "math")]
-impl TryFrom<PV> for glam::Vec4 {
-    type Error = Error;
-
-    fn try_from(value: PV) -> Result<Self, Self::Error> {
-        with_ref!(value, Vec4(v) => { Ok(*v) })
-    }
-}
+impl_glam_tryfrom!(Vec4, Mat2, Mat3, Mat4);
 
 #[cfg(feature = "math")]
 impl IntoLisp for glam::Vec2 {
