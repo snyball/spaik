@@ -587,18 +587,6 @@ pub unsafe fn clear_vtables() {
 #[repr(C)]
 pub struct Voided;
 
-// static VT_VOID: &'static VTable = VTable {
-//     type_name: "void",
-//     get_rc: |obj| { 1 },
-//     trace: todo!(),
-//     update_ptrs: todo!(),
-//     drop: todo!(),
-//     lisp_fmt: todo!(),
-//     fmt: todo!(),
-//     call: todo!(),
-//     freeze: todo!(),
-// };
-
 impl Object {
     pub fn register<T: Userdata + 'static>(opt: OptVTable<T>) -> &'static VTable {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
@@ -657,22 +645,23 @@ impl Object {
         Ok(unsafe { (clonefn)(self.mem) })
     }
 
-    pub fn new<T: Userdata + 'static>(obj: T) -> Object {
+    unsafe fn make_mem<T: Userdata + 'static>(obj: T) -> *mut u8 {
         let layout = unsafe { ud_layout::<T>() };
+        let p = alloc(layout) as *mut T;
+        if p.is_null() {
+            handle_alloc_error(layout);
+        }
+        ptr::write(p, obj);
+        (*(p as *mut RcMem<T>)).rc = GcRc(1.into());
+        p as *mut u8
+    }
+
+    pub fn new<T: Userdata + 'static>(obj: T) -> Object {
         let vtable = Object::register::<T>(OptVTable::default());
-        let mem = unsafe {
-            let p = alloc(layout) as *mut T;
-            if p.is_null() {
-                handle_alloc_error(layout);
-            }
-            ptr::write(p, obj);
-            (*(p as *mut RcMem<T>)).rc = GcRc(1.into());
-            p as *mut u8
-        };
         Object {
             type_id: TypeId::of::<T>(),
             vt: vtable,
-            mem
+            mem: unsafe { Object::make_mem(obj) }
         }
     }
 
@@ -717,13 +706,13 @@ impl Object {
         self.mem as *const T
     }
 
-    pub fn from_ref<T: Userdata>(obj: &mut T) -> Object {
+    pub fn register_ref<T: Userdata>() -> &'static VTable {
         macro_rules! delegate {($name:ident($($arg:ident),*)) => {
             |this, $($arg),*| unsafe { (*(this as *mut T)).$name($($arg),*) }
         }}
         let type_id = TypeId::of::<*mut T>();
         let vtables = get_vtables();
-        let vt = match vtables.lock().unwrap().entry(type_id) {
+        match vtables.lock().unwrap().entry(type_id) {
             Entry::Occupied(vp) => *vp.get(),
             Entry::Vacant(entry) => {
                 entry.insert(Box::leak(Box::new(VTable {
@@ -746,12 +735,23 @@ impl Object {
                     fmt: delegate! { fmt(f) },
                 })))
             },
-        };
+        }
+    }
+
+    pub fn from_ref<T: Userdata>(obj: &mut T) -> Object {
+        let vt = Object::register_ref::<T>();
         Object {
             mem: obj as *mut T as *mut u8,
-            type_id,
+            type_id: TypeId::of::<*mut T>(),
             vt,
         }
+    }
+
+    pub fn put_ref<T: Userdata>(&mut self, obj: &mut T) {
+        self.void();
+        self.vt = Object::register_ref::<T>();
+        self.mem = obj as *mut T as *mut u8;
+        self.type_id = TypeId::of::<*mut T>();
     }
 
     pub fn void_vtable() -> &'static VTable {
@@ -798,6 +798,13 @@ impl Object {
 
     pub fn is_locked(&self) -> bool {
         self.type_id == TypeId::of::<Locked>()
+    }
+
+    pub fn put<T: Userdata>(&mut self, obj: T) {
+        self.void();
+        self.vt = Object::register::<T>(OptVTable::default());
+        self.mem = unsafe { Object::make_mem(obj) };
+        self.type_id = TypeId::of::<T>();
     }
 
     pub fn take<T: 'static>(&mut self) -> Result<T, Error> {

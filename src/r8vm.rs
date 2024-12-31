@@ -19,7 +19,7 @@ use crate::{
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::{SymRef, self}, tokit, AsSym, IntoLisp};
 use crate::utils::{HMap, HSet};
-use std::{io, fs, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, io::prelude::*, mem::{self, replace, take}, ptr::addr_of_mut, sync::{Mutex, atomic::AtomicU32, Arc}, path::{Path, PathBuf}, any::{TypeId, type_name}};
+use std::{any::{type_name, Any, TypeId}, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, fs, io::{self, prelude::*}, mem::{self, replace, take}, path::{Path, PathBuf}, ptr::addr_of_mut, sync::{atomic::AtomicU32, Arc, Mutex}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -1566,8 +1566,15 @@ impl R8VM {
     }
 
     pub unsafe fn set_resource<T: Userdata>(&mut self, rf: &mut T) {
-        let obj = rf.into_pv(&mut self.mem).unwrap();
         let idx = self.resource_idx::<T>();
+        if let PV::Ref(p) = self.mem.env[idx as usize] {
+            if let Some(obj) = cast_mut::<Object>(p) {
+                (*obj).put_ref(rf);
+                self.mem.push_borrow(p);
+                return;
+            }
+        }
+        let obj = rf.into_pv(&mut self.mem).unwrap();
         self.mem.set_env(idx as usize, obj);
     }
 
