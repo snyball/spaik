@@ -16,6 +16,7 @@ use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt::{self, Display};
 use core::fmt::Debug;
 use std::sync::atomic::AtomicU32;
+use std::time::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
 use crate::utils::{HMap, HSet};
@@ -1435,7 +1436,7 @@ impl Drop for RelocateToken {
 
 impl Nuke {
     pub fn new(sz: usize) -> Nuke {
-        log::trace!("new heap ...");
+        log::trace!("new heap of size {}KB ...", sz / 1024);
         vm_begin();
 
         assert!(sz >= 128, "Nuke too small");
@@ -1481,6 +1482,7 @@ impl Nuke {
         let mut node = self.fst_mut();
         let mut npos;
         let mut start = node as *mut u8;
+        let t0 = Instant::now();
 
         loop {
             let next_node = (*node).next;
@@ -1502,6 +1504,8 @@ impl Nuke {
         self.last = npos;
         self.free = start;
 
+        log::trace!("compacted heap, took {:?}", Instant::now().duration_since(t0));
+
         RelocateToken
     }
 
@@ -1519,11 +1523,11 @@ impl Nuke {
     }
 
     pub unsafe fn sweep_compact(&mut self) -> RelocateToken {
-        log::trace!("sweep-compacting heap ...");
-
         let mut node = self.fst_mut();
         let mut npos;
         let mut start = node as *mut u8;
+        let had_num_frees = self.num_frees;
+        let t0 = Instant::now();
 
         loop {
             let next_node = {
@@ -1568,12 +1572,13 @@ impl Nuke {
         (*self.fst_mut()).set_color(Color::Black);
         self.free = start;
 
+        log::trace!("sweep-compacted heap destroying {} objects, took {:?}",
+            self.num_frees - had_num_frees, Instant::now().duration_since(t0));
+
         RelocateToken
     }
 
     pub unsafe fn grow_realloc(&mut self, fit: usize) -> Option<RelocateToken> {
-        log::trace!("growing heap ...");
-
         let new_sz = (self.sz << 1).max(self.sz + fit);
         let layout = Layout::from_size_align_unchecked(self.sz, ALIGNMENT);
         let old_mem = self.mem as usize;
@@ -1583,6 +1588,9 @@ impl Nuke {
         }
         self.mem = mem;
         self.sz = new_sz;
+
+        log::trace!("growing heap to {}KB ...", self.sz / 1024);
+
         if old_mem != self.mem as usize {
             let mut node = self.fst_mut();
             loop {
@@ -1647,8 +1655,6 @@ impl Nuke {
     }
 
     pub unsafe fn make_room(&mut self, fit: usize) -> Option<RelocateToken> {
-        log::trace!("making room in heap ...");
-
         if self.used + fit > self.sz {
             self.grow_realloc(fit)
         } else {
