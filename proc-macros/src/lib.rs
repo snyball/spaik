@@ -63,16 +63,16 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
 
         unsafe impl #spaik_root::Subr for #anon_namespace::#obj_ident {
             fn call(&mut self,
-                    vm: &mut #spaik_root::_deps::R8VM,
-                    args: &[#spaik_root::_deps::PV])
-                    -> core::result::Result<#spaik_root::_deps::PV,
+                    vm: &mut #spaik_root::__private::R8VM,
+                    args: &[#spaik_root::__private::PV])
+                    -> core::result::Result<#spaik_root::__private::PV,
                                             #spaik_root::error::Error>
             {
-                use #spaik_root::_deps::ArgSpec;
+                use #spaik_root::__private::ArgSpec;
                 use #spaik_root::error::Error;
                 const SPEC: ArgSpec = ArgSpec::normal(#nargs);
                 SPEC.check(args.len() as u16)?;
-                #(let #spaik_root::_deps::ObjRef(#inputs_it)
+                #(let #spaik_root::__private::ObjRef(#inputs_it)
                   =
                   args[#inputs_it_idx_1].try_into()
                   .map_err(|e: Error| e.argn(#inputs_it_idx_2))?;
@@ -182,7 +182,7 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let r = if let Some(f) = self.fns.#name {
                     self.vm.callfn(f, (#(#arg_idents,)*))
                 } else {
-                    #root::_deps::PV::Nil.try_into()
+                    #root::__private::PV::Nil.try_into()
                 };
                 self.vm.catch_clear();
                 r
@@ -195,7 +195,7 @@ pub fn hooks(attr: TokenStream, item: TokenStream) -> TokenStream {
                     self.vm.callfn(f, (#(#arg_idents,)*))
                 } else {
                     Err((#root::error::ErrorKind::UndefinedHook {
-                        name: #root::_deps::OpName::OpStr(#fqn)
+                        name: #root::__private::OpName::OpStr(#fqn)
                     }).into())
                 };
                 self.vm.catch_clear();
@@ -244,19 +244,19 @@ pub fn derive_userdata(item: TokenStream) -> TokenStream {
         }
 
         impl #root::IntoLisp for #name {
-            fn into_pv(self, mem: &mut #root::_deps::Arena)
-                       -> core::result::Result<#root::_deps::PV, #root::error::Error>
+            fn into_pv(self, mem: &mut #root::__private::Arena)
+                       -> core::result::Result<#root::__private::PV, #root::error::Error>
             {
-                Ok(mem.put_pv(#root::_deps::Object::new(self)))
+                Ok(mem.put_pv(#root::__private::Object::new(self)))
             }
         }
 
-        impl TryFrom<#root::_deps::PV> for #name {
+        impl TryFrom<#root::__private::PV> for #name {
             type Error = #root::error::Error;
-            fn try_from(pv: #root::_deps::PV) -> std::result::Result<Self, Self::Error> {
+            fn try_from(pv: #root::__private::PV) -> std::result::Result<Self, Self::Error> {
                 let p = pv.ref_inner()?;
                 unsafe {
-                    let obj = #root::_deps::cast_mut_err::<#root::_deps::Object>(p)?;
+                    let obj = #root::__private::cast_mut_err::<#root::__private::Object>(p)?;
                     (*obj).take()
                 }
             }
@@ -303,9 +303,9 @@ fn maker(p: proc_macro2::TokenStream,
         #[derive(Clone)]
         struct #rs_struct_name;
         unsafe impl #root::Subr for #rs_struct_name {
-            fn call(&mut self, vm: &mut #root::_deps::R8VM,
-                    args: &[#root::_deps::PV]) -> #root::Result<#root::_deps::PV> {
-                use #root::{_deps::*, FromLisp3};
+            fn call(&mut self, vm: &mut #root::__private::R8VM,
+                    args: &[#root::__private::PV]) -> #root::Result<#root::__private::PV> {
+                use #root::{__private::*, FromLisp3};
                 ArgSpec::normal(#num_fields).check(args.len().try_into()?)?;
                 let common_err = |e: Error| e.sop(#name);
                 let mut make_obj = || Ok(Object::new(#obj_init));
@@ -365,7 +365,7 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
                                   format!("{}", v.ident).to_case(Case::Kebab));
             let maker_fn = format!("<ζ>::make-{variant}");
             Some(quote! {
-                #root::_deps::MacroNewVariant {
+                #root::__private::MacroNewVariant {
                     variant: #variant,
                     variant_maker: #maker_fn,
                     key_strings: &[#(#keys),*]
@@ -402,14 +402,14 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
 
         impl #root::Enum for #name {
             fn enum_macros() -> impl Iterator<Item = #root::MacroNew> {
-                const VARIANTS: [#root::_deps::MacroNewVariant; #num_macros] = [
+                const VARIANTS: [#root::__private::MacroNewVariant; #num_macros] = [
                     #(#variant_macro_strs),*
                 ];
-                #root::_deps::into_macro_news(&VARIANTS)
+                #root::__private::into_macro_news(&VARIANTS)
             }
 
             fn enum_constructors() -> impl Iterator<Item = Box<dyn #root::Subr>> {
-                use #root::_deps::*;
+                use #root::__private::*;
                 #(#makers)*
                 let boxes: [Box<dyn #root::Subr>; #num_variants] = [
                     #(Box::new(#maker_rs_names)),*
@@ -418,12 +418,12 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
             }
         }
 
-        impl TryFrom<#root::_deps::PV> for #name {
+        impl TryFrom<#root::__private::PV> for #name {
             type Error = #root::error::Error;
-            fn try_from(pv: #root::_deps::PV) -> std::result::Result<Self, Self::Error> {
+            fn try_from(pv: #root::__private::PV) -> std::result::Result<Self, Self::Error> {
                 let p = pv.ref_inner()?;
                 unsafe {
-                    let obj = #root::_deps::cast_mut_err::<#root::_deps::Object>(p)?;
+                    let obj = #root::__private::cast_mut_err::<#root::__private::Object>(p)?;
                     (*obj).take()
                 }
             }
@@ -432,10 +432,10 @@ pub fn derive_obj(item: TokenStream) -> TokenStream {
         impl #root::Userdata for #name {}
 
         impl #root::IntoLisp for #name {
-            fn into_pv(self, mem: &mut #root::_deps::Arena)
-                       -> core::result::Result<#root::_deps::PV, #root::error::Error>
+            fn into_pv(self, mem: &mut #root::__private::Arena)
+                       -> core::result::Result<#root::__private::PV, #root::error::Error>
             {
-                Ok(mem.put_pv(#root::_deps::Object::new(self)))
+                Ok(mem.put_pv(#root::__private::Object::new(self)))
             }
         }
     };
@@ -618,9 +618,9 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         #input
 
         unsafe impl #root::MethodSet<#spec> for #name {
-            fn methods() -> &'static [(&'static str, #root::_deps::ArgSpec, #root::_deps::ObjMethod)] {
-                use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
-                const METHODS: [(&'static str, #root::_deps::ArgSpec, #root::_deps::ObjMethod); #num_methods] =
+            fn methods() -> &'static [(&'static str, #root::__private::ArgSpec, #root::__private::ObjMethod)] {
+                use #root::{Lispify, FromLisp, FromLisp3, __private::*};
+                const METHODS: [(&'static str, #root::__private::ArgSpec, #root::__private::ObjMethod); #num_methods] =
                 [#((#kwnames, ArgSpec::normal(#nargs), |this: *mut u8, vm: &mut R8VM, args: &[PV]| unsafe {
                     ArgSpec::normal(#nargs).check(args.len() as u16)?;
                     #set_args
@@ -634,11 +634,11 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[allow(non_camel_case_types)]
         impl #root::SubrSet<#spec> for #name {
             fn subrs() -> impl Iterator<Item = Box<dyn #root::Subr>> {
-                use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
+                use #root::{Lispify, FromLisp, FromLisp3, __private::*};
                 #(#[derive(Clone)] struct #st_rs_names;
                   unsafe impl #root::Subr for #st_rs_names {
                       fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
-                          use #root::{Lispify, FromLisp, FromLisp3, _deps::*};
+                          use #root::{Lispify, FromLisp, FromLisp3, __private::*};
                           ArgSpec::normal(#st_nargs).check(args.len() as u16)?;
                           unsafe {
                               #st_set_args

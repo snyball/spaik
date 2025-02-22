@@ -9,7 +9,7 @@ macro_rules! def_call_builder {
             pub struct CallBuilder<'a, 'b, 'c, T> {
                 pub fns: &'a mut T,
                 pub vm: &'b mut $crate::Spaik,
-                pub catch: Option<Option<$crate::_deps::SymID>>,
+                pub catch: Option<Option<$crate::__private::SymID>>,
                 _ph: std::marker::PhantomData<&'c ()>
             }
 

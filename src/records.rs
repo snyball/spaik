@@ -57,13 +57,13 @@ impl TryFrom<PV> for MacroNew {
 }
 
 impl Traceable for MacroNew {
-    fn trace(&self, gray: &mut Vec<*mut crate::_deps::NkAtom>) {
+    fn trace(&self, gray: &mut Vec<*mut crate::__private::NkAtom>) {
         for df in self.defaults.iter() {
             df.map(|df| df.trace(gray));
         }
     }
 
-    fn update_ptrs(&mut self, reloc: &crate::_deps::PtrMap) {
+    fn update_ptrs(&mut self, reloc: &crate::__private::PtrMap) {
         for df in self.defaults.iter() {
             df.map(|mut df| df.update_ptrs(reloc));
         }

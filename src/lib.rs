@@ -110,7 +110,7 @@ def_call_builder!();
  * Everything inside this module should be considered an implementation detail,
  * and can change between even semver patch versions.
  */
-pub mod _deps {
+pub mod __private {
     pub use crate::r8vm::{R8VM, ArgSpec, ObjMethod};
     pub use crate::nkgc::SymID;
     pub use crate::nkgc::{PV, ObjRef, Arena, Traceable};
@@ -179,7 +179,7 @@ unsafe impl Subr for ExampleObject {
     }
 }
 impl IntoLisp for ExampleObject {
-    fn into_pv(self, mem: &mut _deps::Arena) -> Result<PV> {
+    fn into_pv(self, mem: &mut __private::Arena) -> Result<PV> {
         Ok(mem.put_pv(nuke::Object::new(self)))
     }
 }
@@ -716,7 +716,7 @@ impl<'q: 'c, 'a, 'b, 'c> PrepLambda<'a, 'b, 'c> {
 }
 
 impl Lispify<(), (), ()> for Result<PV> {
-    fn lispify(self, _mem: &mut _deps::Arena) -> std::result::Result<PV, Error> {
+    fn lispify(self, _mem: &mut __private::Arena) -> std::result::Result<PV, Error> {
         self
     }
 }
@@ -725,7 +725,7 @@ pub type Any = Result<PV>;
 pub const NIL: Result<PV> = Ok(PV::Nil);
 
 impl FromLisp<Lambda> for PV {
-    fn from_lisp(self, mem: &mut _deps::Arena) -> std::result::Result<Lambda, Error> {
+    fn from_lisp(self, mem: &mut __private::Arena) -> std::result::Result<Lambda, Error> {
         (self.bt_type_of() == Builtin::Lambda)
             .then(|| Lambda(mem.make_extref(self)))
             .ok_or_else(|| error!(TypeError,
@@ -735,7 +735,7 @@ impl FromLisp<Lambda> for PV {
 }
 
 impl IntoLisp for Lambda {
-    fn into_pv(self, mem: &mut _deps::Arena) -> std::result::Result<PV, Error> {
+    fn into_pv(self, mem: &mut __private::Arena) -> std::result::Result<PV, Error> {
         Ok(self.0.pv(mem))
     }
 }
