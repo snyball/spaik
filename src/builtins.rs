@@ -70,6 +70,7 @@ builtins! {
     (List, "list"),
     (ArgList, "arg-list"),
     (Append, "append"),
+    (AppendMut, "append!"),
     (Vector, "vec"),
     (Table, "table"),
     (Get, "get"),

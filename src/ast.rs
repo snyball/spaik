@@ -784,7 +784,7 @@ impl<'a> Excavator<'a> {
             Builtin::CallCC => self.wrap_one_arg(M::CallCC, args, src),
             Builtin::Cons => self.wrap_two_args(M::Cons, args, src),
             Builtin::List => self.wrap_any_args(M::List, args, src),
-            Builtin::Append => self.wrap_any_args(M::AppendMut, args, src),
+            Builtin::AppendMut => self.wrap_any_args(M::AppendMut, args, src),
             Builtin::Vector => self.wrap_any_args(M::Vector, args, src),
             Builtin::Push => self.wrap_two_args(M::Push, args, src),
             Builtin::Get => self.wrap_two_args(M::Get, args, src),
