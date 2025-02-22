@@ -95,11 +95,11 @@
     (if ,cnd (break))
     ,@body))
 
-(defmacro inc! (var &? n)
+(defmacro inc! (var &opt n)
   (let ((num (or n 1)))
     `(set ,var (+ ,var ,num))))
 
-(defmacro dec! (var &? n)
+(defmacro dec! (var &opt n)
   (let ((num (or n 1)))
     `(set ,var (- ,var ,num))))
 
@@ -422,7 +422,7 @@
 (defmacro send (expr)
   `(<ζ>-send-message ,expr))
 
-(defun nth (xs i &? alt)
+(defun nth (xs i &opt alt)
   (cond
    ((vec? xs) (if (< i (len xs))
                   (get xs i)

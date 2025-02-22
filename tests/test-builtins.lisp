@@ -143,10 +143,10 @@
       (= (tests--mul-sum 6 1 2 3 4 5 6 7 8 9) (* 6 (tests--sum-n 9))))
 
 ;;; ---[ optional-args ]-------------------------------
-(defun tests--opt (x &? y)
+(defun tests--opt (x &opt y)
   (+ x (or y 2)))
 
-(defun tests--opt-2 (x &? y &? z)
+(defun tests--opt-2 (x &opt y z)
   (+ x (or y 2) (or z 2)))
 
 (test optional-args
@@ -162,7 +162,7 @@
       (= (tests--opt-2 2 5 3) 10))
 
 ;;; ---[ rest-and-optional-args ]-----------------------
-(defun tests--mul-opt-sum (&? x &rest r)
+(defun tests--mul-opt-sum (&opt x &rest r)
   (* (or x 1) (sum r)))
 
 (test rest-and-optional-args

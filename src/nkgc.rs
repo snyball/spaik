@@ -280,7 +280,7 @@ impl Traceable for PV {
 
 macro_rules! num_op {
     ($name:ident, $sym:tt, $op:tt) => {
-        pub fn $name(&self, o: &PV) -> Result<PV, Error> {
+        pub fn $name(&self, o: &PV, ) -> Result<PV, Error> {
             use PV::*;
             Ok(match (self, o) {
                 (Int(x), Real(y)) => Real(*x as f32 $op y),

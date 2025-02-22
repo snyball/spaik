@@ -101,7 +101,7 @@ builtins! {
     (Progn, "progn"),
     (Catch, "catch"),
     (Throw, "throw"),
-    (ArgOptional, "&?"),
+    (ArgOptional, "&opt"),
     (ArgBody, "&body"),
     (ArgRest, "&rest"),
     (KwPass, ":pass"),

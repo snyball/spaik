@@ -81,7 +81,7 @@ pub enum M {
     Cdr(Prog),
     Cons(Prog, Prog),
     List(Progn),
-    Append(Progn),
+    AppendMut(Progn),
     Vector(Progn),
     Push(Prog, Prog),
     Get(Prog, Prog),
@@ -219,7 +219,7 @@ impl Display for M {
                 for x in xs.iter() { write!(f, " {x}")? }
                 write!(f, ")")?;
             },
-            M::Append(xs) => {
+            M::AppendMut(xs) => {
                 write!(f, "(append")?;
                 for x in xs.iter() { write!(f, " {x}")? }
                 write!(f, ")")?;
@@ -274,7 +274,7 @@ impl AST2 {
             M::Or(_) | M::And(_) | M::Not(_) | M::Eq(_, _) |
             M::Eqp(_, _) | M::Gt(_, _) | M::Gte(_, _) | M::Lt(_, _) |
             M::Lte(_, _) => Builtin::Bool,
-            M::Cdr(_) | M::List(_) | M::Append(_) => Builtin::List,
+            M::Cdr(_) | M::List(_) | M::AppendMut(_) => Builtin::List,
             M::Vector(_) => Builtin::Vector,
             M::Cons(_, _) => Builtin::Cons,
             M::Lambda(_, _) => Builtin::Lambda,
@@ -352,7 +352,7 @@ impl Visitable for AST2 {
             M::Cdr(ref mut x) => visit!(x),
             M::Cons(ref mut x, ref mut y) => visit!(x, y),
             M::List(ref mut xs) => vvisit!(xs),
-            M::Append(ref mut xs) => vvisit!(xs),
+            M::AppendMut(ref mut xs) => vvisit!(xs),
             M::Vector(ref mut xs) => vvisit!(xs),
             M::Push(ref mut x, ref mut y) => visit!(x, y),
             M::Get(ref mut x, ref mut y) => visit!(x, y),
@@ -393,30 +393,23 @@ impl<'a> Excavator<'a> {
         let mut spec = ArgSpec::default();
         let mut it = args.iter_src(self.mem, src);
         let mut modifier = None;
-        let mut had_opt = false;
 
         for (item, src) in it.by_ref() {
             let arg = item.car()?;
             if let PV::Sym(sym) = arg {
                 use Builtin::*;
                 match Builtin::from_sym(sym) {
-                    Some(x @ ArgOptional) => {
-                        modifier = Some(x);
-                        had_opt = true;
-                    }
+                    Some(x @ ArgOptional) => modifier = Some(x),
                     Some(x @ ArgRest) => modifier = Some(x),
                     Some(ArgBody) => modifier = Some(ArgRest),
                     _ => {
-                        match modifier.take() {
+                        match modifier {
                             Some(ArgOptional) => spec.nopt += 1,
                             Some(ArgRest) => {
                                 spec.rest = true;
                                 syms.push((sym, src));
                                 break;
                             }
-                            None if had_opt => return Err(ErrorKind::SyntaxErrorMsg {
-                                msg: "Normal argument follows &?".to_string()
-                            }.into()),
                             None | Some(_) => spec.nargs += 1,
                         }
                         syms.push((sym, src));
@@ -724,7 +717,7 @@ impl<'a> Excavator<'a> {
         if li.len() == 1 {
             return Ok(li.pop().unwrap());
         }
-        Ok(AST2 { kind: M::Append(li), src: root_src })
+        Ok(AST2 { kind: M::AppendMut(li), src: root_src })
     }
 
     fn quote(&self, args: PV, src: Source) -> Result<AST2> {
@@ -743,7 +736,7 @@ impl<'a> Excavator<'a> {
         if li.len() == 1 {
             return Ok(li.pop().unwrap());
         }
-        Ok(AST2 { kind: M::Append(li), src: root_src })
+        Ok(AST2 { kind: M::AppendMut(li), src: root_src })
     }
 
     fn bt_catch(&self, args: PV, src: Source) -> Result<AST2> {
@@ -791,7 +784,7 @@ impl<'a> Excavator<'a> {
             Builtin::CallCC => self.wrap_one_arg(M::CallCC, args, src),
             Builtin::Cons => self.wrap_two_args(M::Cons, args, src),
             Builtin::List => self.wrap_any_args(M::List, args, src),
-            Builtin::Append => self.wrap_any_args(M::Append, args, src),
+            Builtin::Append => self.wrap_any_args(M::AppendMut, args, src),
             Builtin::Vector => self.wrap_any_args(M::Vector, args, src),
             Builtin::Push => self.wrap_two_args(M::Push, args, src),
             Builtin::Get => self.wrap_two_args(M::Get, args, src),

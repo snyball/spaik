@@ -1195,7 +1195,7 @@ impl R8Compiler {
             M::Cdr(x) => self.opcall(ret, CDR, [x])?,
             M::Cons(x, y) => self.opcall(ret, CNS, [x, y])?,
             M::List(xs) => self.vopcall(ret, LST, xs)?,
-            M::Append(xs) => self.bt_append(ret, xs, src)?,
+            M::AppendMut(xs) => self.bt_append(ret, xs, src)?,
             M::Vector(xs) => self.vopcall(ret, VEC, xs)?,
             M::Push(vec, elem) => self.bt_vpush(ret, *vec, *elem)?,
             M::Get(vec, idx) => self.opcall(ret, VGET, [vec, idx])?,
