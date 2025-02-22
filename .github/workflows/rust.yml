@@ -22,7 +22,7 @@ jobs:
         sudo apt-get update
         sudo snap install --edge just --classic
         sudo apt install valgrind wine gcc-mingw-w64 binutils-mingw-w64 gcc-i686-linux-gnu binutils-i686-linux-gnu
-        rustup target add wasm32-wasi
+        rustup target add wasm32-wasip1
         rustup target add x86_64-pc-windows-gnu
         rustup target add i686-unknown-linux-gnu
         cargo install cargo-valgrind

@@ -1,14 +1,14 @@
 set positional-arguments
 
 export MIRIFLAGS := "-Zmiri-disable-isolation -Zmiri-tree-borrows"
-export CARGO_TARGET_WASM32_WASI_RUNNER := "tools/wasmtime.sh"
+export CARGO_TARGET_WASM32_WASIP1_RUNNER := "tools/wasmtime.sh"
 export WASMTIME_BACKTRACE_DETAILS := "1"
 
 install-tools:
     command -v cargo-hack &>/dev/null || cargo install cargo-hack
     rustup +nightly component add miri
     rustup target add wasm32-unknown-unknown
-    rustup target add wasm32-wasi
+    rustup target add wasm32-wasip1
     rustup target add x86_64-unknown-linux-musl
     rustup target add x86_64-unknown-linux-gnu
 
@@ -16,7 +16,7 @@ test:
     cargo test
 
 test-wasm:
-    cargo test --target wasm32-wasi -- --nocapture
+    cargo test --target wasm32-wasip1 -- --nocapture
 
 build-wasm:
     cargo +nightly build --profile wasm \
