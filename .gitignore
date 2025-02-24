@@ -3,7 +3,6 @@ examples/*/target
 /proc-macros/target
 /logs/
 **/*.rs.bk
-*.lock
 *.rmeta
 *.rlib
 .auctex-auto/*
@@ -30,3 +29,4 @@ package-lock.json
 cachegrind.out*
 /flamegraph.svg
 heaptrack.*
+result

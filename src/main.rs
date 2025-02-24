@@ -1,8 +1,3 @@
-#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
-use jemallocator::Jemalloc;
-#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
 use spaik::Spaik;
 use std::env;
 use std::fs::File;
