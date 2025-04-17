@@ -412,12 +412,8 @@ impl R8Compiler {
      * - `(not (not (not <_>)))` ➙ `(true, <_>)`
      * - `(not (not (not (not <_>))))` ➙ `(false, <_>)`
      *
-     * Where the boolean represents whether or not the expression
+     * Where the boolean represents whether or not the inner expression
      * has been negated.
-     *
-     * # Errors
-     *
-     * Returns an `ArgError` if `not` is given fewer or more than 1 argument.
      *
      * # Algorithm
      *
