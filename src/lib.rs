@@ -1151,4 +1151,15 @@ mod tests {
         let s: Result<bool> = vm.callfn(f, (1,));
         assert_eq!(s, Ok(true));
     }
+
+    #[test]
+    fn move_symbol_to_new_vm() {
+        let mut vm_a = Spaik::new_no_core();
+        let mut vm_b = Spaik::new_no_core();
+        vm_a.exec("(define a 'xyz)").unwrap();
+        let sym_a: Sym = vm_a.get("a").unwrap();
+        vm_a.set(&sym_a, 123);
+        assert_eq!(vm_a.get::<i32,_>("xyz").unwrap(), 123);
+        vm_b.set(&sym_a, 123);
+    }
 }

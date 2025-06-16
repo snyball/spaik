@@ -14,14 +14,14 @@ use crate::AsSym;
 use crate::nkgc::PV;
 use crate::nuke::GcRc;
 use crate::nuke::memcpy;
-use crate::r8vm::{R8VM, VMID};
+use crate::r8vm::{R8VM, VmId};
 
 pub struct Sym {
     rc: GcRc,
     ptr: NonNull<u8>,
     len: usize,
     sz: usize,
-    // vm_id: VMID,
+    vm_id: VmId,
 }
 
 impl Sym {
@@ -37,7 +37,8 @@ impl Sym {
             ptr: unsafe { NonNull::new_unchecked(st.as_ptr() as *mut u8) },
             rc: GcRc::new(AtomicU32::new(2)),
             len,
-            sz: 0
+            sz: 0,
+            vm_id: 0
         }
     }
 }
@@ -45,7 +46,7 @@ impl Sym {
 unsafe impl Send for Sym {}
 unsafe impl Sync for Sym {}
 
-pub struct SymRef(*mut Sym);
+pub struct SymRef(pub(crate) *mut Sym);
 unsafe impl Send for SymRef {}
 unsafe impl Sync for SymRef {}
 
@@ -83,15 +84,27 @@ impl SymRef {
     }
 }
 
+fn sym_for_vm(sym: *mut Sym, vm: &mut R8VM) -> SymID {
+    unsafe {
+        if (*sym).vm_id == vm.vm_id() {
+            SymID(sym)
+        } else {
+            let slice = slice::from_raw_parts((*sym).ptr.as_ptr(), (*sym).len);
+            let s = std::str::from_utf8_unchecked(slice);
+            vm.mem.put_sym_id(s)
+        }
+    }
+}
+
 impl AsSym for &SymRef {
-    fn as_sym(&self, _vm: &mut R8VM) -> SymID {
-        SymID(self.0)
+    fn as_sym(&self, vm: &mut R8VM) -> SymID {
+        sym_for_vm(self.0, vm)
     }
 }
 
 impl AsSym for SymRef {
-    fn as_sym(&self, _vm: &mut R8VM) -> SymID {
-        SymID(self.0)
+    fn as_sym(&self, vm: &mut R8VM) -> SymID {
+        sym_for_vm(self.0, vm)
     }
 }
 
@@ -307,9 +320,9 @@ impl Drop for SymRef {
     }
 }
 
-#[derive(Default)]
 pub struct SwymDb {
     map: HSet<SymKeyRef>,
+    vm_id: VmId,
 }
 
 impl Clone for SwymDb {
@@ -318,7 +331,7 @@ impl Clone for SwymDb {
         for sym in map.iter() {
             unsafe { (*sym.0.0).rc.inc() }
         }
-        Self { map }
+        Self { map, ..*self }
     }
 }
 
@@ -342,6 +355,17 @@ impl<H> From<SwymDb> for HashSet<String, H>
 }
 
 impl SwymDb {
+    pub fn new(vm_id: VmId) -> Self {
+        Self {
+            map: Default::default(),
+            vm_id
+        }
+    }
+
+    pub fn vm_id(&self) -> VmId {
+        self.vm_id
+    }
+
     pub fn put(&mut self, s: String) -> SymRef {
         unsafe {
             let mut s = mem::ManuallyDrop::new(s);
@@ -350,7 +374,8 @@ impl SwymDb {
                 ptr: NonNull::new(s.as_mut_ptr()).unwrap(),
                 len: s.len(),
                 sz: s.capacity(),
-                rc: GcRc::new(AtomicU32::new(0))
+                rc: GcRc::new(AtomicU32::new(0)),
+                vm_id: self.vm_id
             };
 
             let key = mem::ManuallyDrop::new(
@@ -381,7 +406,8 @@ impl SwymDb {
             ptr: NonNull::new(s.as_ptr() as *mut u8).unwrap(),
             len: s.len(),
             sz: 0,
-            rc: GcRc::new(AtomicU32::new(0))
+            rc: GcRc::new(AtomicU32::new(0)),
+            vm_id: self.vm_id
         };
         let key = mem::ManuallyDrop::new(
             SymKeyRef(SymRef((&mut sym) as *mut Sym))
@@ -441,7 +467,7 @@ mod tests {
 
     #[test]
     fn go_for_a_swym() {
-        let mut swym = SwymDb::default();
+        let mut swym = SwymDb::new(0);
         let lmao1 = swym.put("lmao".to_string());
         let ayy = swym.put("ayy".to_string());
         let lmao2 = swym.put("lmao".to_string());
@@ -459,7 +485,7 @@ mod tests {
 
     #[test]
     fn go_for_a_swym_and_clone_myself_into_a_hashset() {
-        let mut swym = SwymDb::default();
+        let mut swym = SwymDb::new(0);
         let lmao1 = swym.put("lmao".to_string());
         let ayy = swym.put("ayy".to_string());
         let lmao2 = swym.put("lmao".to_string());
@@ -492,7 +518,7 @@ mod tests {
 
     #[test]
     fn go_for_a_swym_and_jump_right_into_a_hashset() {
-        let mut swym = SwymDb::default();
+        let mut swym = SwymDb::new(0);
         let (p_ayy, p_lmao) = {
             let lmao1 = swym.put("lmao".to_string());
             let ayy = swym.put("ayy".to_string());
@@ -527,7 +553,7 @@ mod tests {
 
     #[test]
     fn hopefully_dont_take_a_hike() {
-        let mut swym = SwymDb::default();
+        let mut swym = SwymDb::new(0);
         let lmao1 = swym.put_ref("lmao");
         let ayy = swym.put_ref("ayy");
         let lmao2 = swym.put_ref("lmao");

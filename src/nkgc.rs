@@ -1,7 +1,7 @@
 //! The Nuclear Garbage Collector
 
 use crate::builtins::{Builtin, BUILTIN_SYMS};
-use crate::r8vm::{RuntimeError, ArgSpec};
+use crate::r8vm::{ArgSpec, RuntimeError, VmId};
 use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
@@ -10,13 +10,14 @@ use crate::swym::{SwymDb, SymRef};
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::sync::atomic::AtomicU32;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use crate::utils::HMap;
 #[cfg(feature = "math")]
 use glam::{Vec2, Vec3};
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Debug};
-use std::{str, char};
+use std::{char, str, sync};
 use std::ptr::{self, addr_of};
 use std::time::Duration;
 use std::cmp::Ordering;
@@ -1318,15 +1319,22 @@ impl Default for Arena {
     }
 }
 
+const MAX_VMS: u32 = VmId::MAX;
+static VM_COUNT: AtomicU32 = AtomicU32::new(0);
+
 impl Arena {
     pub fn new(memsz: usize) -> Arena {
         let (rx, tx) = channel();
+        let vm_id = VM_COUNT.fetch_add(1, sync::atomic::Ordering::SeqCst);
+        if vm_id == MAX_VMS {
+            panic!("Too many VMs created");
+        }
         let mut ar = Arena {
             nuke: Nuke::new(memsz),
             gray: Vec::with_capacity(DEFAULT_GRAYSZ),
             stack: Vec::with_capacity(DEFAULT_STACKSZ),
             env: Vec::with_capacity(DEFAULT_ENVSZ),
-            symdb: Default::default(),
+            symdb: SwymDb::new(vm_id),
             extdrop_recv: tx,
             extdrop_send: rx,
             state: GCState::Sleep(GC_SLEEP_MEM_BYTES),
@@ -1342,6 +1350,10 @@ impl Arena {
             ar.symdb.put_static(blt);
         }
         ar
+    }
+
+    pub fn vm_id(&self) -> VmId {
+        self.symdb.vm_id()
     }
 
     pub fn put_sym(&mut self, s: &str) -> SymRef {

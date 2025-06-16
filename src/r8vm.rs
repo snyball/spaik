@@ -115,9 +115,7 @@ chasm_def! {
     MUL()
 }
 
-pub type VMID = u16;
-const MAX_VMS: u16 = u16::MAX;
-static VM_COUNT: AtomicU32 = AtomicU32::new(0);
+pub type VmId = u32;
 
 #[allow(unused_macros)]
 macro_rules! vmprint {
@@ -1534,6 +1532,10 @@ impl R8VM {
                 *e.insert(idx)
             },
         }.try_into().unwrap()
+    }
+
+    pub fn vm_id(&self) -> VmId {
+        self.mem.vm_id()
     }
 
     #[cfg(feature = "derive")]
