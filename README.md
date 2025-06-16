@@ -81,6 +81,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Continuations
+
+Continuations are implemented using `call/cc`, here's an example using them
+to implement sleeping.
+
+```common-lisp
+(define *timer-tbl* (make-table))
+
+(defun event/timer (id)
+  (let ((k (get *timer-tbl* id)))
+    (del *timer-tbl* id)
+    ;; Here the continuation is called
+    (k nil)))
+
+(defun sleep (seconds)
+  ;; Save our continuation in the global table, then exit to Rust by throwing
+  (call/cc (lambda (k)
+             (set (get *timer-tbl* (timers/add seconds)) k)
+             (throw 'async-sleep nil))))
+
+(defun event/something-happened ()
+  (message "Wait for it...")
+  (sleep 2)
+  (message "Surprise!))
+```
+
+In this case you're responsible for implementing the `(timers/add <seconds>)`
+function and a system for calling `(event/timer <id>)` when the timers fire.
+
 ### The `html` macro
 
 Because of how easy it is to create new syntax constructs in LISPs, you can
