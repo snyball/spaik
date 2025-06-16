@@ -141,7 +141,7 @@ pub use nuke::CanClone;
 /// The easiest way to get started with SPAIK is `use spaik::prelude::*`
 pub mod prelude {
     pub use super::{Subr, IntoLisp, FromLisp, Sym,
-                    Ignore, BoxSubr, plug::SpaikPlug, Spaik, Gc, CanClone,
+                    Ignore, BoxSubr, Spaik, Gc, CanClone,
                     GetOptVTable};
     #[cfg(feature = "derive")]
     pub use spaik_proc_macros::Userdata;
@@ -272,11 +272,6 @@ macro_rules! defevents {
             $(fn $f(&mut self, $($arg : $t),*) -> Result<()> {
                 let _: Ignore = self.call($crate::kebabify!($f), ($($arg,)*))?;
                 Ok(())
-            })*
-        }
-        impl<T> $tr<()> for SpaikPlug<T> {
-            $(fn $f(&mut self, $($arg : $t),*) {
-                self.send($crate::kebabify!($f), ($($arg,)*))
             })*
         }
     };
@@ -501,6 +496,7 @@ impl Spaik {
         self.vm.eval(expr.as_ref()).map(|r| r.to_string())
     }
 
+    /// Take ownership over a global in the VM
     pub fn take<T>(&mut self, var: impl AsSym) -> Result<T>
         where T: 'static
     {
@@ -522,6 +518,7 @@ impl Spaik {
         Ok(())
     }
 
+    /// Debug interface
     pub fn trace_report(&self) {
         self.vm.count_trace_report()
     }
@@ -632,52 +629,6 @@ impl Spaik {
             Ok(())
         }).unwrap();
     }
-
-    /// Move the VM off-thread and return a `SpaikPlug` handle for IPC.
-    #[cfg(not(feature = "no-threading"))]
-    pub fn fork<T>(mut self) -> SpaikPlug<T>
-        where T: serde::de::DeserializeOwned + Send + Debug + Clone + 'static
-    {
-        use std::{sync::mpsc::channel, thread};
-
-        if self.vm.has_mut_extrefs() {
-            panic!("Cannot fork vm with existing mutable Gc reference");
-        }
-
-        let (rx_send, tx_send) = channel::<Promise<T>>();
-        let (rx_run, tx_run) = channel();
-        let handle = thread::spawn(move || {
-            self.register(send_message { sender: rx_send });
-            loop {
-                let ev: Event = tx_run.recv().unwrap();
-                match ev {
-                    Event::Stop => break,
-                    Event::Promise { res, cont } => {
-                        let res = self.vm.apply_spv(cont, res);
-                        if let Err(e) = res {
-                            log::error!("{e}");
-                        }
-                    }
-                    Event::Event { name, args } => {
-                        let sym = name.as_sym(&mut self.vm);
-                        let res = self.vm.call(sym, args).and_then(|pv| {
-                            let r: Ignore = pv.try_into()?;
-                            Ok(r)
-                        });
-                        if let Err(e) = res {
-                            log::error!("{e}");
-                        }
-                    }
-                }
-            }
-            self
-        });
-        SpaikPlug {
-            promises: tx_send,
-            events: rx_run,
-            handle
-        }
-    }
 }
 
 impl Default for Spaik {
@@ -760,54 +711,6 @@ mod tests {
     use crate::error::ErrorKind;
 
     use super::*;
-
-    #[cfg(not(feature = "no-threading"))]
-    #[cfg(not(target_arch = "wasm32"))]
-    #[test]
-    fn spaik_fork_send_from_rust_to_lisp() {
-        let mut vm = Spaik::new_no_core();
-        defevents!(trait Events {
-            fn event_0(x: i32);
-        });
-        vm.exec("(define init-var nil)").unwrap();
-        vm.exec("(define (init) (set init-var 'init))").unwrap();
-        vm.exec("(define (event-0 x) (set init-var (+ x 1)))").unwrap();
-        vm.event_0(1).unwrap();
-        let mut vm = vm.fork::<i32>();
-        vm.event_0(123);
-        let mut vm = vm.join();
-        let init_var: i32 = vm.eval("init-var").unwrap();
-        assert_eq!(init_var, 124);
-    }
-
-    #[cfg(not(feature = "no-threading"))]
-    #[cfg(not(target_arch = "wasm32"))]
-    #[test]
-    fn spaik_fork_send_from_lisp_to_rust() {
-        use std::time::Duration;
-
-        #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-        #[serde(rename_all = "kebab-case")]
-        enum Msg {
-            Test { id: i32 },
-        }
-        let mut vm = Spaik::new();
-        vm.exec("(define init-var nil)").unwrap();
-        vm.exec("(defun init () (set init-var 'init))").unwrap();
-        vm.exec(r#"(defun event-0 (x)
-                     (let ((res (await '(test :id 1337))))
-                       (set init-var (+ res x 1))))"#).unwrap();
-        let vm = vm.fork::<Msg>();
-        let ev0_arg = 123;
-        vm.send("event-0", (ev0_arg,));
-        let p = vm.recv_timeout(Duration::from_secs(10)).expect("timeout");
-        assert_eq!(p.get(), &Msg::Test { id: 1337 });
-        let fulfil_res = 31337;
-        vm.fulfil(p, fulfil_res);
-        let mut vm = vm.join();
-        let init_var: i32 = vm.eval("init-var").unwrap();
-        assert_eq!(init_var, fulfil_res + ev0_arg + 1);
-    }
 
     #[test]
     fn api_eval_add_numbers() {
@@ -959,25 +862,6 @@ mod tests {
         vm.set("sys/load-path", ());
         assert!(vm.get::<(),_>("sys/load-path").is_ok());
         vm.add_load_path("lmao");
-    }
-
-    #[cfg(not(feature = "no-threading"))]
-    #[cfg(not(target_arch = "wasm32"))]
-    #[cfg(feature = "derive")]
-    #[test]
-    #[should_panic]
-    fn test_illegal_fork() {
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Userdata)]
-        #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
-        pub struct TestObj {
-            x: f32,
-            y: f32,
-        }
-
-        let mut vm = Spaik::new_no_core();
-        vm.set("test-obj", TestObj { x: 10.0, y: 20.0 });
-        let _rf: Gc<TestObj> = vm.get("test-obj").unwrap();
-        let mut _vm = vm.fork::<()>();
     }
 
     #[test]
