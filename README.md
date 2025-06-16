@@ -81,6 +81,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Events/hooks
+
+SPAIK comes with a convenient mechanism for defining and calling hooks.
+
+```common-lisp
+(defun event/ready ()
+  (message "Is ready!"))
+```
+
+```rust
+#[spaik::hooks("event/")]
+trait ScriptEvents {
+    fn ready();
+    fn timer(id: u32);
+    fn tick(ticks: u32);
+}
+
+pub fn main() -> Result<(), E> {
+    let mut vm = Self::new_vm();
+    vm.load("thing")?;
+    let mut hooks = ScriptEvents::default();
+    hooks.link_events(&mut vm);
+    hooks.on(&mut self.vm)
+         .catch_all()
+         .ready(); // Calls `event/ready` in the VM
+    Ok(())
+}
+```
+
 ### Continuations
 
 Continuations are implemented using `call/cc`, here's an example using them
