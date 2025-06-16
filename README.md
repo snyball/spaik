@@ -81,6 +81,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Objects
+
+SPAIK can call methods on Rust objects, if they are declared using
+`derive(Userdata)` and `spaik::methods`.
+
+```rust
+#[derive(spaik::Userdata, Copy, Clone, Default)]
+pub struct MyThing {
+    // ...
+}
+
+#[spaik::methods(())]
+impl MyThing {
+    pub fn do_thing(&mut self, with: String) {
+        println!("Doing a thing with {with}!");
+    }
+}
+
+pub fn main() -> Result<(), E> {
+    let mut vm = Self::new_vm();
+    // Make the VM aware of the MyThing methods (the `can_clone` part is optional)
+    vm.defobj(MyThing::vtable().can_clone());
+    vm.set("thing", MyThing::default());
+    // Use the object
+    vm.exec(r#"(thing :do-thing "string")"#);
+}
+```
+
 ### Events/hooks
 
 SPAIK comes with a convenient mechanism for defining and calling hooks.
@@ -100,6 +128,7 @@ trait ScriptEvents {
 
 pub fn main() -> Result<(), E> {
     let mut vm = Self::new_vm();
+    vm.add_load_path("where/stuff/is");
     vm.load("thing")?;
     let mut hooks = ScriptEvents::default();
     hooks.link_events(&mut vm);
