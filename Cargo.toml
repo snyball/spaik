@@ -12,8 +12,6 @@ rust-version = "1.75"
 
 [profile.release]
 panic = "abort"
-codegen-units = 1
-debug = 2
 lto = "fat"
 
 [profile.wasm]
