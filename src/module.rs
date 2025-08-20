@@ -23,14 +23,6 @@ impl Import {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ModuleMeta {
-    name_len: u32,
-    name: Vec<u8>,
-    spaik_ver: (u16, u16, u16),
-    mod_ver: (u16, u16, u16),
-}
-
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum ExportKind {

@@ -26,7 +26,7 @@ impl<'a> Token<'a> {
         Token { line, col, text }
     }
 
-    pub fn inner_str(&self) -> Option<Token> {
+    pub fn inner_str(&self) -> Option<Token<'_>> {
         if self.text.starts_with('"') && self.text.ends_with('"') {
             Some(Token::new(self.line, self.col, &self.text[1..self.text.len()-1]))
         } else {

@@ -67,22 +67,22 @@ macro_rules! with_atom_inst {
 }
 
 
-/// Structs that can be stored inline in the GC `Arena` memory must implement
+/// Structs that can be stored inline in the GC Symbol’s value as variable is void: Arena memory must implement
 /// this trait.
 ///
 /// # Safety
 ///
 /// No. Not safe. Do not implement this trait directly.
 ///
-/// Add your new internal heap-storage type to the `fissile_types! {...}`
-/// list, or just use `Object`. This is essentially just a marker-type.
+/// Add your new internal heap-storage type to the Symbol’s value as variable is void: fissile_types!
+/// list, or just use Symbol’s value as variable is void: Object. This is essentially just a marker-type.
 ///
 /// What makes it really gnarly to implement this trait yourself,
-/// without adding it to `fissile_types! {...}` is that `type_of()` is used
-/// as an index into `DESTRUCTORS` when deallocating unreachable GC
+/// without adding it to Symbol’s value as variable is void: fissile_types! is that Symbol’s value as variable is void: type_of is used
+/// as an index into Symbol’s value as variable is void: DESTRUCTORS when deallocating unreachable GC
 /// objects, and to figure out which pointers to follow during the GC
 /// mark phase. This will obviously cause UB if the memory layout of your
-/// type isn't what the destructor, or `trace`/`update_ptrs` expects
+/// type isn't what the destructor, or Symbol’s value as variable is void: trace/Symbol’s value as variable is void: update_ptrs expects
 pub unsafe trait Fissile: LispFmt + Debug + Traceable + Any + 'static {
     fn type_of() -> NkT;
 }
@@ -144,7 +144,7 @@ macro_rules! fissile_types {
         #[inline]
         pub fn update_ptr_atom(atom: *mut NkAtom, reloc: &PtrMap) {
             with_atom_mut!(atom, {(*atom).update_ptrs(reloc)},
-                           $(($t,$path)),+)
+                $(($t,$path)),+)
         }
 
         #[inline]
@@ -180,26 +180,26 @@ macro_rules! fissile_types {
         }
 
         pub fn atom_fmt(p: *const NkAtom,
-                        visited: &mut VisitSet,
-                        f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            if visited.get(&p).is_some() {
-                write!(f, "(...)")
-            } else {
-                visited.insert(p);
-                with_atom!(p, { (*p).lisp_fmt(visited, f) },
-                           $(($t,$path)),+)
+            visited: &mut VisitSet,
+            f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                if visited.get(&p).is_some() {
+                    write!(f, "(...)")
+                } else {
+                    visited.insert(p);
+                    with_atom!(p, { (*p).lisp_fmt(visited, f) },
+                        $(($t,$path)),+)
+                }
             }
-        }
 
         #[allow(dead_code)]
         pub fn atom_to_str(p: *const NkAtom) -> String {
             struct P(*const NkAtom);
             impl LispFmt for P {
                 fn lisp_fmt(&self,
-                            v: &mut VisitSet,
-                            f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    atom_fmt(self.0, v, f)
-                }
+                    v: &mut VisitSet,
+                    f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        atom_fmt(self.0, v, f)
+                    }
             }
             P(p).lisp_to_string()
         }
@@ -210,8 +210,8 @@ macro_rules! fissile_types {
     };
 }
 
-/// Marker-trait for data that can be stored inside a SPAIK `Object`, and
-/// referred to from Rust using `Gc<T>`.
+/// Marker-trait for data that can be stored inside a SPAIK Symbol’s value as variable is void: Object, and
+/// referred to from Rust using Symbol’s value as variable is void: Gc<T>.
 #[cfg(not(feature = "freeze"))]
 pub trait Userdata: Debug + Any + 'static
 {}
@@ -247,7 +247,7 @@ impl Iter {
 impl Clone for Iter {
     fn clone(&self) -> Self {
         Self { root: self.root,
-               it: self.it.clone_box() }
+            it: self.it.clone_box() }
     }
 }
 
@@ -260,9 +260,9 @@ impl IntoLisp for Iter {
 impl fmt::Debug for Iter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Iter")
-         .field("root", &self.root)
-         .field("it", &"...")
-         .finish()
+            .field("root", &self.root)
+            .field("it", &"...")
+            .finish()
     }
 }
 
@@ -280,10 +280,10 @@ impl Traceable for Iter {
 
 impl LispFmt for Iter {
     fn lisp_fmt(&self,
-                _visited: &mut VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(iter {})", FmtWrap { val: &self.root })
-    }
+        _visited: &mut VisitSet,
+        f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "(iter {})", FmtWrap { val: &self.root })
+        }
 }
 
 impl Iterator for Iter {
@@ -295,29 +295,35 @@ impl Iterator for Iter {
 }
 
 /// Rust doesn't expose its vtables via any stable API, so we need to recreate
-/// what we need for `Object` here.
-#[derive(Clone, PartialEq, Eq)]
+/// what we need for Symbol’s value as variable is void: Object here.
+#[derive(Clone)]
 pub struct VTable {
-    /// Result of `Any::type_name`
+    /// Result of Symbol’s value as variable is void: Any::type_name
     pub type_name: &'static str,
     pub type_id: TypeId,
     /// Get reference count
     get_rc: unsafe fn(*mut u8) -> Option<*mut GcRc>,
-    /// `Drop::drop`
+    /// Symbol’s value as variable is void: Drop::drop
     drop: unsafe fn(*mut u8),
-    /// `Debug::fmt`
+    /// Symbol’s value as variable is void: Debug::fmt
     fmt: unsafe fn(*const u8, f: &mut fmt::Formatter<'_>) -> fmt::Result,
-    /// `core::clone::Clone`
+    /// Symbol’s value as variable is void: core::clone::Clone
     clone: Option<unsafe fn(*const u8) -> Object>,
     /// Serialize the object
     #[allow(dead_code)]
     freeze: unsafe fn(*const u8, into: &mut dyn Write) -> usize,
 }
 
+impl PartialEq for VTable {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+
 unsafe impl Sync for VTable {}
 
 pub struct OptVTable<T: Userdata> {
-    /// `core::clone::Clone`
+    /// Symbol’s value as variable is void: core::clone::Clone
     clone: Option<unsafe fn(*const u8) -> Object>,
     _ph: std::marker::PhantomData<T>,
 }
@@ -358,18 +364,18 @@ impl<T> CanClone<T> for OptVTable<T> where T: Sized + Userdata + Clone {
 impl Debug for VTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VTable")
-         .field("type_name", &self.type_name)
-         .field("get_rc", &self.get_rc)
-         .field("drop", &self.drop)
-         .field("fmt", &(self.fmt as *mut u8))
-         .finish()
+            .field("type_name", &self.type_name)
+            .field("get_rc", &self.get_rc)
+            .field("drop", &self.drop)
+            .field("fmt", &(self.fmt as *mut u8))
+            .finish()
     }
 }
 
 unsafe impl Send for VTable {}
 
 /// How SPAIK sees objects internally, for referring to objects outside of the
-/// SPAIK internals (library user code) see `Gc<T>`.
+/// SPAIK internals (library user code) see Symbol’s value as variable is void: Gc<T>.
 pub struct Object {
     pub(crate) type_id: TypeId,
     pub(crate) vt: &'static VTable,
@@ -388,12 +394,12 @@ impl Clone for Object {
     fn clone(&self) -> Self {
         unsafe { (self.vt.get_rc)(self.mem).map(|rc| (*rc).inc()) };
         Self { type_id: self.type_id,
-               vt: self.vt,
-               mem: self.mem }
+            vt: self.vt,
+            mem: self.mem }
     }
 }
 
-/// Reference-counter for `Object` memory, see `RcMem`
+/// Reference-counter for Symbol’s value as variable is void: Object memory, see Symbol’s value as variable is void: RcMem
 #[derive(Default)]
 pub struct GcRc(AtomicU32);
 
@@ -419,13 +425,13 @@ impl GcRc {
     }
 }
 
-/// A `T` with a reference-counter stored right after it, uses repr(C) for
+/// A Symbol’s value as variable is void: T with a reference-counter stored right after it, uses repr(C) for
 /// consistent memory layout.
 #[repr(C)]
 pub struct RcMem<T> {
-    /// `obj` *must* be the first item of this struct, the `Object`
-    /// implementation relies on being able to coerce a `*mut RcMem<T>` into a
-    /// `*mut T`.
+    /// Symbol’s value as variable is void: obj *must* be the first item of this struct, the Symbol’s value as variable is void: Object
+    /// implementation relies on being able to coerce a Symbol’s value as variable is void: *mut into a
+    /// Symbol’s value as variable is void: *mut.
     obj: T,
     rc: GcRc
 }
@@ -449,13 +455,13 @@ impl LispFmt for Object {
     }
 }
 
-/// Simplify types `ta` and `tb`, so that they are as short as possible while
+/// Simplify types Symbol’s value as variable is void: ta and Symbol’s value as variable is void: tb, so that they are as short as possible while
 /// being both distinct from each other and complete.
 /// Essentially (x::y::abc, x::b::rac) becomes (abc, rac) while
 ///             (x::y::abc, x::b::abc) becomes (y::abc, b::abc)
 fn simplify_types<'a, 'b>(ta: &'a str, tb: &'b str) -> (&'a str, &'b str) {
     let it = ta.bytes().enumerate().rev().zip(
-             tb.bytes().enumerate().rev());
+        tb.bytes().enumerate().rev());
     for ((ia, ca), (ib, cb)) in it {
         if ca != cb {
             return (&ta[ta[..ia].rfind(':').map(|i| i + 1).unwrap_or(0)..],
@@ -467,7 +473,7 @@ fn simplify_types<'a, 'b>(ta: &'a str, tb: &'b str) -> (&'a str, &'b str) {
 
 pub unsafe fn ud_layout<T>() -> Layout {
     Layout::from_size_align(size_of::<RcMem<T>>(),
-                            align_of::<RcMem<T>>())
+        align_of::<RcMem<T>>())
         .unwrap_unchecked()
 }
 
@@ -485,9 +491,9 @@ impl ObjPtrMut {
             let actual_t = (*self.0).vt.type_name;
             let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
             return Err(error!(STypeError,
-                        expect: format!("(object {expect_t})"),
-                        got: format!("(object {actual_t})"),)
-                        .argn(0).bop(Builtin::Nil))
+                expect: format!("(object {expect_t})"),
+                got: format!("(object {actual_t})"),)
+                .argn(0).bop(Builtin::Nil))
         }
         Ok((*self.0).mem as *mut T)
     }
@@ -508,9 +514,9 @@ impl ObjPtr {
             let actual_t = (*self.0).vt.type_name;
             let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
             return Err(error!(STypeError,
-                        expect: format!("(object {expect_t})"),
-                        got: format!("(object {actual_t})"),)
-                        .argn(0).bop(Builtin::Nil))
+                expect: format!("(object {expect_t})"),
+                got: format!("(object {actual_t})"),)
+                .argn(0).bop(Builtin::Nil))
         }
         Ok((*self.0).mem as *mut T)
     }
@@ -615,8 +621,8 @@ impl Object {
 
     pub fn deep_clone(&self) -> Result<Object, Error> {
         let clonefn = self.vt.clone
-                             .ok_or_else(|| error!(CloneNotImplemented,
-                                                   obj: OpName::OpStr(self.vt.type_name)))?;
+            .ok_or_else(|| error!(CloneNotImplemented,
+                obj: OpName::OpStr(self.vt.type_name)))?;
         Ok(unsafe { (clonefn)(self.mem) })
     }
 
@@ -656,9 +662,9 @@ impl Object {
             let actual_t = self.vt.type_name;
             let (expect_t, actual_t) = simplify_types(expect_t, actual_t);
             return Err(error!(STypeError,
-                        expect: format!("(object {expect_t})"),
-                        got: format!("(object {actual_t})"),)
-                        .argn(0).bop(Builtin::Nil))
+                expect: format!("(object {expect_t})"),
+                got: format!("(object {actual_t})"),)
+                .argn(0).bop(Builtin::Nil))
         }
         Ok(self.mem as *mut T)
     }
@@ -794,7 +800,7 @@ impl Object {
             let rc_mem = self.mem as *mut RcMem<T>;
             if !(*rc_mem).rc.is_owned() {
                 return err!(CannotMoveSharedReference, vt: self.vt,
-                            nref: (*rc_mem).rc.num_refs())
+                    nref: (*rc_mem).rc.num_refs())
             }
             ptr::copy(self.cast()?, obj.as_mut_ptr(), 1);
             self.type_id = TypeId::of::<Voided>();
@@ -823,19 +829,19 @@ impl Drop for Object {
 }
 
 /// Thread-safe reference-counted smart-pointer. Cheap to clone. Used to refer
-/// to `Userdata` stored on the SPAIK heap.
+/// to Symbol’s value as variable is void: Userdata stored on the SPAIK heap.
 ///
-/// `Gc<T>` survives your VM getting dropped, so you can create a reference to
+/// Symbol’s value as variable is void: Gc<T> survives your VM getting dropped, so you can create a reference to
 /// something that you intend for a VM to modify, and then keep the reference
 /// after the VM is no longer necessary.
 ///
 /// Remember that you have to actually run the VM occasionally for the GC to
-/// eventually drop these references. If the `Gc<T>` has been dropped by your
+/// eventually drop these references. If the Symbol’s value as variable is void: Gc<T> has been dropped by your
 /// Rust code and your SPAIK code the GC still needs to complete a cycle in
 /// order to figure that out.
 ///
-/// In order for `Gc<T>` to be `Send`/`Sync` it requires that `T` is too, it
-/// doesn't do any synchronization magic on `T` itself.
+/// In order for Symbol’s value as variable is void: Gc<T> to be Symbol’s value as variable is void: Send/Symbol’s value as variable is void: Sync it requires that Symbol’s value as variable is void: T is too, it
+/// doesn't do any synchronization magic on Symbol’s value as variable is void: T itself.
 pub struct Gc<T> where T: Userdata {
     this: *mut RcMem<T>,
 }
@@ -844,14 +850,14 @@ unsafe impl<T: Sync + Send + Userdata> Send for Gc<T> {}
 unsafe impl<T: Sync + Send + Userdata> Sync for Gc<T> {}
 
 impl<T: Userdata> Gc<T> {
-    /// # Why does this take an `Fn` instead of an `FnMut`?
+    /// # Why does this take an Symbol’s value as variable is void: Fn instead of an Symbol’s value as variable is void: FnMut?
     ///
-    /// Because you should not be able to call `with` on a potentially aliased
-    /// `Gc<T>` inside `with` recursively, then you could have multiple `&mut`
+    /// Because you should not be able to call Symbol’s value as variable is void: with on a potentially aliased
+    /// Symbol’s value as variable is void: Gc<T> inside Symbol’s value as variable is void: with recursively, then you could have multiple Symbol’s value as variable is void: &mut
     /// references to the same data and that is UB in Rust.
     ///
-    /// You should use `with` only for simple setter/getter operations on the
-    /// underlying `T` and nothing else.
+    /// You should use Symbol’s value as variable is void: with only for simple setter/getter operations on the
+    /// underlying Symbol’s value as variable is void: T and nothing else.
     #[inline]
     pub fn with<R>(&mut self, f: impl Fn(&mut T) -> R) -> R {
         f(unsafe { &mut *(self.this as *mut T) })
@@ -939,21 +945,21 @@ impl Traceable for Continuation {
 
 impl LispFmt for Continuation {
     fn lisp_fmt(&self,
-                visited: &mut VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "stack:")?;
-        if self.stack.is_empty() {
-            writeln!(f, "    (empty)")?;
+        visited: &mut VisitSet,
+        f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            writeln!(f, "stack:")?;
+            if self.stack.is_empty() {
+                writeln!(f, "    (empty)")?;
+            }
+            for (idx, val) in self.stack.iter().enumerate().rev() {
+                let (idx, frame) = (idx as i64, self.frame as i64);
+                write!(f, "{}", if idx == frame { " -> " } else { "    " })?;
+                write!(f, "{}: ", idx - frame)?;
+                val.lisp_fmt(visited, f)?;
+                writeln!(f)?;
+            }
+            Ok(())
         }
-        for (idx, val) in self.stack.iter().enumerate().rev() {
-            let (idx, frame) = (idx as i64, self.frame as i64);
-            write!(f, "{}", if idx == frame { " -> " } else { "    " })?;
-            write!(f, "{}: ", idx - frame)?;
-            val.lisp_fmt(visited, f)?;
-            writeln!(f)?;
-        }
-        Ok(())
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -971,11 +977,11 @@ pub struct Intr {
 
 impl LispFmt for Intr {
     fn lisp_fmt(&self,
-                visited: &mut VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.op)?;
-        self.arg.lisp_fmt(visited, f)
-    }
+        visited: &mut VisitSet,
+        f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.op)?;
+            self.arg.lisp_fmt(visited, f)
+        }
 }
 
 impl Traceable for Intr {
@@ -994,10 +1000,10 @@ pub struct Void;
 
 impl LispFmt for Void {
     fn lisp_fmt(&self,
-                _visited: &mut VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "void")
-    }
+        _visited: &mut VisitSet,
+        f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "void")
+        }
 }
 
 #[cfg(feature = "math")]
@@ -1054,18 +1060,18 @@ impl Traceable for HMap<PV, PV> {
 
 impl LispFmt for HMap<PV, PV> {
     fn lisp_fmt(&self,
-                visited: &mut VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(table")?;
-        for (k, v) in self.iter() {
-            write!(f, " (")?;
-            k.lisp_fmt(visited, f)?;
-            write!(f, " . ")?;
-            v.lisp_fmt(visited, f)?;
-            write!(f, ")")?;
+        visited: &mut VisitSet,
+        f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "(table")?;
+            for (k, v) in self.iter() {
+                write!(f, " (")?;
+                k.lisp_fmt(visited, f)?;
+                write!(f, " . ")?;
+                v.lisp_fmt(visited, f)?;
+                write!(f, ")")?;
+            }
+            write!(f, ")")
         }
-        write!(f, ")")
-    }
 }
 
 #[repr(u8)]
@@ -1101,8 +1107,8 @@ macro_rules! trivial_trace {
 
 #[cfg(feature = "math")]
 trivial_trace!(glam::Vec2, glam::Vec3, glam::Vec4,
-               glam::Mat2, glam::Mat3, glam::Mat4,
-               glam::Quat);
+    glam::Mat2, glam::Mat3, glam::Mat4,
+    glam::Quat);
 
 trivial_trace!(Box<dyn subrs::Subr>, String, Void);
 
@@ -1142,7 +1148,7 @@ impl NkAtom {
     #[inline]
     pub fn init(&mut self, typ: NkT) {
         unsafe { self.meta.init(mem::transmute(Color::Black),
-                                mem::transmute(typ)) }
+            mem::transmute(typ)) }
     }
 
     pub fn full_size(&self) -> usize {
@@ -1187,8 +1193,8 @@ pub fn cast<T: Fissile>(atom: *const NkAtom) -> Option<*const T> {
 pub fn cast_mut_err<T: Fissile>(atom: *mut NkAtom) -> Result<*mut T, Error> {
     cast_mut(atom).ok_or_else(|| {
         error!(TypeError,
-               expect: T::type_of().into(),
-               got: unsafe { atom_kind(atom).into() })
+            expect: T::type_of().into(),
+            got: unsafe { atom_kind(atom).into() })
     })
 }
 
@@ -1355,7 +1361,7 @@ const ALIGNMENT: usize = 16;
 /// related to SIMD (AFAIK)) may even require 16 bytes.
 ///
 /// This function is an optimized method of computing the next valid memory
-/// address starting at `p`, where a storage class of alignment `a` can be
+/// address starting at Symbol’s value as variable is void: p, where a storage class of alignment Symbol’s value as variable is void: a can be
 /// placed (Note that T is arbtrary and is not used in the calculation, see
 /// Layout::* for getting the alignment for a type.)
 fn align_mut<T>(p: *mut T, a: usize) -> *mut T {
@@ -1377,7 +1383,7 @@ pub unsafe fn memcpy<R, W>(dst: *mut W, src: *const R, sz: usize) {
     ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, sz);
 }
 
-/// Copy into `dst`, from `src`. The buffers may overlap. See `memcpy` for
+/// Copy into Symbol’s value as variable is void: dst, from Symbol’s value as variable is void: src. The buffers may overlap. See Symbol’s value as variable is void: memcpy for
 /// copying memory regions that do not overlap.
 #[allow(dead_code)]
 #[inline(always)]
@@ -1671,8 +1677,8 @@ impl Nuke {
         let pa = align_mut(p, ALIGNMENT);
         let pdiff = pa as usize - p as usize;
         let full_sz = mem::size_of::<T>()
-                    + mem::size_of::<NkAtom>()
-                    + pdiff;
+            + mem::size_of::<NkAtom>()
+            + pdiff;
 
         let last = self.last;
         self.last = cur;
@@ -1686,7 +1692,7 @@ impl Nuke {
         (*cur).sz = (full_sz - mem::size_of::<NkAtom>()) as NkSz;
         (*cur).init(T::type_of());
         debug_assert_eq!((cur as *mut u8).add((*cur).full_size()),
-                         self.free);
+            self.free);
 
         (*last).next = cur;
 
@@ -1745,7 +1751,7 @@ impl Nuke {
         self.num_atoms
     }
 
-    /// TODO: make `used`, `sz`, and `num_atoms` atomic.
+    /// TODO: make Symbol’s value as variable is void: used, Symbol’s value as variable is void: sz, and Symbol’s value as variable is void: num_atoms atomic.
     ///       Then create a begin_profile(t, sz) method that spawns
     ///       a thread which will save GCStats every t seconds until
     ///       it reaches sz samples. stop_profile() -> Vec<GCStats>
@@ -1759,7 +1765,7 @@ impl Nuke {
             total_frees: self.num_frees,
             #[cfg(not(target_arch = "wasm32"))]
             time: SystemTime::now().duration_since(self.start_time)
-                                   .unwrap(),
+                .unwrap(),
         }
     }
 }
@@ -1820,10 +1826,10 @@ impl fmt::Debug for NkAtom {
 impl fmt::Debug for Nuke {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         f.debug_struct("Nuke")
-         .field("sz", &self.sz)
-         .field("used", &self.used)
-         .field("mem", &self.iter().map(|p| unsafe { atom_kind(p) }).collect::<Vec<_>>())
-         .finish()
+            .field("sz", &self.sz)
+            .field("used", &self.used)
+            .field("mem", &self.iter().map(|p| unsafe { atom_kind(p) }).collect::<Vec<_>>())
+            .finish()
     }
 }
 
@@ -1933,7 +1939,7 @@ pub struct PtrMap(Vec<PtrPair>);
 impl PtrMap {
     pub fn get<T>(&self, orig: *const T) -> *const T {
         let srch = PtrPair { fst: orig as *mut u8,
-                             snd: ptr::null_mut::<u8>() };
+            snd: ptr::null_mut::<u8>() };
         match self.0.binary_search(&srch) {
             Ok(idx) => self.0[idx].snd as *const T,
             Err(_) => orig
@@ -1946,7 +1952,7 @@ impl PtrMap {
 
     pub fn push<A, B>(&mut self, from: *const A, to: *const B) {
         self.0.push(PtrPair { fst: from as *mut u8,
-                              snd: to as *mut u8 })
+            snd: to as *mut u8 })
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1979,17 +1985,17 @@ mod tests {
         let ta = "crate::hmm::shit::ABC";
         let tb = "crate::sum::shit::ABC";
         assert_eq!(simplify_types(ta, tb),
-                   ("hmm::shit::ABC", "sum::shit::ABC"));
+            ("hmm::shit::ABC", "sum::shit::ABC"));
 
         let ta = "crate::hmm::sit::ABC";
         let tb = "crate::sum::shit::ABC";
         assert_eq!(simplify_types(ta, tb),
-                   ("sit::ABC", "shit::ABC"));
+            ("sit::ABC", "shit::ABC"));
 
         let ta = "crate::hmm::si::ABC";
         let tb = "crate::sum::shit::ABC";
         assert_eq!(simplify_types(ta, tb),
-                   ("si::ABC", "shit::ABC"));
+            ("si::ABC", "shit::ABC"));
     }
 
     #[cfg(feature = "derive")]
@@ -2088,7 +2094,7 @@ mod tests {
         vm.set("obj", Obj(1));
         assert_eq!(vm.eval("(obj :doit 2 (lambda (x) (+ x 2)))"), Ok(5i32));
         assert_eq!(vm.eval("(obj :doit 2 (lambda (x) (+ x 2))) (if (void? obj) (error 'err))"),
-                   Ok(()));
+            Ok(()));
 
         vm.exec("(define (test-1) (obj/doit 2 (lambda (x) (+ x 2))))").unwrap();
         vm.exec("(define (doit) (obj/doit 2 (lambda (x) (+ x 2))))").unwrap();

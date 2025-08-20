@@ -152,6 +152,7 @@ impl Visitor for Optomat {
     }
 }
 
+#[allow(dead_code)]
 struct FindLoopBreak<F: FnMut(&mut AST2) -> crate::Result<()>>(F);
 
 impl<F> Visitor for FindLoopBreak<F>

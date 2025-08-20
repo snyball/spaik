@@ -245,7 +245,7 @@ macro_rules! chasm_def {
                 out.write_all(&op.to_ne_bytes())?;
                 match self {
                     $($name::Op::$en($($arg),*) => {
-                        $(let buf = $arg.to_ne_bytes();
+                        $(let buf = $arg.to_le_bytes();
                           out.write_all(&buf)?;
                           sz += buf.len();)*
                     })+
@@ -262,7 +262,7 @@ macro_rules! chasm_def {
                         $(rd_sz += std::mem::size_of::<$targ>();)*
                         $(let mut $arg: [u8; std::mem::size_of::<$targ>()] = Default::default();
                          inp.read_exact(&mut $arg)?;)*
-                        $name::Op::$en($(unsafe { std::mem::transmute($arg) }),*)
+                        $name::Op::$en($( <$targ>::from_le_bytes($arg) ),*)
                     }),+
                 };
                 Ok((op, rd_sz))

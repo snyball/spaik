@@ -111,7 +111,7 @@ impl M {
         AST2 { kind: self, src }
     }
 
-    pub fn binary(&self) -> Option<(M2, (&Source, &Source))> {
+    pub fn binary(&self) -> Option<(M2<'_>, (&Source, &Source))> {
         let (m2, s0, s1) = match self {
             M::Add(a) if a.len() == 2 => (M2::Add(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
             M::Sub(a) if a.len() == 2 => (M2::Sub(&a[0].kind, &a[1].kind), &a[0].src, &a[1].src),
@@ -892,41 +892,11 @@ impl<'a> Excavator<'a> {
     }
 }
 
-pub struct PVSrcFmt<'a> {
-    pub v: PV,
-    pub mem: &'a Arena
-}
-
-impl<'a> LispFmt for PVSrcFmt<'a> {
-    fn lisp_fmt(&self,
-                visited: &mut crate::fmt::VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let PV::Ref(p) = self.v {
-            if let NkRef::Cons(cns) = to_fissile_ref(p) {
-                write!(f, "(cons ", )?;
-                if let Some(mut src) = self.mem.get_tag(p).cloned() {
-                    src.file = None;
-                    write!(f, "{src} ")?;
-                } else {
-                    write!(f, "[] ")?;
-                }
-                unsafe {
-                    PVSrcFmt { v: (*cns).car, mem: self.mem }.lisp_fmt(visited, f)?;
-                    write!(f, " ")?;
-                    PVSrcFmt { v: (*cns).cdr, mem: self.mem }.lisp_fmt(visited, f)?;
-                }
-                write!(f, ")")?;
-                return Ok(())
-            }
-        }
-        self.v.lisp_fmt(visited, f)
-    }
-}
-
 pub trait Visitor {
     fn visit(&mut self, elem: &mut AST2) -> Result<()>;
 }
 
+#[allow(dead_code)]
 pub struct PrinterVisitor;
 
 impl Visitor for PrinterVisitor {

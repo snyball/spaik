@@ -72,38 +72,6 @@ pub struct SpaikPlug<T> {
     pub(crate) handle: JoinHandle<Spaik>,
 }
 
-#[derive(Clone, Debug)]
-#[allow(non_camel_case_types)]
-pub(crate) struct send_message<T>
-    where T: DeserializeOwned + Clone + Send
-{
-    pub(crate) sender: Sender<Promise<T>>,
-}
-
-unsafe impl<T> Subr for send_message<T>
-    where T: DeserializeOwned + Clone + Send + 'static + Debug + Sized
-{
-    fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
-        let (msg, r, cont) = match args {
-            [x, y] => (deserialize::from_pv(*x)
-                       .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
-                       *x,
-                       Some(vm.mem.make_extref(*y))),
-            [x] => (deserialize::from_pv(*x)
-                    .map_err(|e| e.argn(1).bop(Builtin::ZSendMessage))?,
-                    *x,
-                    None),
-            _ => ArgSpec::opt(1, 1).check(args.len() as u16)
-                                   .map_err(|e| e.bop(Builtin::ZSendMessage))
-                                   .map(|_| -> ! { unreachable!() })?
-
-        };
-        self.sender.send(Promise { msg, cont })?;
-        Ok(r)
-    }
-    fn name(&self) -> &'static str { "<ζ>-send-message" }
-}
-
 impl<T> SpaikPlug<T> {
     #[inline]
     pub fn recv(&self) -> Option<Promise<T>>

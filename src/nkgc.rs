@@ -409,7 +409,7 @@ impl PV {
         self.bt_type_of().sym_id()
     }
 
-    pub fn str(&self) -> Cow<str> {
+    pub fn str(&self) -> Cow<'_, str> {
         with_ref!(*self, String(s) => {
             Ok(Cow::Borrowed(&(**s)[..]))
         }).unwrap_or_else(|_| {

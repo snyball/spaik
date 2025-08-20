@@ -6,7 +6,7 @@ use comfy_table::Table;
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
 use crate::{
-    ast::{Excavator, Visitor, PVSrcFmt},
+    ast::{Excavator, Visitor},
     chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
     builtins::Builtin,
     comp::SourceList,
@@ -1710,7 +1710,7 @@ impl R8VM {
     /// Find a library by name, returns the path to the library as a LibrarySrc,
     /// which will be New(path) if the file is modified or has not been loaded,
     /// or Exists(path) if the file is already loaded and has not been modified.
-    pub fn find_lib_src(&mut self, lib: SymID) -> Result<LibrarySrc> {
+    pub fn find_lib_src(&mut self, lib: SymID) -> Result<LibrarySrc<'_>> {
         let it = self.var(Builtin::SysLoadPath.sym_id())?
                      .make_iter()
                      .map_err(|e| e.bop(Builtin::SysLoad))?;
