@@ -383,7 +383,7 @@ impl Iterator for PVVecIter {
         let idx = self.idx;
         self.idx += 1;
         unsafe {
-            (*fastcast::<Vec<PV>>(self.vec)).get(idx).copied()
+            (**fastcast::<Vec<PV>>(self.vec)).get(idx).copied()
         }
     }
 }
@@ -411,7 +411,7 @@ impl PV {
 
     pub fn str(&self) -> Cow<str> {
         with_ref!(*self, String(s) => {
-            Ok(Cow::Borrowed(&(*s)[..]))
+            Ok(Cow::Borrowed(&(**s)[..]))
         }).unwrap_or_else(|_| {
             Cow::from(self.to_string())
         })
@@ -479,7 +479,7 @@ impl PV {
             PV::Ref(p) => unsafe {
                 match to_fissile_ref(*p) {
                     NkRef::Cons(_) => PV::Int(self.iter().count() as Int),
-                    NkRef::String(s) => PV::Int((*s).len() as Int),
+                    NkRef::String(s) => PV::Int((**s).len() as Int),
                     NkRef::Vector(v) => PV::Int((*v).len() as Int),
                     NkRef::Table(t) => PV::Int((*t).len() as Int),
                     #[cfg(feature = "math")] NkRef::Vec4(v) => PV::Real((*v).length()),

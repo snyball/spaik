@@ -480,7 +480,7 @@ mod sysfns {
                 [xs, PV::Sym(s)] => (xs.make_iter().map_err(emap)?,
                                      Cow::from(s.as_ref())),
                 [xs, o] => (xs.make_iter().map_err(emap)?, with_ref!(*o, String(s) => {
-                    Ok(Cow::from(&(*s)[..]))
+                    Ok(Cow::from(&(**s)[..]))
                 }).map_err(|e| e.bop(Builtin::Join).argn(2))?),
                 [xs] => (xs.make_iter()?, Cow::from("")),
                 _ => return Err(error!(ArgError,
@@ -1715,7 +1715,7 @@ impl R8VM {
                      .make_iter()
                      .map_err(|e| e.bop(Builtin::SysLoad))?;
         for (i, p) in it.enumerate() {
-            let mut path = PathBuf::from(with_ref!(p, String(s) => {Ok(&(*s)[..])})
+            let mut path = PathBuf::from(with_ref!(p, String(s) => {Ok(&(**s)[..])})
                                          .map_err(|e| e.argn(i as u32)
                                                   .bop(Builtin::SysLoadPath))?);
             for ext in &["sp", "lisp"] {
@@ -2659,7 +2659,7 @@ impl R8VM {
                     let elem = match (idx, vec) {
                         (idx, PV::Ref(p)) => match (idx, atom_kind(p)) {
                             (PV::Int(idx), NkT::Vector) =>
-                                (*fastcast::<Vec<PV>>(p)).get(idx as usize).ok_or(error!(IndexError, idx: idx as usize)).copied(),
+                                (**fastcast::<Vec<PV>>(p)).get(idx as usize).ok_or(error!(IndexError, idx: idx as usize)).copied(),
                             (PV::Ref(_), NkT::Table) => err!(KeyReference, key: idx.to_string()),
                             (idx, NkT::Table) =>
                                 Ok((*fastcast::<HMap<PV, PV>>(p)).get(&idx).copied().unwrap_or_default()),
@@ -2690,7 +2690,7 @@ impl R8VM {
                             .and_then(|idx| if idx >= (*v).len() {
                                 err!(IndexError, idx)
                             } else {
-                                *(*v).get_unchecked_mut(idx) = args[0];
+                                *(**v).get_unchecked_mut(idx) = args[0];
                                 Ok(())
                             })
                     }, Table(t) => {
