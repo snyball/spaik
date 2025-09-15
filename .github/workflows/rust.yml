@@ -20,7 +20,6 @@ jobs:
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
-        sudo snap install --edge just --classic
         sudo apt install valgrind wine gcc-mingw-w64 binutils-mingw-w64 gcc-i686-linux-gnu binutils-i686-linux-gnu
         rustup target add wasm32-wasip1
         rustup target add x86_64-pc-windows-gnu
@@ -41,7 +40,8 @@ jobs:
     - name: Run tests on 32-bit WebAssembly
       run: |
         curl https://wasmtime.dev/install.sh -sSf | bash
-        just test-wasm
+        PATH="$HOME/.wasmtime/bin:$PATH"
+        cargo test --target wasm32-wasip1 -- --nocapture
     # - name: Run tests on WINE
     #   run: cargo test --verbose --target x86_64-pc-windows-gnu
     #   env:
