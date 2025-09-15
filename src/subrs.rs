@@ -149,7 +149,9 @@ impl TryFrom<PV> for shipyard::EntityId {
     }
 }
 
+#[cfg(feature = "shipyard")]
 pub const ID_SHIPYARD_ENTITY: u16 = 1;
+#[cfg(feature = "rapier2d")]
 pub const ID_RAPIER_RIGID_BODY: u16 = 2;
 
 #[cfg(feature = "shipyard")]
