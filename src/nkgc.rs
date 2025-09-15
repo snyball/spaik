@@ -992,30 +992,6 @@ impl LispFmt for Cons {
     }
 }
 
-impl Traceable for HashMap<PV, PV> {
-    fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
-        for (k, v) in self.iter() {
-            unsafe {
-                mark_gray!(*k, gray);
-                mark_gray!(*v, gray);
-            }
-        }
-    }
-
-    fn update_ptrs(&mut self, reloc: &PtrMap) {
-        for (k, v) in self.iter_mut() {
-            let k_ptr = k as *const PV as *mut PV;
-            unsafe {
-                // NOTE: This should be safe, as this won't actually change the
-                //       hash map key, it will just point it back to the right
-                //       memory location.
-                (*k_ptr).update_ptrs(reloc);
-            }
-            v.update_ptrs(reloc);
-        }
-    }
-}
-
 impl Traceable for Vec<PV> {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
         for v in self.iter() {

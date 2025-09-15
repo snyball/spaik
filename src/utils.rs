@@ -1,8 +1,14 @@
 //! Miscellaneous Utilities
 
 use std::convert::Infallible;
+#[cfg(not(target_arch = "wasm32"))]
 pub use ahash::AHashMap as HMap;
+#[cfg(not(target_arch = "wasm32"))]
 pub use ahash::AHashSet as HSet;
+#[cfg(target_arch = "wasm32")]
+pub use std::collections::HashMap as HMap;
+#[cfg(target_arch = "wasm32")]
+pub use std::collections::HashSet as HSet;
 
 pub type Success = Result<(), Infallible>;
 
