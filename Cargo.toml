@@ -23,7 +23,7 @@ opt-level = "z"
 codegen-units = 1
 
 [features]
-default = ["math", "extra", "readline", "derive", "modules", "freeze", "pretty_env_logger"]
+default = ["math", "extra", "readline", "derive", "modules", "freeze", "pretty_env_logger" ]
 extra = ["comfy-table", "owo-colors"]
 readline = ["rustyline", "dirs"]
 wasm = ["wasm-bindgen"]

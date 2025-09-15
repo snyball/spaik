@@ -141,13 +141,16 @@ impl TryFrom<PV> for shipyard::EntityId {
     type Error = Error;
 
     fn try_from(value: PV) -> Result<Self, Self::Error> {
-        if let PV::Id(v) = value {
-            Ok(v)
+        if let PV::Id(ID_SHIPYARD_ENTITY, v) = value {
+            Ok(unsafe { std::mem::transmute(v) })
         } else {
             err!(TypeError, expect: Builtin::Id, got: value.bt_type_of())
         }
     }
 }
+
+pub const ID_SHIPYARD_ENTITY: u16 = 1;
+pub const ID_RAPIER_RIGID_BODY: u16 = 2;
 
 #[cfg(feature = "shipyard")]
 impl_objref!(shipyard::EntityId);
@@ -155,7 +158,7 @@ impl_objref!(shipyard::EntityId);
 #[cfg(feature = "shipyard")]
 impl IntoLisp for shipyard::EntityId {
     fn into_pv(self, _mem: &mut Arena) -> Result<PV, Error> {
-        Ok(PV::Id(self))
+        Ok(PV::Id(ID_SHIPYARD_ENTITY, unsafe { std::mem::transmute(self) }))
     }
 }
 
@@ -164,8 +167,8 @@ impl TryFrom<PV> for rapier2d::prelude::RigidBodyHandle {
     type Error = Error;
 
     fn try_from(value: PV) -> Result<Self, Self::Error> {
-        if let PV::RigidBody(v) = value {
-            Ok(v)
+        if let PV::Id(ID_RAPIER_RIGID_BODY, v) = value {
+            Ok(unsafe { std::mem::transmute(v) })
         } else {
             err!(TypeError, expect: Builtin::RigidBody, got: value.bt_type_of())
         }
@@ -178,7 +181,7 @@ impl_objref!(rapier2d::prelude::RigidBodyHandle);
 #[cfg(feature = "rapier2d")]
 impl IntoLisp for rapier2d::prelude::RigidBodyHandle {
     fn into_pv(self, _mem: &mut Arena) -> Result<PV, Error> {
-        Ok(PV::RigidBody(self))
+        Ok(PV::Id(ID_RAPIER_RIGID_BODY, unsafe { std::mem::transmute(self) }))
     }
 }
 

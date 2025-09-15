@@ -158,14 +158,7 @@ pub enum PV {
     Real(Float),
     Bool(bool),
     Char(char),
-    #[cfg(feature = "shipyard")]
-    Id(shipyard::EntityId),
-    #[cfg(not(feature = "shipyard"))]
-    Id(usize),
-    #[cfg(feature = "rapier2d")]
-    RigidBody(rapier2d::prelude::RigidBodyHandle),
-    #[cfg(not(feature = "rapier2d"))]
-    RigidBody(usize),
+    Id(u16, u64),
     #[cfg(feature = "math")]
     Vec2(Vec2),
     #[cfg(feature = "math")]
@@ -199,7 +192,7 @@ impl PartialEq for PV {
             (Self::Real(l0), Self::Real(r0)) => l0 == r0,
             (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
             (Self::Char(l0), Self::Char(r0)) => l0 == r0,
-            (Self::Id(x), Self::Id(y)) => x == y,
+            (Self::Id(tx, vx), Self::Id(ty, vy)) => tx == ty && vx == vy,
             #[cfg(feature = "math")] (Self::Vec2(x), Self::Vec2(y)) => x == y,
             #[cfg(feature = "math")] (Self::Vec3(x), Self::Vec3(y)) => x == y,
             (Self::Ref(l), Self::Ref(r)) => unsafe {
@@ -499,8 +492,7 @@ impl PV {
             Real(_) => Builtin::Float,
             Sym(_) => Builtin::Symbol,
             Char(_) => Builtin::Char,
-            Id(_) => Builtin::Id,
-            RigidBody(_) => Builtin::RigidBody,
+            Id(..) => Builtin::Id,
             #[cfg(feature = "math")] Vec2(_) => Builtin::Vec2,
             #[cfg(feature = "math")] Vec3(_) => Builtin::Vec3,
             Ref(p) => unsafe {
@@ -875,8 +867,7 @@ impl Hash for PV {
             PV::Nil => 0.hash(state),
             PV::Real(x) => x.to_ne_bytes().hash(state),
             PV::Char(x) => x.hash(state),
-            PV::Id(x) => x.hash(state),
-            PV::RigidBody(x) => x.hash(state),
+            PV::Id(t, x) => {t.hash(state); x.hash(state)},
             #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => { x.to_ne_bytes().hash(state);
                                          y.to_ne_bytes().hash(state) },
@@ -902,8 +893,7 @@ impl LispFmt for PV {
             PV::Real(a) => write!(f, "{a}"),
             PV::Sym(id) => write!(f, "{id}"),
             PV::Char(c) => write!(f, "(char {c})"),
-            PV::Id(c) => write!(f, "(id {c:?})"),
-            PV::RigidBody(b) => write!(f, "(rigid-body {b:?})"),
+            PV::Id(t, c) => write!(f, "(id-{t} {c:x})"),
             #[cfg(feature = "math")]
             PV::Vec2(Vec2 { x, y }) => write!(f, "(vec2 {x} {y})"),
             #[cfg(feature = "math")]
