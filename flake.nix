@@ -24,6 +24,7 @@
           twiggy
           wabt
           wasm-bindgen-cli
+          wasmtime
         ];
         build-tools = with pkgs; [ mold toolchain ];
         all = build-tools ++ wasm-tools;
@@ -35,7 +36,7 @@
             doCheck = false;
           };
           devShell = pkgs.mkShell {
-            nativeBuildInputs = all;
+            packages = all;
           };
         }
     );
