@@ -740,10 +740,11 @@ impl R8Compiler {
 
     fn popa(&mut self, num: usize) {
         match self.unit().last_mut() {
-            Some(ChOp { id: r8c::OpName::POPA, ref mut args }) => {
-                args[1].add_mut(num as isize)
-                       .expect("Invalid popa instruction");
-            },
+            // FIXME: Not safe without tracing whether there is a branch in-between:
+            // Some(ChOp { id: r8c::OpName::POPA, ref mut args }) => {
+            //     args[1].add_mut(num as isize)
+            //            .expect("Invalid popa instruction");
+            // },
             _ => { self.unit().op(chasm!(POPA 1, num)); },
         }
     }
