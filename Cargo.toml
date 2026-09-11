@@ -12,7 +12,7 @@ rust-version = "1.75"
 
 [profile.release]
 panic = "abort"
-lto = "fat"
+#lto = "fat"
 
 [profile.wasm]
 debug = 0

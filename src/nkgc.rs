@@ -1538,6 +1538,19 @@ impl Arena {
         self.stack.push(PV::Ref(head));
     }
 
+    #[inline]
+    pub fn barrier(&mut self, val: PV) -> PV {
+        if let PV::Ref(p) = val {
+            unsafe {
+                if (*p).color() == Color::White {
+                    (*p).set_color(Color::Gray);
+                    self.gray.push(p);
+                }
+            }
+        }
+        val
+    }
+
     pub fn make_extref(&mut self, v: PV) -> SPV {
         let id = ExtRefID(self.extref_id_cnt);
         self.extref_id_cnt += 1;
@@ -1604,12 +1617,35 @@ impl Arena {
     }
 
     pub fn append(&mut self, n: u32) -> Result<(), Error> {
+        macro_rules! barrier {
+            ($v:expr) => {
+                if let PV::Ref(p) = $v {
+                    unsafe {
+                        if (*p).color() != Color::Gray {
+                            (*p).set_color(Color::Gray);
+                            self.gray.push(p);
+                        }
+                    }
+                    $v
+                } else {
+                    $v
+                }
+            };
+        }
         let top = self.stack.len();
         let idx = top - (n as usize);
         let top_it = self.stack[idx + 1..top].iter();
         for (item_ref, next) in self.stack[idx..top - 1].iter().zip(top_it) {
             let mut item = *item_ref;
-            item.append(*next)?;
+            if let PV::Ref(p) = *next {
+                unsafe {
+                    if (*p).color() != Color::Gray {
+                        (*p).set_color(Color::Gray);
+                        self.gray.push(p);
+                    }
+                }
+            }
+            item.append(barrier!(*next))?;
         }
         self.stack.truncate(idx + 1);
         Ok(())

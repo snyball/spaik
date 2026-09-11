@@ -2568,6 +2568,22 @@ impl R8VM {
             orig = Some(sym);
             println!("{}:", sym);
         }
+        macro_rules! barrier {
+            ($v:expr) => {{
+                let q = $v;
+                if let PV::Ref(p) = q {
+                    unsafe {
+                        if (*p).color() != Color::Gray {
+                            (*p).set_color(Color::Gray);
+                            self.mem.gray.push(p);
+                        }
+                    }
+                    q
+                } else {
+                    q
+                }
+            }};
+        }
         let mut run = || loop {
             let op = *ip;
             ip = ip.offset(1);
@@ -2637,7 +2653,8 @@ impl R8VM {
                     let vec = self.mem.pop()?;
                     let elem = self.mem.pop()?;
                     with_ref_mut!(vec, Vector(v) => {
-                        (*v).push(elem);
+                        (*v).push(barrier!(elem));
+                        // (*v).push(elem);
                         Ok(())
                     }).map_err(|e| e.bop(Builtin::Push))?
                 }
@@ -2696,14 +2713,14 @@ impl R8VM {
                             .and_then(|idx| if idx >= (*v).len() {
                                 err!(IndexError, idx)
                             } else {
-                                *(**v).get_unchecked_mut(idx) = args[0];
+                                *(**v).get_unchecked_mut(idx) = barrier!(args[0]);
                                 Ok(())
                             })
                     }, Table(t) => {
                         if args[2].is_ref() {
                             err!(KeyReference, key: args[2].to_string())
                         } else {
-                            (*t).insert(args[2], args[0]);
+                            (*t).insert(args[2], barrier!(args[0]));
                             Ok(())
                         }
                     }).map_err(|e| e.bop(Builtin::Set))?;
@@ -2729,7 +2746,7 @@ impl R8VM {
                     // Save environment
                     with_ref_mut!(lambda, Lambda(lambda) => {
                         for (dst, var) in (*lambda).locals.iter_mut().zip(new_env.iter()) {
-                            *dst = *var;
+                            *dst = barrier!(*var);
                         }
                         Ok(())
                     })?;
@@ -2891,7 +2908,7 @@ impl R8VM {
                     self.mem.push(val);
                 },
                 SET(var) => {
-                    let val = self.mem.pop()?;
+                    let val = barrier!(self.mem.pop()?);
                     self.mem.set_env(var as usize, val);
                 }
 

@@ -149,7 +149,9 @@ macro_rules! fissile_types {
 
         #[inline]
         pub fn mark_atom(atom: *mut NkAtom, gray: &mut Vec<*mut NkAtom>) {
-            with_atom_mut!(atom, {(*atom).trace(gray)}, $(($t,$path)),+);
+            if unsafe { (*atom).color() } != Color::Black {
+                with_atom_mut!(atom, {(*atom).trace(gray)}, $(($t,$path)),+);
+            }
             unsafe {
                 (*atom).set_color(Color::Black)
             }
