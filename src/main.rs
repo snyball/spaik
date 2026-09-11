@@ -22,8 +22,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(())
     }
     let mut vm = Spaik::new();
-    log::debug!("lmaooo");
-    println!("execccing");
     match vm.exec(&code) {
         Ok(_) => (),
         Err(e) => eprintln!("{}", e),
