@@ -8,7 +8,7 @@ use crate::fmt::{LispFmt, VisitSet};
 use crate::subrs::FromLisp;
 use crate::swym::{SwymDb, SymRef};
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::collections::hash_map::Entry;
 use std::sync::atomic::AtomicU32;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -17,7 +17,7 @@ use crate::utils::HMap;
 use glam::{Vec2, Vec3};
 use serde::{Serialize, Deserialize};
 use std::fmt::{self, Debug};
-use std::{char, str, sync};
+use std::{char, mem, str, sync};
 use std::ptr::{self, addr_of};
 use std::time::Duration;
 use std::cmp::Ordering;
@@ -344,6 +344,26 @@ macro_rules! cmp_op {
     };
 }
 
+#[derive(Clone)]
+struct PVTableKeysIter {
+    // SAFETY: Confirmed not references according to table key rules
+    keys: std::vec::IntoIter<PV>,
+}
+
+impl Iterator for PVTableKeysIter {
+    type Item = PV;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.keys.next()
+    }
+}
+
+// SAFETY: No-op because tables can't have refences as keys, we store
+// no NkAtoms.
+impl Traceable for PVTableKeysIter {
+    fn trace(&self, _gray: &mut Vec<*mut NkAtom>) {}
+    fn update_ptrs(&mut self, _reloc: &PtrMap) {}
+}
+
 #[derive(Clone, Copy)]
 struct PVVecIter {
     vec: *mut NkAtom,
@@ -533,8 +553,8 @@ impl PV {
         };}
         let it: Box<dyn CloneIterator<Item = PV>> = match *self {
             PV::Nil => Box::new(PVIter { item: *self }),
-            PV::Ref(p) => match to_fissile_ref(p) {
-                NkRef::Cons(_) => {
+            PV::Ref(p) => match to_fissile_mut(p) {
+                NkMut::Cons(_) => {
                     let it: IT = Box::new(PVIter { item: *self });
                     it
                 },
@@ -542,7 +562,7 @@ impl PV {
                 //              and std::slice::Iter maintains a pointer into
                 //              the array that String refers to, not to the
                 //              String struct itself, which may move.
-                NkRef::String(xs) => {
+                NkMut::String(xs) => {
                     #[derive(Clone)]
                     struct Wrapper<T> where T: Iterator + Clone {
                         p: *const NkAtom,
@@ -574,8 +594,14 @@ impl PV {
                 //              compacting. It does *not* refer directly to
                 //              the internal array because it may be mutated
                 //              and reallocated.
-                NkRef::Vector(_) => {
+                NkMut::Vector(_) => {
                     let it: IT = Box::new(PVVecIter::new(*self));
+                    it
+                }
+                NkMut::Table(tbl) => {
+                    let it: IT = Box::new(unsafe { PVTableKeysIter {
+                        keys: (*tbl).keys().copied().collect::<Vec<PV>>().into_iter()
+                    } });
                     it
                 }
                 _ => return e!(),
