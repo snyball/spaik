@@ -515,6 +515,12 @@ mod sysfns {
             }))
         }
 
+        fn slurp(&mut self, vm: &mut R8VM, args: (path)) -> Result<PV> {
+            use std::path::PathBuf;
+            let path: String = (*path).try_into()?;
+            let o = std::fs::read_to_string(&path)?;
+            Ok(o.into_pv(&mut vm.mem)?)
+        }
 
         fn debug_mode(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
             let arg = args.first()
@@ -1421,6 +1427,7 @@ impl R8VM {
         // IO
         addfn!(println);
         addfn!(print);
+        addfn!(slurp);
 
         // Modules
         #[cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))] {
