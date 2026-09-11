@@ -924,7 +924,10 @@ impl R8Compiler {
         while let Some(part) = it.next() {
             let (flip, part) = R8Compiler::argument_clinic(part);
             self.compile(it.peek().is_some() || ret, part)?;
-            if flip {
+            if ret && flip {
+                self.unit().op(chasm!(NOT));
+                self.unit().op(chasm!(JN and_exit));
+            } else if flip {
                 self.unit().op(chasm!(JT and_exit));
             } else {
                 self.unit().op(chasm!(JN and_exit));
@@ -954,8 +957,11 @@ impl R8Compiler {
         while let Some(part) = it.next() {
             let (flip, part) = R8Compiler::argument_clinic(part);
             self.compile(it.peek().is_some() || ret, part)?;
-            if ret { self.unit().op(chasm!(DUP)); }
-            if flip {
+            if ret {
+                if flip { self.unit().op(chasm!(NOT)); }
+                self.unit().op(chasm!(DUP));
+            }
+            if flip && !ret {
                 self.unit().op(chasm!(JN end_l));
             } else {
                 self.unit().op(chasm!(JT end_l));
