@@ -1594,9 +1594,10 @@ impl Nuke {
     }
 
     #[allow(dead_code)]
-    pub fn assert_alignment(&self) {
+    pub fn assert_validity(&self) {
         for atom in self.iter() {
             assert_eq!(atom as usize % align_of::<NkAtom>(), 0);
+            assert!((unsafe{(*atom).meta.typ()} as usize) < DESTRUCTORS.len());
             assert_atom_inner_alignment(atom);
         }
     }

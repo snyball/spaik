@@ -1242,7 +1242,7 @@ pub struct Arena {
     pub(crate) symdb: SwymDb,
     pub(crate) conts: Vec<Vec<PV>>,
     pub(crate) env: Vec<PV>,
-    gray: Vec<*mut NkAtom>,
+    pub(crate) gray: Vec<*mut NkAtom>,
     extref: HMap<ExtRefID, (i32, PV)>,
     extdrop_recv: Receiver<ExtRefMsg>,
     extdrop_send: Sender<ExtRefMsg>,
@@ -1544,6 +1544,10 @@ impl Arena {
         self.extref.insert(id, (1, v));
         SPV { id,
               ar: self.extdrop_send.clone() }
+    }
+
+    pub fn assert_validity(&self) {
+        self.nuke.assert_validity();
     }
 
     pub fn has_mut_extrefs(&self) -> bool {
