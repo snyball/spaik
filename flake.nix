@@ -35,6 +35,22 @@
             nativeBuildInputs = build-tools;
             doCheck = false;
           };
+          packages.musl = crane-lib.buildPackage {
+            src = ./.;
+            nativeBuildInputs = with pkgs; [
+              pkgsCross.musl64.stdenv.cc
+              pkgsCross.musl64.libz
+              pkgsCross.musl64.xz
+            ] ++ build-tools;
+            doCheck = false;
+            hardeningDisable = ["all"];
+            CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
+            CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+            CC_x86_64_unknown_linux_musl = with pkgs.pkgsCross.musl64.stdenv;
+              "${cc}/bin/${cc.targetPrefix}cc";
+            CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = with pkgs.pkgsCross.musl64.stdenv;
+              "${cc}/bin/${cc.targetPrefix}cc";
+          };
           devShell = pkgs.mkShell {
             packages = all;
           };
