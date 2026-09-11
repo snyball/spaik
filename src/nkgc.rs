@@ -278,6 +278,8 @@ macro_rules! num_op {
             use PV::*;
             Ok(match (self, o) {
                 (Int(x), Real(y)) => Real(*x as f32 $op y),
+                (Int(_), Int(0)) if Builtin::$sym == Builtin::Div =>
+                    return Err(error!(DivideByZero,).bop(Builtin::$sym)),
                 (Int(x), Int(y)) => Int(x $op y),
                 (Real(x), Int(y)) => Real(x $op *y as f32),
                 (Real(x), Real(y)) => Real(x $op y),
@@ -306,12 +308,9 @@ macro_rules! inplace_num_op {
             use PV::*;
             match (&mut *self, o) {
                 (Int(x), Real(y)) => *self = Real(*x as f32 $op y),
-                (Int(x), Int(y)) => {
-                    // if Builtin::$sym == Builtin::Div && *y == 0 {
-                    //     return Err(error!(DivideByZero,).bop(Builtin::$sym))
-                    // }
-                    *x $op_inplace y
-                },
+                (Int(_), Int(0)) if Builtin::$sym == Builtin::Div =>
+                    return Err(error!(DivideByZero,).bop(Builtin::$sym)),
+                (Int(x), Int(y)) => *x $op_inplace y,
                 (Real(x), Int(y)) => { *x $op_inplace *y as f32 },
                 (Real(x), Real(y)) => *x $op_inplace y,
                 #[cfg(feature = "math")] (Vec2(x), Vec2(y)) => *x $op_inplace *y,
