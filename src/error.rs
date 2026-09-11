@@ -286,6 +286,7 @@ pub enum ErrorKind {
     UnknownSetPattern { pat: String },
     Throw { tag: String, obj: String },
     ExtError(ExtError),
+    DivideByZero,
 }
 
 impl From<std::io::Error> for Error {
@@ -638,6 +639,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // FIXME: Better error message
         UnlinkedFunction => write!(f, "Unlinked functino")?,
         ExtError(err) => write!(f, "{:?}", err.0)?,
+        DivideByZero => write!(f, "Attemped integer division by zero")?,
     }
 
     write!(f, "{}", SourceDisplayHack(" ", meta, ""))?;

@@ -10,6 +10,7 @@ use std::io::prelude::*;
 use std::io;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    pretty_env_logger::init();
     let args: Vec<String> = env::args().skip(1).collect();
     let mut f: Box<dyn Read> = match &args[..] {
         [file] => Box::new(File::open(file)?),
@@ -21,6 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(())
     }
     let mut vm = Spaik::new();
+    log::debug!("lmaooo");
+    println!("execccing");
     match vm.exec(&code) {
         Ok(_) => (),
         Err(e) => eprintln!("{}", e),

@@ -1903,7 +1903,6 @@ impl R8VM {
 
                         let excv = Excavator::new(&self.mem);
                         let mut ast = excv.to_ast(v, fst_src)?;
-                        //dbg!(&ast);
                         self.mem.clear_tags();
                         let mut opto = Optomat::new();
                         opto.visit(&mut ast)?;
@@ -2806,6 +2805,8 @@ impl R8VM {
                     ip = self.ret_to(pos as usize);
                 }
                 RET() => {
+                    #[cfg(debug_assertions)]
+                    if self.debug_mode { self.dump_stack().unwrap(); }
                     let rv = self.mem.pop()?;
                     let old_frame = self.frame;
                     if let PV::UInt(frame) = self.mem.pop()? {
@@ -2895,8 +2896,8 @@ impl R8VM {
                     return Ok(())
                 },
             }
-            #[cfg(debug_assertions)]
-            if self.debug_mode { self.dump_stack().unwrap(); }
+            // #[cfg(debug_assertions)]
+            // if self.debug_mode { self.dump_stack().unwrap(); }
             self.mem.collect();
         };
 

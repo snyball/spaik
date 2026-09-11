@@ -306,8 +306,13 @@ macro_rules! inplace_num_op {
             use PV::*;
             match (&mut *self, o) {
                 (Int(x), Real(y)) => *self = Real(*x as f32 $op y),
-                (Int(x), Int(y)) => *x $op_inplace y,
-                (Real(x), Int(y)) => *x $op_inplace *y as f32,
+                (Int(x), Int(y)) => {
+                    // if Builtin::$sym == Builtin::Div && *y == 0 {
+                    //     return Err(error!(DivideByZero,).bop(Builtin::$sym))
+                    // }
+                    *x $op_inplace y
+                },
+                (Real(x), Int(y)) => { *x $op_inplace *y as f32 },
                 (Real(x), Real(y)) => *x $op_inplace y,
                 #[cfg(feature = "math")] (Vec2(x), Vec2(y)) => *x $op_inplace *y,
                 #[cfg(feature = "math")] (Vec3(x), Vec3(y)) => *x $op_inplace *y,
@@ -776,7 +781,7 @@ impl PV {
     inplace_num_op!(add_mut, Add, +, +=);
     inplace_num_op!(sub_mut, Sub, -, -=);
     inplace_num_op!(mul_mut, Mul, *, *=);
-    inplace_num_op!(div_mut, Mul, /, /=);
+    inplace_num_op!(div_mut, Div, /, /=);
 
     pub fn pow(&self, o: &PV) -> Result<PV, Error> {
         use PV::*;
@@ -796,6 +801,7 @@ impl PV {
     pub fn modulo(&self, o: &PV) -> Result<PV, Error> {
         use PV::*;
         Ok(match (self, o) {
+            (Int(_), Int(0)) => return Err(error!(DivideByZero,).bop(Builtin::Modulo)),
             (Int(x), Int(y)) => Int(x % y),
             (x, y) => return Err(error!(ArgTypeError,
                                         expect: vec![Builtin::Number,

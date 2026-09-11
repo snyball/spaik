@@ -794,7 +794,7 @@ impl R8Compiler {
         let LoopCtx { end, ret, height, .. } = outer;
         let dist = self.with_env(|env| env.len())? - height;
         let popa = |cc: &mut R8Compiler| if dist > 0 {
-            cc.popa(dist-1);
+            cc.popa(dist);
         };
         match arg {
             Some(code) if ret => {
