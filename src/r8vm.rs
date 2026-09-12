@@ -653,6 +653,12 @@ mod sysfns {
             x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.atan()))
         }
 
+        fn atan2(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
+            let x = x.real().map_err(|e| e.argn(1))?;
+            let y = y.real().map_err(|e| e.argn(2))?;
+            Ok(PV::Real(x.atan2(y)))
+        }
+
         fn atanh(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.atanh()))
         }
@@ -1506,6 +1512,7 @@ impl R8VM {
         addfn!(sinh);
         addfn!(asinh);
         addfn!(atan);
+        addfn!(atan2);
         addfn!(atanh);
         addfn!(ln);
         addfn!(tan);
