@@ -609,7 +609,7 @@ mod sysfns {
         }
 
         fn sin(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-            x.real().map(|x| PV::Real(x.cos()))
+            x.real().map(|x| PV::Real(x.sin()))
         }
 
         fn log10(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
