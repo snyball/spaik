@@ -7,7 +7,7 @@ edition = "2021"
 repository = "https://github.com/snyball/spaik"
 homepage = "https://github.com/snyball/spaik"
 license = "BSD-2-Clause"
-default-run = "repl"
+default-run = "spaik-repl"
 rust-version = "1.75"
 
 [profile.release]
@@ -74,21 +74,25 @@ name = "spaik"
 path = "src/lib.rs"
 
 [[bin]]
-name = "repl"
+name = "spaik-repl"
 path = "src/bin/readline-repl.rs"
 required-features = ["readline", "pretty_env_logger"]
 
 [[bin]]
-name = "main"
+name = "spaik-run"
 path = "src/main.rs"
 
 [[bin]]
-name = "lisp-test"
+name = "spaik-test"
 path = "src/bin/run-lisp-tests.rs"
 
 [[bin]]
-name = "scratch"
-path = "src/bin/scratch.rs"
+name = "spaik-minify"
+path = "src/bin/minify.rs"
+
+# [[bin]]
+# name = "scratch"
+# path = "src/bin/scratch.rs"
 
 [[bench]]
 name = "lisp_test"

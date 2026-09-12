@@ -331,6 +331,29 @@
 (test continuations
       (= (catch 'a (+ (call/cc (lambda (k) (throw 'a (k 1)))) 1)) 2))
 
+;;; ---[ catch/throw ]-------------------------------------
+;; Regression test for a bug where `catch`, used as a non-tail statement
+;; inside a `let` body (with the let-bound variable read again
+;; afterward), would silently truncate the rest of the program - even
+;; when the `catch`'s body never actually `throw`s. See (fixed, moved
+;; from suspect/) fixed/catch-non-tail-in-let-drops-rest.lisp.
+(defun tests--catch-non-tail-in-let (n)
+  (let ((i 0))
+    (catch 'x (throw 'x nil))
+    (set i n)
+    i))
+
+(test catch-throw
+      (= (catch 'a (throw 'a 42)) 42)
+      (= (catch 'a 1 2 3) 3)
+      ;; throw skips past an inner catch with a different tag
+      (= (catch 'outer (catch 'inner (throw 'outer 99)) "unreached") 99)
+      ;; same tag nested - innermost catch wins
+      (= (catch 's (catch 's (throw 's 1)) 2) 2)
+      ;; `catch` as a non-tail statement inside a `let`, followed by more
+      ;; code that reads the let-bound variable - must not truncate.
+      (= (tests--catch-non-tail-in-let 5) 5))
+
 ;;; ---[ apply ]-----------------------------------------
 (test apply
       (eq? (apply (lambda (&rest xs) xs) (vec 1 2 3))

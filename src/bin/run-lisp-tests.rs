@@ -9,7 +9,8 @@ use std::process::exit;
 
 fn main() {
     exit(match run_tests() {
-        Ok(_) => 0,
-        Err(_) => 1
+        Ok(errs) if errs.len() == 0 => 0,
+        Ok(_) => 1,
+        Err(_) => 69
     })
 }
