@@ -798,8 +798,8 @@ impl R8Compiler {
             cc.popa(dist);
         };
         match arg {
-            Some(code) if ret => {
-                self.compile(true, *code)?;
+            Some(code) => {
+                self.compile(ret, *code)?;
                 popa(self);
             }
             None if ret => {
@@ -1034,9 +1034,10 @@ impl R8Compiler {
             }
             let nargs = xs.len();
             for arg in xs.into_iter() {
-                self.compile(ret, arg)?;
+                self.compile(true, arg)?;
             }
-            if ret { self.unit().op(chasm!(APN nargs)); }
+            self.unit().op(chasm!(APN nargs));
+            if !ret { self.unit().op(chasm!(POP 1)); }
             Ok(())
         }
     }
@@ -1165,6 +1166,7 @@ impl R8Compiler {
                 self.compile_seq(true, seq)?;
                 asm!(CTHPOP);
                 self.unit().mark(catch_jmp);
+                if !ret { self.unit().op(chasm!(POP 1)); }
             }
             M::Throw(tag, arg) => {
                 self.compile(true, *arg)?;

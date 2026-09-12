@@ -294,22 +294,22 @@
   (= x nil))
 
 (defmacro cond (&rest cnds)
-  `(loop
-    ,@(map (lambda (cnd)
-             `(if ,(car cnd)
-                  (break ,@(cdr cnd))))
-           cnds)
-    (break nil)))
+  (let ((c (gensym)))
+    `(catch ',c
+         ,@(map (lambda (cnd)
+                  `(if ,(car cnd)
+                       (throw ',c (progn ,@(cdr cnd)))))
+                cnds))))
 
 (defmacro case (this &rest is)
-  `(loop
-    ,@(map (lambda (x)
-             (if (= (car x) '_)
-                 `(break ,@(cdr x))
-                 `(if (eq? ,this ,(car x))
-                      (break ,@(cdr x)))))
-           is)
-    (break nil)))
+  (let ((c (gensym)))
+    `(catch ',c
+      ,@(map (lambda (x)
+               (if (= (car x) '_)
+                   `(throw ',c (progn ,@(cdr x)))
+                   `(if (eq? ,this ,(car x))
+                        (throw ',c (progn ,@(cdr x))))))
+             is))))
 
 (defmacro fmt (w &rest in)
   (let* ((begin (%chr "{"))
