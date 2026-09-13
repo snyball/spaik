@@ -295,6 +295,9 @@ macro_rules! num_op {
     ($name:ident, $sym:tt, $op:tt) => {
         pub fn $name(&self, o: &PV, ) -> Result<PV, Error> {
             use PV::*;
+            let e = Err(error!(IfaceNotImplemented,
+                                      got: vec![self.type_of().into(), o.type_of().into()])
+                .bop(Builtin::$sym));
             Ok(match (self, o) {
                 (Int(x), Real(y)) => Real(*x as f32 $op y),
                 (Int(_), Int(0)) if Builtin::$sym == Builtin::Div =>
@@ -312,10 +315,14 @@ macro_rules! num_op {
                 #[cfg(feature = "math")] (Vec3(x), Int(y)) => Vec3(*x $op *y as f32),
                 #[cfg(feature = "math")] (Vec2(x), Vec2(y)) => Vec2(*x $op *y),
                 #[cfg(feature = "math")] (Vec3(x), Vec3(y)) => Vec3(*x $op *y),
-                (x, y) =>
-                    return Err(error!(IfaceNotImplemented,
-                                      got: vec![x.type_of().into(), y.type_of().into()])
-                               .bop(Builtin::$sym))
+                (Ref(p), v) => match (to_fissile_ref(*p), v) {
+                    #[cfg(feature = "math")]
+                    (NkRef::Mat3(m), Vec3(v)) => Vec3(unsafe{*m} * *v),
+                    #[cfg(feature = "math")]
+                    (NkRef::Mat2(m), Vec2(v)) => Vec2(unsafe{*m} * *v),
+                    _ => return e,
+                }
+                _ => return e
             })
         }
     };
@@ -338,6 +345,7 @@ macro_rules! inplace_num_op {
                 #[cfg(feature = "math")] (Vec2(x), Int(y)) => *x $op_inplace *y as f32,
                 #[cfg(feature = "math")] (Vec3(x), Real(y)) => *x $op_inplace *y,
                 #[cfg(feature = "math")] (Vec3(x), Int(y)) => *x $op_inplace *y as f32,
+                // (Ref(x), Ref(y)) =>
                 (x, y) =>
                     return Err(error!(IfaceNotImplemented,
                                       got: vec![x.type_of().into(), y.type_of().into()])
@@ -479,6 +487,33 @@ impl PV {
     #[inline]
     pub fn tag(&self, mem: &mut Arena, tag: Source) {
         if let PV::Ref(p) = *self { mem.tag(p, tag) }
+    }
+
+    #[cfg(feature = "math")]
+    pub fn vec2(&self) -> Result<Vec2, Error> {
+        match self {
+            PV::Vec2(v) => Ok(*v),
+            _ => err!(TypeError, expect: Builtin::Vec2, got: self.bt_type_of())
+        }
+    }
+
+    #[cfg(feature = "math")]
+    pub fn vec3(&self) -> Result<Vec3, Error> {
+        match self {
+            PV::Vec3(v) => Ok(*v),
+            _ => err!(TypeError, expect: Builtin::Vec3, got: self.bt_type_of())
+        }
+    }
+
+    #[cfg(feature = "math")]
+    pub fn vec4(&self) -> Result<glam::Vec4, Error> {
+        match self {
+            PV::Ref(v) => match to_fissile_ref(*v) {
+                NkRef::Vec4(v) => Ok(unsafe { *v }),
+                _ => err!(TypeError, expect: Builtin::Vec4, got: self.bt_type_of())
+            },
+            _ => err!(TypeError, expect: Builtin::Vec4, got: self.bt_type_of())
+        }
     }
 
     pub fn real(&self) -> Result<f32, Error> {

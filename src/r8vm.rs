@@ -2,6 +2,7 @@
 
 #[cfg(feature = "extra")]
 use comfy_table::Table;
+use glam::{Mat2, Mat3};
 
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
@@ -300,6 +301,7 @@ pub unsafe fn split_list(mut head: Option<*mut Cons>)
 mod sysfns {
     use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId, hash::Hash, collections::hash_map::DefaultHasher, cmp::Ordering};
 
+    use crate::nuke::{to_fissile_ref, NkRef};
     use crate::utils::{HMap, HSet};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, Cons}, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}, r8vm::merge_sort};
@@ -424,16 +426,48 @@ mod sysfns {
             })
         }
 
-        fn rot_x(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+        // fn mat3_rot(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+        //     featurefn!("math", Ok(vm.mem.put_pv(glam::Mat3::from_rotation(x.real()?))))
+        // }
+
+        fn mat2_rot(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            featurefn!("math", Ok(vm.mem.put_pv(glam::Mat2::from_angle(x.real()?))))
+        }
+
+        fn mat3_rot_x(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            featurefn!("math", Ok(vm.mem.put_pv(glam::Mat3::from_rotation_x(x.real()?))))
+        }
+
+        fn mat3_rot_y(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            featurefn!("math", Ok(vm.mem.put_pv(glam::Mat3::from_rotation_y(x.real()?))))
+        }
+
+        fn mat3_rot_z(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            featurefn!("math", Ok(vm.mem.put_pv(glam::Mat3::from_rotation_z(x.real()?))))
+        }
+
+        fn mat4_rot_x(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             featurefn!("math", Ok(vm.mem.put_pv(glam::Mat4::from_rotation_x(x.real()?))))
         }
 
-        fn rot_y(&mut self, vm: &mut R8VM, args: (y)) -> Result<PV> {
+        fn mat4_rot_y(&mut self, vm: &mut R8VM, args: (y)) -> Result<PV> {
             featurefn!("math", Ok(vm.mem.put_pv(glam::Mat4::from_rotation_y(y.real()?))))
         }
 
-        fn rot_z(&mut self, vm: &mut R8VM, args: (z)) -> Result<PV> {
+        fn mat4_rot_z(&mut self, vm: &mut R8VM, args: (z)) -> Result<PV> {
             featurefn!("math", Ok(vm.mem.put_pv(glam::Mat4::from_rotation_z(z.real()?))))
+        }
+
+        fn mat(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
+            featurefn!("math", Ok(if args.len() == 2 {
+                vm.mem.put_pv(glam::Mat2::from_cols(args[0].vec2()?, args[1].vec2()?))
+            } else if args.len() == 3 {
+                vm.mem.put_pv(glam::Mat3::from_cols(args[0].vec3()?, args[1].vec3()?, args[2].vec3()?))
+            } else if args.len() == 4 {
+                vm.mem.put_pv(glam::Mat4::from_cols(args[0].vec4()?, args[1].vec4()?, args[2].vec4()?, args[3].vec4()?))
+            } else {
+                return err!(ArgError, expect: ArgSpec::opt(2, 4), got_num: args.len().try_into()?)
+            }))
         }
 
         fn translate(&mut self, vm: &mut R8VM, args: (delta)) -> Result<PV> {
@@ -1496,9 +1530,14 @@ impl R8VM {
         addfn!(vec2);
         addfn!(vec3);
         addfn!(vec4);
-        addfn!("rot-x", rot_x);
-        addfn!("rot-y", rot_y);
-        addfn!("rot-z", rot_z);
+        addfn!("mat2-rot", mat2_rot);
+        addfn!("mat3-rot-x", mat3_rot_x);
+        addfn!("mat3-rot-y", mat3_rot_y);
+        addfn!("mat3-rot-z", mat3_rot_z);
+        addfn!("mat4-rot-x", mat4_rot_x);
+        addfn!("mat4-rot-y", mat4_rot_y);
+        addfn!("mat4-rot-z", mat4_rot_z);
+        addfn!(mat);
         addfn!(scale);
         addfn!(translate);
         addfn!(cos);

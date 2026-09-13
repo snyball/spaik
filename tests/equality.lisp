@@ -2,22 +2,17 @@
 ;;; `=` (reference equality) vs `eq?` (deep structural equality)
 ;;; across types.
 ;;;
-;;; `eq?` is intended to recurse into any container and compare
-;;; contents, regardless of type - see FIXME.md for the currently-open
-;;; bug this file targets: `eq?` on `string` compares the underlying
-;;; pointers directly instead of dereferencing and comparing the
-;;; pointed-to bytes, and `eq?` on `table` is not yet implemented to
-;;; do a structural comparison at all. Both cause `eq?` to wrongly
-;;; report `false` for two separately-constructed, equal-content
-;;; strings/tables - and, since `eq?` recurses, that same wrongness
-;;; leaks into any `vec`/`cons` that contains a `string` or `table`.
-;;;
-;;; These tests are expected to FAIL on the current build (the
-;;; `eq-string-*`, `eq-table-*` and `eq-nested-*` tests below) and
-;;; PASS once `eq?` is fixed to dereference/recurse for every type.
-;;; The `eq-baseline-*` tests already pass today and are here as
-;;; regression coverage so a fix doesn't accidentally break the
-;;; already-correct `vec`/`cons` recursion.
+;;; `eq?` recurses into any container and compares contents,
+;;; regardless of type. This previously did not hold for `string`
+;;; (compared the underlying pointers directly instead of dereferencing
+;;; and comparing the pointed-to bytes) or `table` (structural
+;;; comparison was unimplemented) - see `fixed/eq-not-deep-structural-
+;;; for-string-and-table.lisp` and FIXME.md's "Fixed" section; the
+;;; `eq-string-structural`/`eq-table-structural`/
+;;; `eq-nested-string-and-table` tests below are the regression
+;;; coverage for that fix and now pass. The `eq-baseline-*` tests
+;;; guard the types that were already correct (`vec`, `cons`/list,
+;;; `vec2`/`vec3`/`vec4`) so a future change can't regress them.
 ;;;
 ;;; NOTE: each clause in a `test` block must be a literal
 ;;; `(predicate arg-expr...)` form (see `lisp/test.lisp`) - it is NOT
@@ -73,13 +68,78 @@
       (not (eq? '(1 2 3) '(1 2 4)))
       (not (eq? '(1 2 3) '(1 2))))
 
-(test eq-baseline-vec2-vec3
-      ;; fixed-size value types: no separate identity, so `=` and
-      ;; `eq?` naturally agree.
+(test eq-baseline-vec2-vec3-vec4
+      ;; fixed-size linear-algebra value types (vec2/vec3/vec4): no
+      ;; separate identity from content, so `=` and `eq?` must always
+      ;; agree - both true for equal components, both false as soon
+      ;; as any single component differs. (mat2/mat3/mat4 do not exist
+      ;; in this build - see FIXME.md/ATTEMPTS.md - so are not covered
+      ;; here; add matching `eq-baseline-mat*` cases below if/when
+      ;; they're implemented.)
       (eq? (vec2 1 2) (vec2 1 2))
       (= (vec2 1 2) (vec2 1 2))
+      (not (eq? (vec2 1 2) (vec2 1 3)))
+      (not (= (vec2 1 2) (vec2 1 3)))
       (eq? (vec3 1 2 3) (vec3 1 2 3))
-      (= (vec3 1 2 3) (vec3 1 2 3)))
+      (= (vec3 1 2 3) (vec3 1 2 3))
+      (not (eq? (vec3 1 2 3) (vec3 1 2 4)))
+      (not (= (vec3 1 2 3) (vec3 1 2 4)))
+      (eq? (vec4 1 2 3 4) (vec4 1 2 3 4))
+      (= (vec4 1 2 3 4) (vec4 1 2 3 4))
+      (not (eq? (vec4 1 2 3 4) (vec4 1 2 3 5)))
+      (not (= (vec4 1 2 3 4) (vec4 1 2 3 5))))
+
+(test eq-baseline-mat
+      ;; `mat` (2x2/3x3/4x4 matrices) does not exist in this build yet
+      ;; (raises "Undefined Function" here - not gated behind anything
+      ;; this test can detect ahead of time, so this whole `test`
+      ;; block is EXPECTED TO FAIL until a build with `mat` lands).
+      ;; Unlike the earlier `mat2`/`mat3`/`mat4` design, `mat` is a
+      ;; single function that only accepts column vectors as args and
+      ;; picks its return type (2x2/3x3/4x4) from how many are given:
+      ;; 2 `vec2` columns -> a 2x2 matrix, 3 `vec3` columns -> 3x3, 4
+      ;; `vec4` columns -> 4x4. Once it exists, each of those return
+      ;; types should behave exactly like vec2/vec3/vec4 above: no
+      ;; identity separate from content, so `=` and `eq?` must always
+      ;; agree, for every arity `mat` supports.
+      ;;
+      ;; NOTE: this only tests `=`/`eq?` consistency, independent of
+      ;; whether matrix construction itself is otherwise correct - it
+      ;; does not target the separately-reported "duplicate pasted"
+      ;; construction bug in the matrix code.
+
+      ;; 2 columns -> 2x2
+      (eq? (mat (vec2 1 0) (vec2 0 1)) (mat (vec2 1 0) (vec2 0 1)))
+      (= (mat (vec2 1 0) (vec2 0 1)) (mat (vec2 1 0) (vec2 0 1)))
+      (not (eq? (mat (vec2 1 0) (vec2 0 1)) (mat (vec2 1 0) (vec2 1 1))))
+      (not (= (mat (vec2 1 0) (vec2 0 1)) (mat (vec2 1 0) (vec2 1 1))))
+
+      ;; 3 columns -> 3x3
+      (eq? (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1))
+           (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1)))
+      (= (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1))
+         (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1)))
+      (not (eq? (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1))
+                (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 2))))
+      (not (= (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1))
+              (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 2))))
+
+      ;; 4 columns -> 4x4
+      (eq? (mat (vec4 1 0 0 0) (vec4 0 1 0 0) (vec4 0 0 1 0) (vec4 0 0 0 1))
+           (mat (vec4 1 0 0 0) (vec4 0 1 0 0) (vec4 0 0 1 0) (vec4 0 0 0 1)))
+      (= (mat (vec4 1 0 0 0) (vec4 0 1 0 0) (vec4 0 0 1 0) (vec4 0 0 0 1))
+         (mat (vec4 1 0 0 0) (vec4 0 1 0 0) (vec4 0 0 1 0) (vec4 0 0 0 1)))
+      (not (eq? (mat (vec4 1 0 0 0) (vec4 0 1 0 0) (vec4 0 0 1 0) (vec4 0 0 0 1))
+                (mat (vec4 1 0 0 0) (vec4 0 1 0 0) (vec4 0 0 1 0) (vec4 0 0 0 2))))
+      (not (= (mat (vec4 1 0 0 0) (vec4 0 1 0 0) (vec4 0 0 1 0) (vec4 0 0 0 1))
+              (mat (vec4 1 0 0 0) (vec4 0 1 0 0) (vec4 0 0 1 0) (vec4 0 0 0 2))))
+
+      ;; different arities (hence different return types/shapes) must
+      ;; never be considered equal to one another, by either operator.
+      (not (eq? (mat (vec2 1 0) (vec2 0 1))
+                (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1))))
+      (not (= (mat (vec2 1 0) (vec2 0 1))
+              (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1)))))
 
 ;;; ---[ currently broken: string ]------------------------------------
 
