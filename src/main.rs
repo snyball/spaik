@@ -27,6 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => eprintln!("{}", e),
     }
     vm.trace_report();
+    vm.log_stats();
 
     Ok(())
 }

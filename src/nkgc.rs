@@ -801,6 +801,7 @@ impl PV {
                     let Some(ncell) = cast_mut::<Cons>(p) else { break 'err pv };
                     cell = ncell;
                 }
+                assert_ne!(new_tail.color(), Color::White);
                 (*cell).cdr = new_tail;
                 return Ok(())
             }
@@ -1367,7 +1368,7 @@ const DEFAULT_GRAYSZ: usize = 256;
 const DEFAULT_STACKSZ: usize = 32;
 const DEFAULT_ENVSZ: usize = 0;
 // const GC_SLEEP_CYCLES: i32 = 10000;
-const GC_SLEEP_MEM_BYTES: i32 = 1024 * 30;
+const GC_SLEEP_MEM_BYTES: i32 = 1024 * 180;
 
 #[derive(Debug)]
 pub struct GCStats {
@@ -1529,19 +1530,21 @@ impl Arena {
             return;
         }
         self.mem_fit::<Cons>(n as usize);
+        self.forbid_reordering();
         let top = self.stack.len();
         let idx = top - (n as usize);
         let (head, mut cell) = self.alloc::<Cons>();
         for i in idx..top - 1 {
             let (head, next) = self.alloc::<Cons>();
             unsafe {
-                ptr::write(cell, Cons::new(self.stack[i], PV::Ref(head)))
+                ptr::write(cell, Cons::new(self.barrier(self.stack[i]), PV::Ref(head)))
             }
             cell = next;
         }
         unsafe {
-            ptr::write(cell, Cons::new(self.stack[top - 1], PV::Nil))
+            ptr::write(cell, Cons::new(self.barrier(self.stack[top - 1]), PV::Nil))
         }
+        self.allow_reordering();
         self.stack.truncate(idx);
         self.stack.push(PV::Ref(head));
     }
@@ -1562,15 +1565,15 @@ impl Arena {
         let orig_head = head;
         for i in idx..top - 1 - dot as usize {
             let (nhead, next) = self.alloc::<Cons>();
-            unsafe {ptr::write(cell, Cons::new(self.stack[i], PV::Ref(nhead)))}
+            unsafe {ptr::write(cell, Cons::new(self.barrier(self.stack[i]), PV::Ref(nhead)))}
             self.tags.insert(head, srcs.next().expect("Not enough sources for list"));
             head = nhead;
             cell = next;
         }
         self.tags.insert(head, srcs.next().expect("Not enough sources for list"));
         unsafe {
-            ptr::write(cell, Cons::new(self.stack[top - 1 - dot as usize], if dot {
-                self.stack[top - 1]
+            ptr::write(cell, Cons::new(self.barrier(self.stack[top - 1 - dot as usize]), if dot {
+                self.barrier(self.stack[top - 1])
             } else {
                 PV::Nil
             }))
@@ -1594,12 +1597,12 @@ impl Arena {
         let _orig_cell = cell;
         for i in idx..top - 1 - dot as usize {
             let (head, next) = self.alloc::<Cons>();
-            unsafe {ptr::write(cell, Cons::new(self.stack[i], PV::Ref(head)))}
+            unsafe {ptr::write(cell, Cons::new(self.barrier(self.stack[i]), PV::Ref(head)))}
             cell = next;
         }
         unsafe {
-            ptr::write(cell, Cons::new(self.stack[top - 1 - dot as usize], if dot {
-                self.stack[top - 1]
+            ptr::write(cell, Cons::new(self.barrier(self.stack[top - 1 - dot as usize]), if dot {
+                self.barrier(self.stack[top - 1])
             } else {
                 PV::Nil
             }))
@@ -1687,7 +1690,7 @@ impl Arena {
             ($v:expr) => {
                 if let PV::Ref(p) = $v {
                     unsafe {
-                        if (*p).color() != Color::Gray {
+                        if (*p).color() == Color::White {
                             (*p).set_color(Color::Gray);
                             self.gray.push(p);
                         }
@@ -1703,14 +1706,6 @@ impl Arena {
         let top_it = self.stack[idx + 1..top].iter();
         for (item_ref, next) in self.stack[idx..top - 1].iter().zip(top_it) {
             let mut item = *item_ref;
-            if let PV::Ref(p) = *next {
-                unsafe {
-                    if (*p).color() != Color::Gray {
-                        (*p).set_color(Color::Gray);
-                        self.gray.push(p);
-                    }
-                }
-            }
             item.append(barrier!(*next))?;
         }
         self.stack.truncate(idx + 1);
@@ -1728,10 +1723,13 @@ impl Arena {
     pub fn cons(&mut self) {
         let top = self.stack.len();
         let args = &self.stack[top - 2..];
-        let mem = self.put_pv(Cons {
+        let cns = Cons {
             car: args[0],
             cdr: args[1],
-        });
+        };
+        self.barrier(cns.car);
+        self.barrier(cns.cdr);
+        let mem = self.put_pv(cns);
         self.stack.truncate(top - 2);
         self.stack.push(mem);
     }
@@ -1862,9 +1860,11 @@ impl Arena {
         unsafe {
             let (headp, ptr, grow) = self.nuke.alloc::<T>();
             ptr::write(ptr, v);
+            self.stack.push(PV::Ref(headp));
             if let Some(tok) = grow {
                 self.update_ptrs(tok);
             }
+            self.stack.pop();
             (headp, ptr)
         }
     }
@@ -2052,36 +2052,48 @@ impl Arena {
         todo!()
     }
 
-    pub fn assert_invariants(&self) {
+    #[cfg(feature = "gc-assertions")]
+    pub fn assert_invariants(&mut self) -> Result<(), (PV, PV)> {
         self.nuke.assert_validity();
         unsafe {
-            for p in self.nuke.iter() {
-                if (*p).color() != Color::Black {
+            for atom in self.nuke.iter_mut() {
+                if (*atom).color() != Color::Black {
                     continue;
                 }
-                match to_fissile_ref(p) {
+                match to_fissile_ref(atom) {
                     NkRef::Cons(p) => {
-                        assert!((*p).car.color() != Color::White);
-                        assert!((*p).cdr.color() != Color::White);
+                        if (*p).car.color() == Color::White {
+                            return Err((PV::Ref(atom), (*p).car))
+                        } else if (*p).cdr.color() == Color::White {
+                            return Err((PV::Ref(atom), (*p).cdr))
+                        }
                     },
                     NkRef::Lambda(p) => {
-                        assert!((*p).locals.iter().all(|x| x.color() != Color::White));
+                        if let Some(e) = (*p).locals.iter().find(|x| x.color() == Color::White) {
+                            return Err((PV::Ref(atom), *e))
+                        }
                     },
                     NkRef::Vector(p) => {
-                        assert!((*p).iter().all(|x| x.color() != Color::White));
+                        if let Some(e) = (*p).iter().find(|x| x.color() == Color::White) {
+                            return Err((PV::Ref(atom), *e))
+                        }
                     },
                     NkRef::Table(t) => {
-                        assert!((*t).values().all(|x| x.color() != Color::White));
-                    },
-                    NkRef::Iter(p) => {
-                        assert!((*p).root.color() != Color::White)
+                        if let Some(e) = (*t).values().find(|x| x.color() == Color::White) {
+                            return Err((PV::Ref(atom), *e))
+                        }
                     },
                     NkRef::Continuation(p) => {
-                        assert!((*p).stack.iter().all(|x| x.color() != Color::White));
+                        if let Some(e) = (*p).stack.iter().find(|x| x.color() == Color::White) {
+                            return Err((PV::Ref(atom), *e))
+                        }
                     },
                     NkRef::Intr(p) => assert!((*p).arg.color() != Color::White),
                     NkRef::PV(p) => assert!((*p).color() != Color::White),
 
+                    NkRef::Iter(p) => {
+                        // assert!((*p).root.color() != Color::White)
+                    },
                     NkRef::String(_) => (),
                     NkRef::Subroutine(p) => (),
                     NkRef::Vec4(_) => (),
@@ -2092,6 +2104,7 @@ impl Arena {
                     NkRef::Void(_) => (),
                 }
             }
+            Ok(())
         }
     }
 

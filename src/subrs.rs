@@ -808,7 +808,6 @@ mod tests {
     #[cfg(feature = "math")]
     #[test]
     fn call_with_vec4() {
-        logging::setup_logging();
         log::trace!("Making VM ...");
         let mut vm = Spaik::new_no_core();
         vm.set("f", |v: glam::Vec4| { 3.0 * v });

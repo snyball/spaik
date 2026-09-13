@@ -148,12 +148,11 @@ macro_rules! fissile_types {
         }
 
         #[inline]
-        pub fn mark_atom(atom: *mut NkAtom, gray: &mut Vec<*mut NkAtom>) {
-            if unsafe { (*atom).color() } != Color::Black {
+        pub unsafe fn mark_atom(atom: *mut NkAtom, gray: &mut Vec<*mut NkAtom>) {
+            let c = (*atom).color();
+            (*atom).set_color(Color::Black);
+            if c != Color::Black {
                 with_atom_mut!(atom, {(*atom).trace(gray)}, $(($t,$path)),+);
-            }
-            unsafe {
-                (*atom).set_color(Color::Black)
             }
         }
 
@@ -1352,6 +1351,8 @@ pub struct Nuke {
     mem: *mut u8,
     #[cfg(not(target_arch = "wasm32"))]
     start_time: SystemTime,
+    #[cfg(feature = "gc-assertions")]
+    type_order: Vec<u8>,
 }
 
 const ALIGNMENT: usize = 16;
@@ -1438,6 +1439,8 @@ impl Nuke {
             mem: unsafe { alloc(layout) },
             #[cfg(not(target_arch = "wasm32"))]
             start_time: SystemTime::now(),
+            #[cfg(feature = "gc-assertions")]
+            type_order: vec![],
         };
 
         if nk.mem.is_null() {
@@ -1485,6 +1488,8 @@ impl Nuke {
         self.last = npos;
         self.free = start;
 
+        self.used = self.free as usize - self.mem as usize;
+
         log::trace!("compacted heap, took {:?}", Instant::now().duration_since(t0));
 
         RelocateToken
@@ -1494,13 +1499,24 @@ impl Nuke {
         log::trace!("☢️💥");
 
         for atom in self.iter_mut() {
+            self.num_frees += 1;
             unsafe { destroy_atom(atom) }
         }
+        assert_eq!(self.num_frees, self.num_allocs);
         self.last = self.fst_mut();
         self.free = self.offset(mem::size_of::<NkAtom>());
         self.used = mem::size_of::<NkAtom>();
         (*self.fst_mut()).next = ptr::null_mut();
         self.num_atoms = 1;
+    }
+
+    #[cfg(feature = "gc-assertions")]
+    pub fn check_types_linear(&mut self) {
+        assert_eq!(self.num_atoms-1, self.type_order.len());
+        let cur = self.iter().map(|a| unsafe{(*a).meta.typ()});
+        for (u, v) in self.type_order.iter().copied().zip(cur) {
+            assert_eq!(u, v);
+        }
     }
 
     pub unsafe fn sweep_compact(&mut self) -> RelocateToken {
@@ -1509,6 +1525,7 @@ impl Nuke {
         let mut start = node as *mut u8;
         let had_num_frees = self.num_frees;
         let t0 = Instant::now();
+        let mut idx = 0;
 
         loop {
             let next_node = {
@@ -1517,13 +1534,15 @@ impl Nuke {
                 while !n.is_null() {
                     if (*n).color() == Color::White {
                         destroy_atom(n);
-                        self.used -= (*n).full_size();
                         num_frees += 1;
                     } else {
                         break;
                     }
                     n = (*n).next;
                 }
+                #[cfg(feature = "gc-assertions")]
+                self.type_order.drain(idx..idx+num_frees).for_each(drop);
+                idx += 1;
                 self.num_atoms -= num_frees;
                 self.num_frees += num_frees;
                 n
@@ -1553,6 +1572,8 @@ impl Nuke {
         (*self.fst_mut()).set_color(Color::Black);
         self.free = start;
 
+        self.used = self.free as usize - self.mem as usize;
+
         log::trace!("sweep-compacted heap destroying {} objects, took {:?}",
             self.num_frees - had_num_frees, Instant::now().duration_since(t0));
 
@@ -1573,6 +1594,7 @@ impl Nuke {
         log::trace!("growing heap to {}KB ...", self.sz / 1024);
 
         if old_mem != self.mem as usize {
+            log::trace!("Copying to new heap ...");
             let mut node = self.fst_mut();
             loop {
                 let old_addr = old_mem + (node as usize - self.mem as usize);
@@ -1581,8 +1603,9 @@ impl Nuke {
                 let old_next = (*node).next;
                 if old_next.is_null() {
                     self.last = node;
-                    self.free = (node as *mut u8).add((*node).full_size());
+                    self.free = self.mem.add(self.free as usize - old_mem);
                     self.used = self.free as usize - self.mem as usize;
+                    std::ptr::write_bytes(self.free, 0, self.sz - self.used);
                     break;
                 }
                 let next = self.mem.add(old_next as usize - old_mem) as *mut NkAtom;
@@ -1591,6 +1614,7 @@ impl Nuke {
             }
             Some(RelocateToken)
         } else {
+            log::trace!("Same location, fast path");
             None
         }
     }
@@ -1637,11 +1661,14 @@ impl Nuke {
     }
 
     pub unsafe fn make_room(&mut self, fit: usize) -> Option<RelocateToken> {
-        if self.used + fit > self.sz {
+        let r = if self.used + fit > self.sz {
             self.grow_realloc(fit)
         } else {
             Some(self.compact())
-        }
+        };
+        #[cfg(feature = "gc-assertions")]
+        self.assert_validity();
+        r
     }
 
     pub fn confirm_relocation(&mut self, t: RelocateToken) {
@@ -1671,6 +1698,7 @@ impl Nuke {
         } else {
             None
         };
+        assert!(!self.will_overflow(max_sz));
 
         let cur = align_mut(self.free as *mut NkAtom, ALIGNMENT);
         let cur_diff = cur as usize - self.free as usize;
@@ -1698,6 +1726,9 @@ impl Nuke {
             self.free);
 
         (*last).next = cur;
+
+        #[cfg(feature = "gc-assertions")]
+        self.type_order.push((*cur).meta.typ());
 
         (cur, pa, ret)
     }

@@ -68,6 +68,7 @@ impl Error for TestError {
 
 /// Run SPAIK tests from the `./tests` directory and report any errors.
 pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
+    pretty_env_logger::init();
     let mut vm = R8VM::new();
     let tests_path = "./tests";
     let test = vm.sym_id("test");

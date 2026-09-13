@@ -284,6 +284,10 @@ impl Spaik {
         Spaik { vm: R8VM::new() }
     }
 
+    pub fn log_stats(&self) {
+        self.vm.log_stats();
+    }
+
     /// Create a new SPAIK VM
     #[inline]
     pub fn new_no_core() -> Spaik {

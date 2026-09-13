@@ -20,7 +20,7 @@ use crate::{
     tok::Token, limits, comp::R8Compiler,
     chasm::LblMap, opt::Optomat, swym::{SymRef, self}, tokit, AsSym, IntoLisp};
 use crate::utils::{HMap, HSet};
-use std::{any::{type_name, Any, TypeId}, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, fs, io::{self, prelude::*}, mem::{self, replace, take}, path::{Path, PathBuf}, ptr::addr_of_mut, sync::{atomic::AtomicU32, Arc, Mutex}};
+use std::{any::{type_name, Any, TypeId}, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, fs, io::{self, prelude::*}, mem::{self, replace, take}, path::{Path, PathBuf}, ptr::{self, addr_of_mut}, sync::{atomic::AtomicU32, Arc, Mutex}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -466,7 +466,7 @@ mod sysfns {
             } else if args.len() == 4 {
                 vm.mem.put_pv(glam::Mat4::from_cols(args[0].vec4()?, args[1].vec4()?, args[2].vec4()?, args[3].vec4()?))
             } else {
-                return err!(ArgError, expect: ArgSpec::opt(2, 4), got_num: args.len().try_into()?)
+                return err!(ArgError, expect: ArgSpec::opt(2, 2), got_num: args.len().try_into()?)
             }))
         }
 
@@ -1081,6 +1081,11 @@ impl<T> OutStream for T where T: io::Write + Debug + Send {}
 
 pub type ObjMethod = unsafe fn(*mut u8, &mut R8VM, &[PV]) -> Result<PV>;
 
+#[derive(Clone, Default)]
+pub struct VmStats {
+    instructions: usize,
+}
+
 #[derive(Clone)]
 pub struct R8VM {
     /// Memory
@@ -1091,6 +1096,7 @@ pub struct R8VM {
     pub(crate) trace_counts: HMap<SymID, usize>,
     tok_tree: tokit::Fragment,
     reader_macros: HMap<String, SymID>,
+    stats: VmStats,
 
     // Named locations/objects
     breaks: HMap<usize, r8c::Op>,
@@ -1115,6 +1121,7 @@ pub struct R8VM {
 impl Default for R8VM {
     fn default() -> Self {
         R8VM {
+            stats: Default::default(),
             pmem: Default::default(),
             resources: Default::default(),
             libs: Default::default(),
@@ -1678,6 +1685,9 @@ impl R8VM {
     }
 
     pub fn new() -> R8VM {
+        #[cfg(feature = "gc-assertions")]
+        log::warn!("Running with GC assertions enabled, this will be VERY SLOW!");
+
         let mut vm = R8VM::no_std();
 
         let src = Some(Cow::Borrowed("<ζ>-core"));
@@ -2619,22 +2629,18 @@ impl R8VM {
                 let q = $v;
                 if let PV::Ref(p) = q {
                     unsafe {
-                        if (*p).color() != Color::Gray {
+                        if (*p).color() == Color::White {
                             (*p).set_color(Color::Gray);
                             self.mem.gray.push(p);
                         }
                     }
-                    q
-                } else {
-                    q
                 }
+                q
             }};
         }
         let mut run = || loop {
             let op = *ip;
             ip = ip.offset(1);
-
-            self.mem.assert_invariants();
 
             #[cfg(debug_assertions)]
             if self.debug_mode {
@@ -2694,6 +2700,9 @@ impl R8VM {
                     let vec = self.mem.stack
                                       .drain(len-(n as usize)..)
                                       .collect::<Vec<_>>();
+                    for item in vec.iter() {
+                        barrier!(*item);
+                    }
                     let ptr = self.mem.put_pv(vec);
                     self.mem.push(ptr);
                 }
@@ -2702,7 +2711,6 @@ impl R8VM {
                     let elem = self.mem.pop()?;
                     with_ref_mut!(vec, Vector(v) => {
                         (*v).push(barrier!(elem));
-                        // (*v).push(elem);
                         Ok(())
                     }).map_err(|e| e.bop(Builtin::Push))?
                 }
@@ -2720,7 +2728,8 @@ impl R8VM {
                     let err = || Error::new(ErrorKind::TypeNError {
                         expect: vec![Builtin::Vector,
                                      Builtin::Vec2,
-                                     Builtin::Vec3],
+                                     Builtin::Vec3,
+                                     Builtin::Table],
                         got: vec.bt_type_of(),
                     });
                     #[cfg(feature = "math")]
@@ -2808,7 +2817,10 @@ impl R8VM {
                     let spec = ArgSpec { nargs, nopt, env, rest: rest == 1 };
                     let to = self.mem.stack.len();
                     let from = to - nenv as usize;
-                    let locals = self.mem.stack.drain(from..to).collect();
+                    let locals = self.mem.stack.drain(from..to).collect::<Vec<_>>();
+                    for x in locals.iter() {
+                        barrier!(*x);
+                    }
                     self.mem.push_new(nkgc::Lambda { pos: pos as usize,
                                                      args: spec,
                                                      locals });
@@ -2877,8 +2889,8 @@ impl R8VM {
                     ip = self.ret_to(pos as usize);
                 }
                 RET() => {
-                    #[cfg(debug_assertions)]
-                    if self.debug_mode { self.dump_stack().unwrap(); }
+                    // #[cfg(debug_assertions)]
+                    // if self.debug_mode { self.dump_stack().unwrap(); }
                     let rv = self.mem.pop()?;
                     let old_frame = self.frame;
                     if let PV::UInt(frame) = self.mem.pop()? {
@@ -2925,7 +2937,7 @@ impl R8VM {
                 }
                 STR(var) => {
                     let offset = (self.frame as isize) + (var as isize);
-                    *(self.mem.stack.as_mut_ptr().offset(offset)) = self.mem.pop()?
+                    *(self.mem.stack.as_mut_ptr().offset(offset)) = barrier!(self.mem.pop()?)
                 },
                 POP(n) => self.mem.popn(n as usize),
                 POPA(keep, pop) => {
@@ -2968,9 +2980,25 @@ impl R8VM {
                     return Ok(())
                 },
             }
-            // #[cfg(debug_assertions)]
-            // if self.debug_mode { self.dump_stack().unwrap(); }
+            self.stats.instructions += 1;
+
+            #[cfg(feature = "gc-assertions")]
+            self.mem.nuke.check_types_linear();
+
+            #[cfg(feature = "gc-assertions")]
+            if let Err((a, b)) = self.mem.assert_invariants() {
+                panic!("after {op}: Black object {a} points to white {b}");
+            }
+
             self.mem.collect();
+
+            #[cfg(feature = "gc-assertions")]
+            self.mem.nuke.check_types_linear();
+
+            #[cfg(feature = "gc-assertions")]
+            if let Err((a, b)) = self.mem.assert_invariants() {
+                panic!("after collection: Black object {a} points to white {b}");
+            }
         };
 
         let res = run();
@@ -2982,6 +3010,11 @@ impl R8VM {
                 Err((dip, er.src(self.get_source(dip))))
             }
         }
+    }
+
+    pub fn log_stats(&self) {
+        log::debug!("ran no. instructions: {}", self.stats.instructions);
+        log::debug!("{:?}", self.mem.stats());
     }
 
     pub fn dump_stack(&mut self) -> Result<()> {
