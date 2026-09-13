@@ -236,7 +236,7 @@ where
 }
 
 pub struct Iter {
-    root: PV,
+    pub root: PV,
     it: Box<dyn CloneIterator<Item = PV>>
 }
 
@@ -915,7 +915,7 @@ impl<T: Userdata> Drop for Gc<T> {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Continuation {
-    stack: Vec<PV>,
+    pub stack: Vec<PV>,
     pub frame: usize,
     pub dip: usize,
 }

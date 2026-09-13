@@ -2634,6 +2634,8 @@ impl R8VM {
             let op = *ip;
             ip = ip.offset(1);
 
+            self.mem.assert_invariants();
+
             #[cfg(debug_assertions)]
             if self.debug_mode {
                 match op {

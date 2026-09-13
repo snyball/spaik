@@ -279,7 +279,7 @@ impl Traceable for PV {
     #[inline]
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
         if let PV::Ref(ptr) = *self {
-            mark_atom(ptr, gray)
+            unsafe { mark_atom(ptr, gray) }
         }
     }
 
@@ -399,7 +399,7 @@ struct PVVecIter {
 
 impl Traceable for PVVecIter {
     fn trace(&self, gray: &mut Vec<*mut NkAtom>) {
-        mark_atom(self.vec, gray)
+        unsafe { mark_atom(self.vec, gray) }
     }
 
     fn update_ptrs(&mut self, reloc: &PtrMap) {
@@ -447,6 +447,14 @@ impl PV {
            *self == PV::Int(0)
         || *self == PV::Real(0.0)
         || *self == PV::UInt(0)
+    }
+
+    pub fn color(&self) -> Color {
+        if let PV::Ref(p) = self {
+            unsafe { (**p).color() }
+        } else {
+            Color::Black
+        }
     }
 
     pub fn type_of(&self) -> SymID {
@@ -1310,7 +1318,7 @@ pub struct Arena {
     extdrop_send: Sender<ExtRefMsg>,
     borrows: Vec<*mut NkAtom>,
     borrow_locks: Vec<usize>,
-    state: GCState,
+    pub state: GCState,
     extref_id_cnt: u32,
     no_reorder: bool,
 }
@@ -1348,7 +1356,7 @@ impl Clone for Arena {
 // }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum GCState {
+pub enum GCState {
     Mark(u32),
     Sweep,
     Sleep(i32),
@@ -1621,10 +1629,6 @@ impl Arena {
               ar: self.extdrop_send.clone() }
     }
 
-    pub fn assert_validity(&self) {
-        self.nuke.assert_validity();
-    }
-
     pub fn has_mut_extrefs(&self) -> bool {
         for val in self.nuke.iter() {
             if let NkRef::Object(s) = to_fissile_ref(val) {
@@ -1895,7 +1899,9 @@ impl Arena {
     fn mark_step(&mut self, steps: u32) {
         for _ in 0..steps {
             match self.gray.pop() {
-                Some(obj) => mark_atom(obj, &mut self.gray),
+                Some(obj) => unsafe {
+                    mark_atom(obj, &mut self.gray)
+                },
                 None => {
                     self.state = GCState::Sweep;
                     break;
@@ -1951,6 +1957,10 @@ impl Arena {
                 self.mark_step(num_steps),
             GCState::Sweep => self.sweep_compact(),
         }
+    }
+
+    pub fn is_active(&self) -> bool {
+        matches!(self.state, GCState::Sweep | GCState::Mark(_))
     }
 
     /// Assumes that the GC is *not* in a Sleep state.
@@ -2041,6 +2051,50 @@ impl Arena {
 
         todo!()
     }
+
+    pub fn assert_invariants(&self) {
+        self.nuke.assert_validity();
+        unsafe {
+            for p in self.nuke.iter() {
+                if (*p).color() != Color::Black {
+                    continue;
+                }
+                match to_fissile_ref(p) {
+                    NkRef::Cons(p) => {
+                        assert!((*p).car.color() != Color::White);
+                        assert!((*p).cdr.color() != Color::White);
+                    },
+                    NkRef::Lambda(p) => {
+                        assert!((*p).locals.iter().all(|x| x.color() != Color::White));
+                    },
+                    NkRef::Vector(p) => {
+                        assert!((*p).iter().all(|x| x.color() != Color::White));
+                    },
+                    NkRef::Table(t) => {
+                        assert!((*t).values().all(|x| x.color() != Color::White));
+                    },
+                    NkRef::Iter(p) => {
+                        assert!((*p).root.color() != Color::White)
+                    },
+                    NkRef::Continuation(p) => {
+                        assert!((*p).stack.iter().all(|x| x.color() != Color::White));
+                    },
+                    NkRef::Intr(p) => assert!((*p).arg.color() != Color::White),
+                    NkRef::PV(p) => assert!((*p).color() != Color::White),
+
+                    NkRef::String(_) => (),
+                    NkRef::Subroutine(p) => (),
+                    NkRef::Vec4(_) => (),
+                    NkRef::Mat2(_) => (),
+                    NkRef::Mat3(_) => (),
+                    NkRef::Mat4(_) => (),
+                    NkRef::Object(_) => (),
+                    NkRef::Void(_) => (),
+                }
+            }
+        }
+    }
+
 }
 
 impl Drop for Arena {
