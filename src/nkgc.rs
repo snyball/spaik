@@ -197,17 +197,36 @@ impl PartialEq for PV {
             #[cfg(feature = "math")] (Self::Vec3(x), Self::Vec3(y)) => x == y,
             (Self::Ref(l), Self::Ref(r)) => unsafe {
                 let tl = atom_kind(*l);
-                if tl == NkT::String && tl == atom_kind(*r) {
+                let tr = atom_kind(*r);
+                if tl == NkT::String && tl == tr {
                     let sl = fastcast::<String>(*l);
                     let sr = fastcast::<String>(*r);
-                    (*sl).eq(&*sr)
-                } else if tl == NkT::Intr && tl == atom_kind(*r) {
+                    return (*sl).eq(&*sr);
+                } else if tl == NkT::Intr && tl == tr {
                     let sl = fastcast::<Intr>(*l);
                     let sr = fastcast::<Intr>(*r);
-                    (*sl).arg.eq(&(*sr).arg) && (*sl).op == (*sr).op
-                } else {
-                    l == r
+                    return (*sl).arg.eq(&(*sr).arg) && (*sl).op == (*sr).op;
                 }
+                #[cfg(feature = "math")]
+                if tl == NkT::Vec4 && tl == tr {
+                    let sl = fastcast::<glam::Vec4>(*l);
+                    let sr = fastcast::<glam::Vec4>(*r);
+                    return (*sl) == (*sr);
+                } else if tl == NkT::Mat2 && tl == tr {
+                    let sl = fastcast::<glam::Mat2>(*l);
+                    let sr = fastcast::<glam::Mat2>(*r);
+                    return (*sl) == (*sr);
+                } else if tl == NkT::Mat3 && tl == tr {
+                    let sl = fastcast::<glam::Mat3>(*l);
+                    let sr = fastcast::<glam::Mat3>(*r);
+                    return (*sl) == (*sr);
+                } else if tl == NkT::Mat4 && tl == tr {
+                    let sl = fastcast::<glam::Mat4>(*l);
+                    let sr = fastcast::<glam::Mat4>(*r);
+                    return (*sl) == (*sr);
+                }
+
+                l == r
             }
             (Self::Nil, Self::Nil) => true,
             (_, _) => false,
@@ -769,7 +788,9 @@ impl PV {
             match (*self, other) {
                 (PV::Ref(u), PV::Ref(v)) => match (to_fissile_ref(u),
                                                    to_fissile_ref(*v)) {
-                    (NkRef::String(u), NkRef::String(v)) => u == v,
+                    (NkRef::String(u), NkRef::String(v)) => {
+                        (*u) == (*v)
+                    },
                     (NkRef::Cons(mut u), NkRef::Cons(mut v)) => loop {
                         if !(*u).car.equalp(&(*v).car) { break false }
                         let PV::Ref(u_next) = (*u).cdr else {
@@ -791,7 +812,13 @@ impl PV {
                     (NkRef::Vector(u), NkRef::Vector(v)) =>
                         (*u).len() == (*v).len() &&
                         (*u).iter().zip((*v).iter()).all(|(u, v)| u.equalp(v)),
-                    _ => u == *v,
+                    (NkRef::Table(u), NkRef::Table(v)) => {
+                        (*u).len() == (*v).len() &&
+                        (*u).iter().zip((*v).iter()).all(|((k0, v0), (k1, v1))| {
+                            k0.equalp(k1) && v0.equalp(v1)
+                        })
+                    }
+                    _ => *self == *other,
                 },
                 _ => *self == *other
             }
