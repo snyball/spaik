@@ -61,6 +61,7 @@ pub enum M {
     Throw(Prog, Prog),
     Catch(Prog, Progn),
     Var(SymID),
+    Eval(Prog),
 
     // Builtin ops
     Not(Prog),
@@ -142,6 +143,7 @@ impl Display for M {
         match self {
             M::Bt1(op, arg) => write!(f, "({op:?} {arg})")?,
             M::Bt2(op, a0, a1) => write!(f, "({op:?} {a0} {a1})")?,
+            M::Eval(x) => write!(f, "(eval {x})")?,
             M::If(a, b, c) => {
                 write!(f, "(if {a}")?;
                 if let Some(b) = b { write!(f, " {b}")?; }
@@ -324,6 +326,7 @@ impl Visitable for AST2 {
                 }
                 vvisit!(progn)
             },
+            M::Eval(ref mut x) => visit!(x),
             M::Loop(ref mut progn) => vvisit!(progn),
             M::Break(Some(ref mut init)) => visit!(init),
             M::Break(None) => (),
@@ -761,6 +764,7 @@ impl<'a> Excavator<'a> {
 
     fn bapp(&self, bt: Builtin, args: PV, src: Source) -> Result<AST2> {
         match bt {
+            Builtin::Eval => self.wrap_one_arg(M::Eval, args, src),
             Builtin::Not => self.wrap_one_arg(M::Not, args, src),
             Builtin::And => self.wrap_any_args(M::And, args, src),
             Builtin::Or => self.wrap_any_args(M::Or, args, src),

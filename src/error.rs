@@ -297,7 +297,8 @@ pub enum ErrorKind {
 impl Error {
     pub fn as_throw(self, vm: &mut R8VM) -> Result<(PV, PV)> {
         let mut fmt = |bt: Builtin| (bt.pv(), vm.mem.put_pv(self.to_string()));
-        Ok(match self.kind() {
+        Ok(match self.inner.ty {
+            ErrorKind::Traceback { tb } => return (*tb).err.as_throw(vm),
             ErrorKind::DivideByZero => (Builtin::DivideByZero.pv(), PV::Nil),
             ErrorKind::UndefinedFunction { name } => (Builtin::UndefinedFunction.pv(), PV::Sym(name.as_sym(vm))),
             ErrorKind::UndefinedVariable { var } => (Builtin::UndefinedVariable.pv(), PV::Sym(var.as_sym(vm))),
@@ -306,6 +307,22 @@ impl Error {
             ErrorKind::ArgError { .. } => fmt(Builtin::ArgError),
             ErrorKind::NotAProperList { .. } => fmt(Builtin::NotAProperList),
             ErrorKind::Unimplemented { .. } => fmt(Builtin::Unimplemented),
+            ErrorKind::MutLocked { .. } => fmt(Builtin::MutLocked),
+            ErrorKind::ConversionError { .. } => fmt(Builtin::ConversionError),
+            ErrorKind::ModuleLoadError { .. } => fmt(Builtin::ModuleLoadError),
+            ErrorKind::ModuleNotFound { .. } => fmt(Builtin::ModuleNotFound),
+            ErrorKind::IndexError { .. } => fmt(Builtin::IndexError),
+            ErrorKind::KeyError { .. } => fmt(Builtin::KeyError),
+            ErrorKind::ReferenceNotAllowed { .. } => fmt(Builtin::ReferenceNotAllowed),
+            ErrorKind::MissingFeature { .. } => fmt(Builtin::MissingFeature),
+            ErrorKind::CannotMoveSharedReference { .. } => fmt(Builtin::CannotMoveSharedReference),
+            ErrorKind::MacroexpandRecursionLimit { .. } => fmt(Builtin::RecursionLimit),
+            ErrorKind::ImmovableObject { .. } => fmt(Builtin::ImmovableObject),
+            ErrorKind::UnstoppableForce { .. } => fmt(Builtin::UnstoppableForce),
+            ErrorKind::RecordMissingFields { .. } => fmt(Builtin::RecordMissingFields),
+            ErrorKind::Utf8DecodingError { .. } => fmt(Builtin::Utf8DecodingError),
+            ErrorKind::Exit { status } => (Builtin::Exit.pv(), PV::Sym(status.as_sym(vm))),
+            ErrorKind::LibError { name, value } => (PV::Sym(name.as_sym(vm)), *value),
             _ => return Err(self)
         })
     }

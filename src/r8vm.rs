@@ -3100,10 +3100,10 @@ impl R8VM {
                     match res {
                         Ok(x) => self.mem.push(x),
                         Err(e) => {
-                            self.mem.push(PV::Nil);
-                            if !self.unwind().is_ok() {
-                                return Err(e)
-                            }
+                            let (tag, v) = e.as_throw(self)?;
+                            self.mem.push(v);
+                            self.mem.push(tag);
+                            self.unwind()?;
                         },
                     }
                 }
