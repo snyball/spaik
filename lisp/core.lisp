@@ -198,8 +198,9 @@
 
 (defun reverse (xs)
   (let ((ys nil))
-    (dolist (x xs)
-      (set ys (cons x ys)))
+    (loop (if (not xs) (break))
+      (set ys (cons (car xs) ys))
+      (set xs (cdr xs)))
     ys))
 
 (defun all? (f xs)
@@ -274,7 +275,8 @@
                     bool
                     string
                     cons
-                    vec))
+                    vec
+                    table))
 
 (defun keyword? (x)
   (and (symbol? x)
@@ -349,6 +351,21 @@
 (defun len (xs) (len xs))
 (defun not (x) (not x))
 (defun apply (f xs) (apply f xs))
+(defun throw (s v) (throw s v))
+(defun next (it) (next it))
+(defun or (&rest r)
+  (loop (if (not r) (break))
+   (let ((c (car r)))
+     (if c (break c)))
+   (set r (cdr r))))
+(defun and (&rest r)
+  (if r
+      (loop
+       (let ((c (car r)))
+         (if (not c) (break c))
+         (if (= nil (set r (cdr r)))
+             (break c))))
+      true))
 
 (defun _println (x)
   (println x))

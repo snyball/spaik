@@ -361,9 +361,21 @@ mod sysfns {
             Ok(*x)
         }
 
-        fn string(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+        fn repr(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             x.lisp_to_string()
              .into_pv(&mut vm.mem)
+        }
+
+        fn string(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            let s = match x {
+                PV::Ref(y) => match to_fissile_ref(*y) {
+                    NkRef::String(s) => return Ok(*x),
+                    _ => x.lisp_to_string(),
+                },
+                PV::Char(c) => format!("{c}"),
+                _ => x.lisp_to_string(),
+            };
+            s.into_pv(&mut vm.mem)
         }
 
         fn eval(&mut self, vm: &mut R8VM, args: (ast)) -> Result<PV> {
@@ -1586,6 +1598,7 @@ impl R8VM {
 
         // Strings
         addfn!(string);
+        addfn!(repr);
         addfn!(concat);
         addfn!(join);
 
@@ -1595,6 +1608,16 @@ impl R8VM {
         // Utils
         addfn!("sort!", sort_inplace);
         addfn!("split!", split_list);
+
+        // TODO
+        // addfn!(list);
+        // addfn!(vec);
+        // addfn!("=", eq);
+        // addfn!("eq?", eqp);
+        // addfn!(">", gt);
+        // addfn!(">=", gte);
+        // addfn!("<", lt);
+        // addfn!("<=", lte);
 
         let src = Some(Cow::Borrowed("<ζ>::boot-stage0"));
         vm.read_compile(include_str!("../lisp/boot-stage0.lisp"),
