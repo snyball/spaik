@@ -81,7 +81,6 @@ builtins! {
     (Lambda, "lambda"),
     (GreekLambda, "λ"),
     (Apply, "apply"),
-    (MethodCall, "method-call"),
     (True, "true"),
     (False, "false"),
     (Add, "+"),
@@ -129,10 +128,8 @@ builtins! {
     (Frame, "<ζ>-frame"),
     (LambdaObject, "<ζ>-lambda-object"),
     (IterStop, "<ζ>-iter-stop"),
-    (ZCore, "<ζ>-core"),
     (Subr, "subr"),
     (Nil, "nil"),
-    (Callable, "callable"),
     (Iter, "iter"),
     (Vec2, "vec2"),
     (Vec3, "vec3"),
@@ -141,6 +138,29 @@ builtins! {
     (Mat3, "mat3"),
     (Mat4, "mat4"),
     (Quat, "quat"),
+    (UndefinedVariable, "undefined-variable"),
+    (UndefinedFunction, "undefined-function"),
+    (DivideByZero, "divide-by-zero"),
+    (TypeError, "type-error"),
+    (ArgError, "arg-error"),
+    (NotAProperList, "not-a-proper-list"),
+    (Unimplemented, "unimplemented"),
+    (MutLocked, "mut-locked"),
+    (ConversionError, "conversion-error"),
+    (ModuleLoadError, "module-load-error"),
+    (ModuleNotFound, "module-not-found"),
+    (IndexError, "index-error"),
+    (KeyError, "key-error"),
+    (ReferenceNotAllowed, "reference-not-allowed"),
+    (IOError, "io-error"),
+    (MissingFeature, "missing-feature"),
+    (CannotMoveSharedReference, "cannot-move-shared-reference"),
+    (ImmovableObject, "immovable-object"),
+    (UnstoppableForce, "unstoppable-force"),
+    (RecordMissingFields, "record-missing-fields"),
+    (RecursionLimit, "recursion-limit"),
+    (Utf8DecodingError, "utf-8-decoding-error"),
+
     // NOTE: The zero-length string ε, *must* be a static builtin. Static
     // symbols (e.g builtins) all have `sz: 0`, regardless of length. This
     // system for telling static and dynamically allocated strings apart fails
@@ -174,6 +194,10 @@ impl Builtin {
         (p >= start && p < end).then(|| unsafe {
             mem::transmute(((p - start) / mem::size_of::<swym::Sym>()) as u8)
         })
+    }
+
+    pub fn pv(self) -> crate::nkgc::PV {
+        crate::nkgc::PV::Sym(self.sym_id())
     }
 
     pub fn as_str(&self) -> &'static str {
