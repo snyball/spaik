@@ -789,7 +789,7 @@ impl PV {
         }
     }
 
-    pub fn append(&mut self, new_tail: PV) -> Result<(), Error> {
+    pub fn append_mut(&mut self, new_tail: PV) -> Result<(), Error> {
         let e = 'err: {
             let PV::Ref(p) = *self else { break 'err *self };
             unsafe {
@@ -1689,7 +1689,7 @@ impl Arena {
         }
     }
 
-    pub fn append(&mut self, n: u32) -> Result<(), Error> {
+    pub fn append_mut(&mut self, n: u32) -> Result<(), Error> {
         macro_rules! barrier {
             ($v:expr) => {
                 if let PV::Ref(p) = $v {
@@ -1710,7 +1710,7 @@ impl Arena {
         let top_it = self.stack[idx + 1..top].iter();
         for (item_ref, next) in self.stack[idx..top - 1].iter().zip(top_it) {
             let mut item = *item_ref;
-            item.append(barrier!(*next))?;
+            item.append_mut(barrier!(*next))?;
         }
         self.stack.truncate(idx + 1);
         Ok(())

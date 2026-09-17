@@ -366,6 +366,10 @@ mod sysfns {
              .into_pv(&mut vm.mem)
         }
 
+        fn dbg_repr(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            Ok(vm.mem.put_pv(format!("{x:?}")))
+        }
+
         fn string(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
             let s = match x {
                 PV::Ref(y) => match to_fissile_ref(*y) {
@@ -1657,6 +1661,7 @@ impl R8VM {
         // Strings
         addfn!(string);
         addfn!(repr);
+        addfn!("dbg-repr", dbg_repr);
         addfn!(concat);
         addfn!(join);
 
@@ -1672,6 +1677,7 @@ impl R8VM {
         // TODO
         // addfn!(list);
         // addfn!(vec);
+        // addfn!(append);
         // addfn!("=", eq);
         // addfn!("eq?", eqp);
         // addfn!(">", gt);
