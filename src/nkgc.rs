@@ -432,14 +432,18 @@ impl Iterator for PVVecIter {
     }
 }
 
+#[derive(Debug)]
 pub enum Quasi {
     USplice(PV),
     Unquote(PV),
+    Quote(PV),
 }
 
+#[derive(Debug)]
 pub enum QuasiMut {
     USplice(*mut PV),
     Unquote(*mut PV),
+    Quote(*mut PV),
 }
 
 impl PV {
@@ -702,6 +706,10 @@ impl PV {
         self.with_cell(|car, _| car)
     }
 
+    pub fn car_mut(&mut self) -> Option<&mut PV> {
+        with_ref_mut!(*self, Cons(p) => { Ok(&mut (*p).car) }).ok()
+    }
+
     #[inline]
     pub fn cdr(&self) -> Option<PV> {
         self.with_cell(|_, cdr| cdr)
@@ -733,12 +741,13 @@ impl PV {
         })
     }
 
-    pub fn quasi_mut(&self) -> Option<QuasiMut> {
-        self.intr_mut().and_then(|(op, arg)| Some(match op {
-            Builtin::USplice => QuasiMut::USplice(arg),
-            Builtin::Unquote => QuasiMut::Unquote(arg),
+    pub fn quasi_mut(&mut self) -> Option<QuasiMut> {
+        Some(match self.car()?.bt_op()? {
+            Builtin::USplice => QuasiMut::USplice(self.cdr()?.car_mut()?),
+            Builtin::Unquote => QuasiMut::Unquote(self.cdr()?.car_mut()?),
+            Builtin::Quasi => QuasiMut::Quote(self.cdr()?.car_mut()?),
             _ => return None
-        }))
+        })
     }
 
     pub fn intr_set_inner(&mut self, p: PV) {
@@ -751,11 +760,12 @@ impl PV {
     }
 
     pub fn quasi(&self) -> Option<Quasi> {
-        self.intr().and_then(|(op, arg)| Some(match op {
-            Builtin::USplice => Quasi::USplice(arg),
-            Builtin::Unquote => Quasi::Unquote(arg),
+        Some(match self.car()?.sym().ok().and_then(Builtin::from_sym)? {
+            Builtin::USplice => Quasi::USplice(self.cdr()?.car()?),
+            Builtin::Unquote => Quasi::Unquote(self.cdr()?.car()?),
+            Builtin::Quasi => Quasi::Quote(self.cdr()?.car()?),
             _ => return None
-        }))
+        })
     }
 
     #[inline]
@@ -1687,6 +1697,43 @@ impl Arena {
             self.untag_ast((*cns).car);
             self.untag_ast((*cns).cdr);
         }
+    }
+
+    pub fn append(&mut self, n: u32) -> Result<(), Error> {
+        assert_ne!(n, 0);
+        if n == 1 {
+            return Ok(())
+        }
+        let stack_top = self.stack.len();
+        for i in self.stack.len()-(n as usize)..self.stack.len()-1 {
+            let v = self.stack[i];
+            if !v.is_list() {
+                bail!(TypeError {
+                    expect: Builtin::Cons,
+                    got: v.bt_type_of()
+                })
+            }
+            for elem in v.cons_iter() {
+                match elem {
+                    ConsElem::Head(x) => self.stack.push(x),
+                    ConsElem::Tail(x) => {
+                        bail!(NotAProperList {
+                            tail: x.lisp_to_string()
+                        })
+                    }
+                }
+            }
+        }
+        let n_elems = self.stack.len() - stack_top;
+        self.stack.push(self.stack[stack_top-1]);
+        self.list_dot(
+            (1+n_elems).try_into()
+                       .expect("No. cons exceeded integer limit"),
+            true);
+        let pv = self.stack.pop().unwrap();
+        self.stack.truncate(stack_top - (n as usize));
+        self.stack.push(pv);
+        Ok(())
     }
 
     pub fn append_mut(&mut self, n: u32) -> Result<(), Error> {

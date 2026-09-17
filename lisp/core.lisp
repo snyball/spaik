@@ -421,9 +421,6 @@
           (push out elem))
     out))
 
-(defun append (a b)
-  (append! (clone a) (clone b)))
-
 (defmacro yield (expr)
   (let ((k (gensym)))
     `(call/cc (lambda (,k)

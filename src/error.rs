@@ -227,6 +227,7 @@ impl PartialEq for ExtError {
 
 #[derive(Clone, PartialEq)]
 pub enum ErrorKind {
+    NotAProperList { tail: String },
     ZeroLengthSymbol,
     Unimplemented { feature: &'static str },
     SendError { obj_dbg: String },
@@ -644,6 +645,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         DivideByZero => write!(f, "Attemped integer division by zero")?,
         Unimplemented { feature } => write!(f, "Unimplemented: {feature}")?,
         ZeroLengthSymbol => write!(f, "Attempted to create empty symbol ε")?,
+        NotAProperList { tail } => write!(f, "A proper list must not end with (… . {tail})")?,
     }
 
     write!(f, "{}", SourceDisplayHack(" ", meta, ""))?;

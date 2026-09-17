@@ -1,4 +1,4 @@
-;;; Regression test for the APN opcode's (`append!`) write barrier.
+;;; Regression test for the APN opcode's (`append`) write barrier.
 ;;;
 
 (defun wb-apn-hole-mismatches (rounds)
@@ -12,7 +12,7 @@
       ;; Victim built and consumed entirely within this `let` - out of
       ;; scope (off self.stack) the instant it returns.
       (let ((expect (concat "v-" round)))
-        (set (get box 0) (append! (get box 0) (list expect))))
+        (set (get box 0) (append (get box 0) (list expect))))
 
       ;; Burst of varied fresh allocations, AFTER the mutating write,
       ;; BEFORE the check - see file header.

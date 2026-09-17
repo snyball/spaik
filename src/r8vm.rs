@@ -1987,17 +1987,9 @@ impl R8VM {
                 $push;
                 while let Some(op) = mods.pop() {
                     let p = self.mem.pop().expect("No expr to wrap");
-                    match Builtin::from_sym(op) {
-                        Some(op @ (Builtin::Unquote | Builtin::USplice)) => {
-                            let intr = Intr { op, arg: p };
-                            self.mem.push_new(intr);
-                        }
-                        _ => {
-                            self.mem.push(PV::Sym(op));
-                            self.mem.push(p);
-                            self.mem.list(2);
-                        }
-                    }
+                    self.mem.push(PV::Sym(op));
+                    self.mem.push(p);
+                    self.mem.list(2);
                 }
             }};
         }
@@ -2221,7 +2213,7 @@ impl R8VM {
                 let nv = unsafe { self.macroexpand_pv(*s, false)? };
                 invalid!(v, s); // macroexpand_pv
                 let mut v = self.mem.stack.pop().unwrap();
-                v.intr_set_inner(nv);
+                v.set_inner(nv)?;
                 return Ok(v)
             }
         } else {

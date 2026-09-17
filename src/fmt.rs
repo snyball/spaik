@@ -1,6 +1,6 @@
 //! Formatting for Lisp objects
 
-use crate::nkgc::{ConsElem, ConsIter};
+use crate::nkgc::{ConsElem, ConsIter, PV};
 use crate::nuke::*;
 use std::fmt;
 use crate::utils::{HMap, HSet};
@@ -73,13 +73,16 @@ impl<T> LispFmt for Iter<'_, T>
 impl LispFmt for ConsIter {
     fn lisp_fmt(&self,
                 visited: &mut VisitSet,
-                f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
         let mut it = self.clone().peekable();
         write!(f, "(")?;
         while let Some(item) = it.next() {
-            if matches!(item, ConsElem::Tail(_)) {
-                write!(f, ". ")?;
+            match item {
+                ConsElem::Head(_) => (),
+                ConsElem::Tail(_) => write!(f, ". ")?,
             }
+            let pv = item.get();
             item.get().lisp_fmt(visited, f)?;
             if it.peek().is_some() {
                 write!(f, " ")?;
