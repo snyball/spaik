@@ -321,7 +321,13 @@
       (when (= c end)
         (unless in-sub
           (error 'trailing-delimiter))
-        (set out (cons (intern (join span)) out))
+        (if (= (len span) 0)
+            (progn
+              (unless (and in (cons? in))
+                (error 'not-enough-format-arguments))
+              (set out (cons (car in) out))
+              (set in (cdr in)))
+            (set out (cons (intern (join span)) out)))
         (set span (vec))
         (set in-sub false)
         (next))
@@ -329,9 +335,11 @@
     (when in-sub
       (error 'unclosed-delimiter))
     (set out (cons (join span) out))
+    (when in
+      (error 'unused-format-parameters))
     (if (= (len out) 2)
         (car out)
-        (reverse out))))
+        (reverse! out))))
 
 ;; Functions for builtins, these do not override the builtins when used in
 ;; function-position, but allow them to be passed as closures
