@@ -4,7 +4,7 @@
 use rustyline::{Editor, error::ReadlineError};
 #[cfg(feature = "readline")]
 use std::{process, fs};
-use crate::Spaik;
+use crate::{Spaik, VmStdout};
 use crate::r8vm::OutStream;
 use crate::nkgc::PV;
 use crate::fmt::LispFmt;
@@ -52,7 +52,7 @@ pub struct REPL {
 }
 
 impl REPL {
-    pub fn new(out_override: Option<Box<dyn OutStream>>) -> REPL {
+    pub fn new(out_override: Option<VmStdout>) -> REPL {
         let mut vm = Spaik::new();
         if let Some(out) = out_override {
             vm.vm.set_stdout(out);

@@ -1157,6 +1157,19 @@ pub trait OutStream: io::Write + Debug {}
 #[cfg(feature = "no-threading")]
 impl<T> OutStream for T where T: io::Write + Debug {}
 
+#[derive(Debug)]
+pub struct DevNull;
+
+impl io::Write for DevNull {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(not(feature = "no-threading"))]
 pub trait OutStream: io::Write + Debug + Send {}
 #[cfg(not(feature = "no-threading"))]
@@ -1176,6 +1189,8 @@ pub struct Guard {
     top: usize,
     frame: usize,
 }
+
+pub type VmStdout = Arc<Mutex<Box<dyn OutStream>>>;
 
 #[derive(Clone)]
 pub struct R8VM {
@@ -3256,8 +3271,12 @@ impl R8VM {
         self.stdout.lock().unwrap().flush().map_err(|e| e.into())
     }
 
-    pub fn set_stdout(&mut self, out: Box<dyn OutStream>) {
-        *self.stdout.lock().unwrap() = out;
+    pub fn set_stdout(&mut self, out: VmStdout) {
+        self.stdout = out;
+    }
+
+    pub fn take_stdout(&mut self) -> VmStdout {
+        mem::replace(&mut self.stdout, Arc::new(Mutex::new(Box::new(DevNull))))
     }
 
     pub fn dump_all_fns(&self) -> Result<()> {

@@ -355,6 +355,12 @@ pub struct Error {
     inner: ErrorInner
 }
 
+impl From<std::fmt::Error> for Error {
+    fn from(value: std::fmt::Error) -> Self {
+        Error::new(ErrorKind::SomeError { msg: value.to_string() })
+    }
+}
+
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt_error(self, f)

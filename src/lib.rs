@@ -53,6 +53,7 @@ pub use plug::*;
 pub use r8vm::Func;
 use r8vm::NArgs;
 pub use r8vm::OutStream;
+pub use r8vm::VmStdout;
 pub use subrs::FromLisp3;
 use subrs::IntoSubr;
 pub use subrs::{Lispify, PList};
@@ -304,7 +305,7 @@ impl Spaik {
         self.vm.set_resource(rf)
     }
 
-    pub fn set_stdout(&mut self, out: Box<dyn OutStream>) {
+    pub fn set_stdout(&mut self, out: VmStdout) {
         self.vm.set_stdout(out)
     }
 
