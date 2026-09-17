@@ -659,12 +659,18 @@ impl R8Compiler {
                         else { break 'out };
                     if let BoundVar::Local(src_idx) = self.get_var_idx(src, src_src)? {
                         self.unit().op(chasm!(ADS idx, src_idx));
+                        if ret {
+                            self.unit().op(chasm!(MOV idx));
+                        }
                         return Ok(())
                     }
                 }
                 Some((M2::Sub(M::Var(u), M::Var(v)), (_, src_v))) if *u == dst => {
                     if let BoundVar::Local(src_idx) = self.get_var_idx(*v, src_v)? {
                         self.unit().op(chasm!(SUS idx, src_idx));
+                        if ret {
+                            self.unit().op(chasm!(MOV idx));
+                        }
                         return Ok(())
                     }
                 }
