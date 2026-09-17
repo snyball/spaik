@@ -302,7 +302,7 @@ pub unsafe fn split_list(mut head: Option<*mut Cons>)
 mod sysfns {
     use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId, hash::Hash, collections::hash_map::DefaultHasher, cmp::Ordering};
 
-    use crate::nuke::{to_fissile_ref, NkRef};
+    use crate::nuke::{to_fissile_ref, NkRef, NkAtom};
     use crate::utils::{HMap, HSet};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, Cons}, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}, r8vm::merge_sort};
@@ -782,6 +782,64 @@ mod sysfns {
                     (*cns).cdr = b.as_pv();
                 }
                 Ok(pv)
+            })
+        }
+
+        fn reverse_inplace(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            use crate::nkgc::ConsOption;
+            if x.is_nil() {
+                return Ok(*x)
+            }
+            with_ref_mut!(*x, Vector(xs) => {
+                (*xs).reverse();
+                Ok(*x)
+            }, Cons(mut head) => {
+                let mut xs = vec![head];
+                loop {
+                    xs.push(head);
+                    if let Some(nx) = (*head).next() {
+                        head = nx;
+                    } else {
+                        break;
+                    }
+                }
+                let it = 0..xs.len();
+                for (j, i) in (0..xs.len()-1).rev().zip((0..xs.len()).rev()) {
+                    (*xs[i]).cdr = NkAtom::make_ref(xs[j]);
+                }
+                (*xs[0]).cdr = PV::Nil;
+                Ok(NkAtom::make_ref(xs[xs.len()-1]))
+            })
+        }
+
+        fn reverse(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            use crate::nkgc::ConsOption;
+            if x.is_nil() {
+                return Ok(*x)
+            }
+            with_ref_mut!(*x, Vector(xs) => {
+                let nv = (*xs).iter().copied().rev().collect::<Vec<PV>>();
+                Ok(vm.mem.put_pv(nv))
+            }, Cons(mut head) => {
+                // Note: We _could_ avoid pushing everything, then
+                // reversing, then creating the list by creating each
+                // cons cell as we loop. But that gets complex with
+                // the GC running underneath all this, and then
+                // defending against that probably erases any
+                // potential performance gain.
+                let bottom = vm.mem.stack.len();
+                let mut i = 1;
+                vm.mem.stack.push((*head).car);
+                while let Some(nx) = (*head).next() {
+                    vm.mem.stack.push((*nx).car);
+                    head = nx;
+                    i += 1;
+                }
+                vm.mem.stack[bottom..bottom+i as usize].reverse();
+                vm.mem.list(i);
+                Ok(vm.mem.pop().expect("expected list"))
+            }, String(s) => {
+                Ok(vm.mem.put_pv((*s).chars().rev().collect::<String>()))
             })
         }
 
@@ -1608,6 +1666,8 @@ impl R8VM {
         // Utils
         addfn!("sort!", sort_inplace);
         addfn!("split!", split_list);
+        addfn!(reverse);
+        addfn!("reverse!", reverse_inplace);
 
         // TODO
         // addfn!(list);

@@ -934,6 +934,10 @@ impl PV {
             x => x,
         })
     }
+
+    pub fn is_nil(&self) -> bool {
+        *self == PV::Nil
+    }
 }
 
 impl PartialOrd for PV {

@@ -196,13 +196,6 @@
           (zip (cdr xs)
                (cdr ys)))))
 
-(defun reverse (xs)
-  (let ((ys nil))
-    (loop (if (not xs) (break))
-      (set ys (cons (car xs) ys))
-      (set xs (cdr xs)))
-    ys))
-
 (defun all? (f xs)
   (not
    (dolist (x xs)
