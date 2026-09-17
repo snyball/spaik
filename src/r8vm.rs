@@ -1859,13 +1859,13 @@ impl R8VM {
 
     /// Reads LISP code into an AST.
     pub fn read(&mut self, _sexpr: &str) -> Result<PV> {
-        unimplemented!();
+        bail!(Unimplemented { feature: "read" })
         // self.read_compile(&format!("'({sexpr})"), None)
     }
 
     /// Reads LISP code into an AST from file.
     pub fn read_from(&mut self, _path: impl AsRef<Path>) -> Result<PV> {
-        unimplemented!();
+        bail!(Unimplemented { feature: "read-from" })
         // let sexpr = fs::read_to_string(path.as_ref())?;
         // let name = path.as_ref().file_stem().map(|p| {
         //     p.to_string_lossy().into_owned()
