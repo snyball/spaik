@@ -346,11 +346,14 @@
 (defun apply (f xs) (apply f xs))
 (defun throw (s v) (throw s v))
 (defun next (it) (next it))
+(defun sort (xs) (sort! (clone xs)))
+
 (defun or (&rest r)
   (loop (if (not r) (break))
    (let ((c (car r)))
      (if c (break c)))
    (set r (cdr r))))
+
 (defun and (&rest r)
   (if r
       (loop
