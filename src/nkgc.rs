@@ -10,6 +10,7 @@ use crate::swym::{SwymDb, SymRef};
 
 use std::collections::{BTreeMap, HashMap};
 use std::collections::hash_map::Entry;
+use std::ops::Deref;
 use std::sync::atomic::AtomicU32;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use crate::utils::HMap;
@@ -147,6 +148,31 @@ impl fmt::Display for SymID {
 
 pub type Int = isize;
 pub type Float = f32;
+
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
+pub struct NonRef(PV);
+
+impl std::fmt::Display for NonRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl NonRef {
+    pub fn new(pv: PV) -> Result<Self, Error> {
+        if pv.is_ref() {
+            bail!(ReferenceNotAllowed);
+        }
+        Ok(Self(pv))
+    }
+}
+
+impl Deref for NonRef {
+    type Target = PV;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// Primitive values
 #[derive(Debug, Copy, Clone, Default)]

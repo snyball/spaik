@@ -260,6 +260,7 @@ pub enum ErrorKind {
     IndexError { idx: usize },
     KeyError { idx: String },
     KeyReference { key: String },
+    ReferenceNotAllowed,
     Exit { status: Sym },
     IOError { kind: std::io::ErrorKind },
     MissingFeature { flag: &'static str },
@@ -636,6 +637,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "No such key: {idx}")?,
         KeyReference { key } =>
             write!(f, "Reference types cannot be used as keys: {key}")?,
+        ReferenceNotAllowed =>
+            write!(f, "Reference types are not allowed here.")?,
         CloneNotImplemented { obj } =>
             write!(f, "Cannot clone: clone not implemented for type {obj}")?,
         Utf8DecodingError => {
