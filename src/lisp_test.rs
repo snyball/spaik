@@ -8,8 +8,11 @@ use crate::stylize::Stylize;
 use std::fmt;
 use std::error::Error;
 use std::fs;
+use std::io;
+use std::io::Write;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Instant;
 
 enum TestResult {
     Pass,
@@ -107,25 +110,27 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
     let test_fns = vm.get_funcs_with_prefix(test_fn_prefix);
     let mut err_results = vec![];
 
+    let stdout = io::stdout();
     for func in test_fns.iter() {
         let name = func.as_ref()
                        .chars()
                        .skip(test_fn_prefix.len())
                        .collect::<String>();
-        match vm.call_spv(*func, ()) {
+        print!("test {} ... ", name.style_info());
+        stdout.lock().flush().unwrap();
+        let t0 = Instant::now();
+        let r = vm.call_spv(*func, ());
+        let t = Instant::now() - t0;
+        match r {
             Ok(res) => match TestResult::new(res, &mut vm) {
                 Some(TestResult::Pass) => {
-                    println!("test {} ... [{}]",
-                        name.style_info(),
-                        "✓".style_success());
+                    println!("{t:?} [{}]", "✓".style_success());
                 }
                 Some(TestResult::Fail { expect, got }) => {
                     let expect = expect.to_string(&vm.mem);
                     let got = got.to_string(&vm.mem);
 
-                    println!("test {} ... [{}]",
-                        name.style_error(),
-                        "✘".style_error());
+                    println!("{t:?} [{}]", "✘".style_error());
                     println!("     Expected:");
                     for line in expect.lines() {
                         println!("       {}", line);
@@ -140,9 +145,7 @@ pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
                 _ => ()
             }
             Err(e) => {
-                println!("test {} [{}]",
-                    name.style_error(),
-                    "✘".style_error());
+                println!("{t:?} [{}]", "✘".style_error());
                 for line in e.to_string().lines() {
                     println!("     {}", line);
                 }
