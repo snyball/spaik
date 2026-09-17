@@ -2,8 +2,8 @@
 
 use crate::nkgc::{NonRef, PV};
 use crate::nuke::VTable;
-use crate::{Builtin, Sym, SPV};
-use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
+use crate::{AsSym, Builtin, Sym, SPV};
+use crate::r8vm::{ArgSpec, RuntimeError, TraceFrame, Traceback, R8VM};
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::mem::{discriminant, replace};
@@ -292,6 +292,23 @@ pub enum ErrorKind {
     Throw { tag: String, obj: String },
     ExtError(ExtError),
     DivideByZero,
+}
+
+impl Error {
+    pub fn as_throw(self, vm: &mut R8VM) -> Result<(PV, PV)> {
+        let mut fmt = |bt: Builtin| (bt.pv(), vm.mem.put_pv(self.to_string()));
+        Ok(match self.kind() {
+            ErrorKind::DivideByZero => (Builtin::DivideByZero.pv(), PV::Nil),
+            ErrorKind::UndefinedFunction { name } => (Builtin::UndefinedFunction.pv(), PV::Sym(name.as_sym(vm))),
+            ErrorKind::UndefinedVariable { var } => (Builtin::UndefinedVariable.pv(), PV::Sym(var.as_sym(vm))),
+            ErrorKind::TypeError { .. } | ErrorKind::STypeError { .. }
+            | ErrorKind::TypeNError { .. } | ErrorKind::ArgTypeError { .. } => fmt(Builtin::TypeError),
+            ErrorKind::ArgError { .. } => fmt(Builtin::ArgError),
+            ErrorKind::NotAProperList { .. } => fmt(Builtin::NotAProperList),
+            ErrorKind::Unimplemented { .. } => fmt(Builtin::Unimplemented),
+            _ => return Err(self)
+        })
+    }
 }
 
 impl From<std::io::Error> for Error {

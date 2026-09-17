@@ -15,7 +15,7 @@ use crate::{
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
     fmt::LispFmt,
     nuke::{*},
-    nkgc::{NonRef, Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int, ConsOption, Lambda},
+    nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int, ConsOption, Lambda},
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
@@ -114,7 +114,10 @@ chasm_def! {
     ADD(),
     SUB(),
     DIV(),
-    MUL()
+    MUL(),
+
+    // Meta
+    EVL()
 }
 
 pub type VmId = u32;
@@ -306,7 +309,7 @@ mod sysfns {
     use crate::utils::{HMap, HSet};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, Cons}, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}, r8vm::merge_sort};
-    use super::{R8VM, tostring, ArgSpec, NonRef};
+    use super::{R8VM, tostring, ArgSpec};
 
     fn join_str<IT, S>(args: IT, sep: S) -> String
         where IT: Iterator<Item = PV>, S: AsRef<str>
@@ -517,7 +520,7 @@ mod sysfns {
             if let PV::Sym(name) = name_arg {
                 err!(LibError,
                     name: name.into(),
-                    value: NonRef::new(it.next().unwrap_or(PV::Nil))?)
+                    value: crate::nkgc::NonRef::new(it.next().unwrap_or(PV::Nil))?)
             } else {
                 Err(error!(TypeError,
                            expect: Builtin::Symbol,
@@ -3089,6 +3092,20 @@ impl R8VM {
                 SET(var) => {
                     let val = barrier!(self.mem.pop()?);
                     self.mem.set_env(var as usize, val);
+                }
+
+                EVL() => {
+                    let v = self.mem.pop()?;
+                    let res = self.eval_pv(v);
+                    match res {
+                        Ok(x) => self.mem.push(x),
+                        Err(e) => {
+                            self.mem.push(PV::Nil);
+                            if !self.unwind().is_ok() {
+                                return Err(e)
+                            }
+                        },
+                    }
                 }
 
                 HCF() => {

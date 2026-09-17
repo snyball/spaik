@@ -152,6 +152,9 @@ pub type Float = f32;
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
 pub struct NonRef(PV);
 
+unsafe impl Send for NonRef {}
+unsafe impl Sync for NonRef {}
+
 impl std::fmt::Display for NonRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         std::fmt::Display::fmt(&self.0, f)
