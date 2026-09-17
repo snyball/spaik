@@ -2,6 +2,7 @@
 
 #[cfg(feature = "extra")]
 use comfy_table::Table;
+#[cfg(feature = "math")]
 use glam::{Mat2, Mat3};
 
 #[cfg(feature = "modules")]
@@ -532,6 +533,11 @@ mod sysfns {
         fn gc(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             vm.mem.full_collection();
             Ok(PV::Nil)
+        }
+
+        fn globals(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
+            let r = vm.globals.iter().map(|(k, _)| PV::Sym(*k)).collect::<Vec<PV>>();
+            Ok(vm.mem.put_pv(r))
         }
 
         fn dump_mem(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
@@ -1086,6 +1092,14 @@ pub struct VmStats {
     instructions: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct Guard {
+    dip: usize,
+    sym: Option<usize>,
+    top: usize,
+    frame: usize,
+}
+
 #[derive(Clone)]
 pub struct R8VM {
     /// Memory
@@ -1106,7 +1120,7 @@ pub struct R8VM {
     pub(crate) labels: LblMap,
     func_arg_syms: HMap<SymID, Vec<SymID>>,
     pub(crate) srctbl: SourceList,
-    catch: Vec<(usize, usize, Option<usize>)>,
+    catch: Vec<Guard>,
     libs: HMap<SymID, (PathBuf, fs::Metadata)>,
 
     obj_methods: HMap<(TypeId, SymID), ObjMethod>,
@@ -1518,6 +1532,9 @@ impl R8VM {
             addfn!("dump-mem", dump_mem);
         }
 
+        // Meta
+        addfn!(globals);
+
         // Tables
         addfn!("make-table", make_table);
         addfn!(del);
@@ -1733,7 +1750,10 @@ impl R8VM {
 
     pub fn catch(&mut self, dip: usize, sym: Option<SymID>) {
         let top = self.mem.stack.len();
-        self.catch.push((top, dip, sym.map(|s| s.as_int() as usize)))
+        let frame = self.frame;
+        self.catch.push(Guard {
+            top, sym: sym.map(|s| s.as_int() as usize), frame, dip,
+        })
     }
 
     pub fn catch_pop(&mut self) {
@@ -1745,23 +1765,22 @@ impl R8VM {
     }
 
     pub fn unwind(&mut self) -> Result<usize> {
-        let tag_sym = self.mem.pop()?.sym()?;
+        let tag_sym = self.mem.pop().and_then(|s| s.sym()).map_err(|e| e.bop(Builtin::Throw))?;
         let tag = tag_sym.as_int() as usize;
         let val = self.mem.pop()?;
-        let (catchp, dip) = loop {
-            let Some((catchp, dip, sym)) = self.catch.pop() else {
+        let (catchp, frame, dip) = loop {
+            let Some(Guard { dip, sym, top, frame }) = self.catch.pop() else {
                 bail!(Throw { tag: tag_sym.to_string(),
                               obj: val.lisp_to_string() })
             };
             match sym {
-                Some(stag) if tag == stag => break (catchp, dip),
-                None => break (catchp, dip),
+                Some(stag) if tag == stag => break (top, frame, dip),
+                None => break (top, frame, dip),
                 _ => ()
             }
         };
-        unsafe {
-            self.mem.stack.set_len(catchp);
-        }
+        self.frame = frame;
+        self.mem.stack.truncate(catchp);
         self.mem.stack.push(val);
         Ok(dip)
     }
@@ -2683,8 +2702,7 @@ impl R8VM {
 
                 // Iterators
                 NXT(var) => {
-                    let offset = (self.frame as isize) + (var as isize);
-                    let it = *self.mem.stack.as_ptr().offset(offset);
+                    let it = self.mem.stack[self.frame + var as usize];
                     with_ref_mut!(it, Iter(it) => {
                         let elem = (*it).next()
                                         .unwrap_or_else(
@@ -2889,8 +2907,6 @@ impl R8VM {
                     ip = self.ret_to(pos as usize);
                 }
                 RET() => {
-                    // #[cfg(debug_assertions)]
-                    // if self.debug_mode { self.dump_stack().unwrap(); }
                     let rv = self.mem.pop()?;
                     let old_frame = self.frame;
                     if let PV::UInt(frame) = self.mem.pop()? {
@@ -3018,6 +3034,7 @@ impl R8VM {
     }
 
     pub fn dump_stack(&mut self) -> Result<()> {
+        const MAX_REPR_LEN: usize = 64;
         let mut stdout = self.stdout.lock().unwrap();
         writeln!(stdout, "stack:")?;
         if self.mem.stack.is_empty() {
@@ -3026,7 +3043,13 @@ impl R8VM {
         for (idx, val) in self.mem.stack.iter().enumerate().rev() {
             let (idx, frame) = (idx as i64, self.frame as i64);
             write!(stdout, "{}", if idx == frame { " -> " } else { "    " })?;
-            writeln!(stdout, "{}: {}", idx - frame, val.lisp_to_string())?;
+            let repr = val.lisp_to_string();
+            let repr = if repr.len() > MAX_REPR_LEN {
+                repr.chars().take(MAX_REPR_LEN).chain("…".chars()).collect::<String>()
+            } else {
+                repr
+            };
+            writeln!(stdout, "{}: {}", idx - frame, repr)?;
         }
         Ok(())
     }
