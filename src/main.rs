@@ -10,6 +10,7 @@ use std::io::prelude::*;
 use std::io;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "pretty_env_logger")]
     pretty_env_logger::init();
     let args: Vec<String> = env::args().skip(1).collect();
     let mut f: Box<dyn Read> = match &args[..] {
