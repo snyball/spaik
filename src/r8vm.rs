@@ -15,7 +15,7 @@ use crate::{
     error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
     fmt::LispFmt,
     nuke::{*},
-    nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int, ConsOption, Lambda},
+    nkgc::{NonRef, Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int, ConsOption, Lambda},
     string_parse::string_parse,
     subrs::{Subr, BoxSubr, FromLisp, Lispify},
     tok::Token, limits, comp::R8Compiler,
@@ -306,7 +306,7 @@ mod sysfns {
     use crate::utils::{HMap, HSet};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, Cons}, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}, r8vm::merge_sort};
-    use super::{R8VM, tostring, ArgSpec};
+    use super::{R8VM, tostring, ArgSpec, NonRef};
 
     fn join_str<IT, S>(args: IT, sep: S) -> String
         where IT: Iterator<Item = PV>, S: AsRef<str>
@@ -511,13 +511,17 @@ mod sysfns {
             join_str(args.iter().copied(), "").into_pv(&mut vm.mem)
         }
 
-        fn error(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-            if let PV::Sym(name) = *x {
-                err!(LibError, name: name.into())
+        fn error(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
+            let mut it = args.iter().copied();
+            let name_arg = it.next().ok_or(error!(ArgError, expect: ArgSpec::opt(1, 1), got_num: 0 ))?;
+            if let PV::Sym(name) = name_arg {
+                err!(LibError,
+                    name: name.into(),
+                    value: NonRef::new(it.next().unwrap_or(PV::Nil))?)
             } else {
                 Err(error!(TypeError,
                            expect: Builtin::Symbol,
-                           got: x.bt_type_of())
+                           got: name_arg.bt_type_of())
                     .bop(Builtin::Error)
                     .argn(1))
             }

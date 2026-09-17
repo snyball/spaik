@@ -1,6 +1,6 @@
 //! Structured Errors
 
-use crate::nkgc::PV;
+use crate::nkgc::{NonRef, PV};
 use crate::nuke::VTable;
 use crate::{Builtin, Sym, SPV};
 use crate::r8vm::{ArgSpec, RuntimeError, Traceback, TraceFrame};
@@ -265,7 +265,7 @@ pub enum ErrorKind {
     IOError { kind: std::io::ErrorKind },
     MissingFeature { flag: &'static str },
     CharSpecError { spec: Sym },
-    LibError { name: Sym },
+    LibError { name: Sym, value: NonRef },
     TrailingDelimiter { close: &'static str },
     UnclosedDelimiter { open: &'static str },
     UnlinkedFunction,
@@ -277,6 +277,7 @@ pub enum ErrorKind {
     DuplicateField { record: String, field: String },
     CannotMoveSharedReference { vt: &'static VTable, nref: u32 },
     ImmovableObject { name: OpName },
+    UnstoppableForce { name: &'static str },
     RecordMissingFields { record: String, fields: Vec<String> },
     UnterminatedString,
     MacroexpandRecursionLimit { lim: usize },
@@ -584,8 +585,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         }
         CharSpecError { spec } =>
             write!(f, "Invalid char spec `{spec}', use exactly one character in the symbol")?,
-        LibError { name } =>
-            write!(f, "Error: {name}")?,
+        LibError { name, value } =>
+            write!(f, "Error: {name} {value}")?,
         TrailingDelimiter { close } =>
             write!(f, "Trailing Delimiter: Found trailing `{close}' in input")?,
         UnclosedDelimiter { open } =>
@@ -625,6 +626,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                    vt.type_name, nref - 1, plurs(nref - 1))?,
         ImmovableObject { name } =>
             write!(f, "Borrow Check Error: immovable object type {name}")?,
+        UnstoppableForce { name } =>
+            write!(f, "Unstoppable Force: {name}")?,
         MutLocked { vt } =>
             write!(f, "Borrow Check Error: object of type {} is mut-locked by recursive call into VM", vt.type_name)?,
         RecordMissingFields { fields: _, record } =>
