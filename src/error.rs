@@ -227,6 +227,7 @@ impl PartialEq for ExtError {
 
 #[derive(Clone, PartialEq)]
 pub enum ErrorKind {
+    ZeroLengthSymbol,
     SendError { obj_dbg: String },
     STypeError { expect: String, got: String },
     UnexpectedDottedList,
@@ -640,6 +641,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         UnlinkedFunction => write!(f, "Unlinked functino")?,
         ExtError(err) => write!(f, "{:?}", err.0)?,
         DivideByZero => write!(f, "Attemped integer division by zero")?,
+        ZeroLengthSymbol => write!(f, "Attempted to create empty symbol ε")?,
     }
 
     write!(f, "{}", SourceDisplayHack(" ", meta, ""))?;

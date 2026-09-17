@@ -804,6 +804,9 @@ mod sysfns {
             match args {
                 [s @ PV::Sym(_)] => Ok(*s),
                 [r] => with_ref!(*r, String(s) => {
+                    if unsafe{(**s).len()} == 0 {
+                        bail!(ZeroLengthSymbol);
+                    }
                     Ok(PV::Sym(vm.mem.symdb.put_ref(&*s).id()))
                 }),
                 _ => Err(error!(ArgError,
