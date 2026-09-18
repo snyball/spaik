@@ -3095,8 +3095,10 @@ impl R8VM {
                 }
 
                 EVL() => {
+                    let dip = self.ip_delta(ip);
                     let v = self.mem.pop()?;
                     let res = self.eval_pv(v);
+                    ip = self.ret_to(dip);
                     match res {
                         Ok(x) => self.mem.push(x),
                         Err(e) => {
