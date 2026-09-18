@@ -242,7 +242,7 @@ impl R8Compiler {
     pub fn new(vm: &R8VM) -> R8Compiler {
         let mut cc = R8Compiler {
             const_offset: 0,
-            debug_mode: vm.get_debug_mode(),
+            debug_mode: Default::default(),
             fn_ctxs: Default::default(),
             new_fns: Default::default(),
             estack: Default::default(),

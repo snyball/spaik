@@ -54,6 +54,7 @@ pub use r8vm::Func;
 use r8vm::NArgs;
 pub use r8vm::OutStream;
 pub use r8vm::VmStdout;
+pub use r8vm::VmDebugOpts;
 pub use subrs::FromLisp3;
 use subrs::IntoSubr;
 pub use subrs::{Lispify, PList};
@@ -66,7 +67,7 @@ pub(crate) mod pmem;
 pub(crate) mod stak;
 pub(crate) mod lisp_test;
 mod stack_gymnastics;
-pub use lisp_test::run_tests;
+pub use lisp_test::{run_tests, TestRunner};
 #[cfg(feature = "modules")]
 pub(crate) mod module;
 #[cfg(feature = "serde")]
@@ -312,6 +313,10 @@ impl Spaik {
     pub fn catch(&mut self, tag: Option<impl AsSym>) {
         let tag = tag.map(|t| t.as_sym(&mut self.vm));
         self.vm.catch(0, tag);
+    }
+
+    pub fn set_debug(&mut self, dbg: VmDebugOpts) {
+        self.vm.set_debug_mode(dbg);
     }
 
     pub fn catch_all(&mut self) {

@@ -306,6 +306,7 @@ mod sysfns {
     use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId, hash::Hash, collections::hash_map::DefaultHasher, cmp::Ordering};
 
     use crate::nuke::{to_fissile_ref, NkRef, NkAtom};
+    use crate::r8vm::VmDebugOpts;
     use crate::utils::{HMap, HSet};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, Cons}, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}, r8vm::merge_sort};
@@ -586,10 +587,15 @@ mod sysfns {
         }
 
         fn debug_mode(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
-            let arg = args.first()
-                          .cloned()
-                          .unwrap_or(PV::Bool(true));
-            vm.set_debug_mode(arg.into());
+            let arg: bool = args.first()
+                                .cloned()
+                                .unwrap_or(PV::Bool(true))
+                                .into();
+            let mut mode = VmDebugOpts::default();
+            mode.show_opcodes = arg;
+            mode.show_stack_on_ret = arg;
+            mode.show_frames = arg;
+            vm.set_debug_mode(mode);
             Ok(PV::Nil)
         }
 
@@ -1199,6 +1205,20 @@ pub struct Guard {
 
 pub type VmStdout = Arc<Mutex<Box<dyn OutStream>>>;
 
+#[derive(Clone, Default, Debug)]
+#[cfg_attr(feature = "cli", derive(clap::Parser))]
+pub struct VmDebugOpts {
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub show_opcodes: bool,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub show_stack_on_ret: bool,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub show_frames: bool,
+    #[cfg(feature = "gc-assertions")]
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub assert_gc_invariants: bool,
+}
+
 #[derive(Clone)]
 pub struct R8VM {
     /// Memory
@@ -1226,7 +1246,7 @@ pub struct R8VM {
 
     stdout: Arc<Mutex<Box<dyn OutStream>>>,
 
-    debug_mode: bool,
+    debug_mode: VmDebugOpts,
 
     frame: usize,
 }
@@ -1251,7 +1271,7 @@ impl Default for R8VM {
             func_arg_syms: Default::default(),
             stdout: Arc::new(Mutex::new(Box::new(io::stdout()))),
             labels: Default::default(),
-            debug_mode: false,
+            debug_mode: VmDebugOpts::default(),
             frame: Default::default(),
             srctbl: Default::default(),
             trace_counts: Default::default(),
@@ -1625,7 +1645,6 @@ impl R8VM {
             addfn!("dump-fn-tbl", dump_fn_tbl);
             addfn!("dump-gc-stats", dump_gc_stats);
             addfn!("dump-stack", dump_stack);
-            #[cfg(debug_assertions)]
             addfn!("debug-mode", debug_mode);
             addfn!(disassemble);
             addfn!("dump-mem", dump_mem);
@@ -1854,12 +1873,8 @@ impl R8VM {
             .expect("Can't allocate Subr");
     }
 
-    pub fn set_debug_mode(&mut self, debug_mode: bool) {
+    pub fn set_debug_mode(&mut self, debug_mode: VmDebugOpts) {
         self.debug_mode = debug_mode;
-    }
-
-    pub fn get_debug_mode(&self) -> bool {
-        self.debug_mode
     }
 
     pub fn catch(&mut self, dip: usize, sym: Option<SymID>) {
@@ -2741,13 +2756,11 @@ impl R8VM {
                 self.mem.stack.push($rp);
             }};
         }
-        #[cfg(debug_assertions)]
         let mut orig = None;
-        #[cfg(debug_assertions)]
-        if self.debug_mode {
+        if self.debug_mode.show_frames {
             let sym = self.traceframe(offs);
             orig = Some(sym);
-            println!("{}:", sym);
+            eprintln!("{}:", sym);
         }
         macro_rules! barrier {
             ($v:expr) => {{
@@ -2767,17 +2780,19 @@ impl R8VM {
             let op = *ip;
             ip = ip.offset(1);
 
-            #[cfg(debug_assertions)]
-            if self.debug_mode {
+            if self.debug_mode.show_frames {
                 match op {
-                    VCALL(f, _) => println!("{}:", f),
+                    VCALL(f, _) => eprintln!("{}:", f),
                     CALL(ip, _) => {
                         let sym = self.traceframe(ip as usize);
-                        println!("{}:", sym);
+                        eprintln!("{}:", sym);
                     }
                     _ => ()
                 }
-                println!("  {}", op);
+            }
+
+            if self.debug_mode.show_opcodes {
+                eprintln!("  {}", op);
             }
 
             match op {
@@ -3111,9 +3126,8 @@ impl R8VM {
                 }
 
                 HCF() => {
-                    #[cfg(debug_assertions)]
-                    if self.debug_mode {
-                        println!("hcf from {:?}", orig);
+                    if self.debug_mode.show_frames {
+                        eprintln!("hcf from {:?}", orig);
                     }
                     return Ok(())
                 },
@@ -3121,21 +3135,23 @@ impl R8VM {
             self.stats.instructions += 1;
 
             #[cfg(feature = "gc-assertions")]
-            self.mem.nuke.check_types_linear();
+            if self.debug_mode.assert_gc_invariants {
+                self.mem.nuke.check_types_linear();
 
-            #[cfg(feature = "gc-assertions")]
-            if let Err((a, b)) = self.mem.assert_invariants() {
-                panic!("after {op}: Black object {a} points to white {b}");
+                if let Err((a, b)) = self.mem.assert_invariants() {
+                    panic!("after {op}: Black object {a} points to white {b}");
+                }
             }
 
             self.mem.collect();
 
             #[cfg(feature = "gc-assertions")]
-            self.mem.nuke.check_types_linear();
+            if self.debug_mode.assert_gc_invariants {
+                self.mem.nuke.check_types_linear();
 
-            #[cfg(feature = "gc-assertions")]
-            if let Err((a, b)) = self.mem.assert_invariants() {
-                panic!("after collection: Black object {a} points to white {b}");
+                if let Err((a, b)) = self.mem.assert_invariants() {
+                    panic!("after collection: Black object {a} points to white {b}");
+                }
             }
         };
 

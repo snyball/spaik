@@ -23,7 +23,7 @@ opt-level = "z"
 codegen-units = 1
 
 [features]
-default = ["math", "extra", "readline", "derive", "modules", "freeze", "pretty_env_logger" ]
+default = ["math", "extra", "readline", "derive", "modules", "freeze", "pretty_env_logger", "cli" ]
 extra = ["comfy-table", "owo-colors"]
 readline = ["rustyline", "dirs"]
 wasm = ["wasm-bindgen"]
@@ -33,6 +33,7 @@ derive = ["spaik-proc-macros"]
 freeze = ["bincode", "serde"]
 no-threading = []
 gc-assertions = []
+cli = ["clap"]
 serde = ["dep:serde"]
 shipyard = ["dep:shipyard"]
 cleanup-vtables = []
@@ -55,6 +56,7 @@ sptr = "0.3.2"
 shipyard = { version = "0.6.2", optional = true }
 pretty_env_logger = { version = "0.5.0", optional = true }
 rapier2d = { version = "0.18.0", optional = true }
+clap = { version = "4.5.61", features = ["derive"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ahash = "0.8"
