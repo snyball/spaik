@@ -123,7 +123,25 @@
       (not (eq? (concat "hel" "lo") (concat "wor" "ld")))
       (not (eq? "hello" "world")))
 
-;;; ---[ table: was reference-only, now structural ]--------------------
+
+;;; ---[ table: structural, but only for ONE key ]----------------------
+
+;; Every table below holds ONE entry, and that is deliberate. `eq?`
+;; compares two tables entry-by-entry in ITERATION order instead of
+;; looking each key up in the other table, and iteration order is hash
+;; order, reseeded per process. At one entry there is only one possible
+;; order, so the answer is stable and these assertions are sound. At
+;; two entries the same comparison answers `true` on roughly two runs
+;; in three and `false` on the rest; at four it is almost always
+;; `false`.
+;;
+;; So do NOT "strengthen" these by adding a second key - that turns a
+;; passing test into a coin flip. The multi-key behaviour is a live
+;; defect and belongs in a repro, not in a suite that has to exit 0.
+;; The size check in front of the walk is correct and IS pinned below:
+;; tables of different lengths are never equal.
+(defun eqtest/table-two-keys ()
+  (eq? (make-table :a 1) (make-table :a 1 :b 2)))
 
 (test eq-table-structural
       ;; two separately-built tables with identical key/value pairs
@@ -131,9 +149,11 @@
       ;; same reference.
       (eq? (eqtest/table-a-1) (eqtest/table-b-1))
       (not (eq? (eqtest/table-a-1) (eqtest/table-b-2)))
-      (eq? (make-table) (make-table)))
-
+      (eq? (make-table) (make-table))
+      ;; differing sizes are rejected before any entry is walked
+      (= false (eqtest/table-two-keys)))
 ;;; ---[ and it propagates into containers ]----------------------------
+
 
 (test eq-nested-string-and-table
       ;; `string` and `table` were once compared by reference while
@@ -144,15 +164,15 @@
       (eq? (vec (eqtest/table-a-1)) (vec (eqtest/table-b-1)))
       (eq? (cons "a" "b") (cons "a" "b")))
 
-;;; ---[ cycles: the identity short-circuit ]---------------------------
+;;; ---[ cycles ]-------------------------------------------------------
 
-;; `eq?` compares an object with ITSELF without walking it, so a
-;; structure that contains a reference cycle is answered immediately.
-;; That check is all that stands between these cases and unbounded
-;; recursion: `eq?` has no visited set, so comparing two DISTINCT
-;; cyclic structures still descends forever and takes the interpreter
-;; with it. Only the self-comparison is pinned here; the pair case is
-;; a live crash and has no business in a suite that must exit 0.
+;; `eq?` terminates on reference cycles. Comparing an object with
+;; ITSELF is answered without walking it, and comparing two DISTINCT
+;; cyclic structures also terminates and answers sensibly - matching
+;; shapes are `true`, and a difference reachable past the cycle is
+;; still found. The pair case used to recurse until the native stack
+;; was gone, so it is pinned below: a regression should be a test
+;; failure rather than a segfault.
 ;;
 ;; The cycle has to be built before the comparison runs. A top-level
 ;; `define` initialiser is evaluated ahead of the rest of the file, so
@@ -186,3 +206,89 @@
       (eqtest/self-cycle-table)
       (= true (eqtest/self-cycle-member))
       (nil? (eqtest/cycle-vs-shorter)))
+
+;; Two DISTINCT cyclic structures. Each of these used to walk both
+;; operands in lockstep with no visited set and segfault; all four now
+;; terminate. The vectors must be built inside the helper for the same
+;; reason as above.
+(defun eqtest/two-self-cycles ()
+  (let ((a (vec)) (b (vec)))
+    (push a a)
+    (push b b)
+    (eq? a b)))
+
+;; a holds b, b holds a - a cycle of length two spanning both operands.
+(defun eqtest/mutual-cycle ()
+  (let ((a (vec)) (b (vec)))
+    (push a b)
+    (push b a)
+    (eq? a b)))
+
+;; Matching cycles, differing second element: the walk has to get past
+;; the cycle to see the difference, and does.
+(defun eqtest/cycle-differing-tail ()
+  (let ((a (vec)) (b (vec)))
+    (push a a)
+    (push a 1)
+    (push b b)
+    (push b 2)
+    (eq? a b)))
+
+(defun eqtest/cycle-matching-tail ()
+  (let ((a (vec)) (b (vec)))
+    (push a a)
+    (push a 1)
+    (push b b)
+    (push b 1)
+    (eq? a b)))
+
+(test eq-terminates-on-two-distinct-cycles
+      (= true (eqtest/two-self-cycles))
+      (= true (eqtest/mutual-cycle))
+      (= false (eqtest/cycle-differing-tail))
+      (= true (eqtest/cycle-matching-tail)))
+
+;; A ring of n vectors, each holding the next, last holding the first.
+;; Rings of DIFFERENT lengths compare equal: every node of either ring
+;; holds exactly one node that looks the same, so nothing distinguishes
+;; them without counting. Pinned as what it does - a comparison that
+;; answered `false` here would be just as defensible, so a change
+;; should be a deliberate one.
+(defun eqtest/ring (n)
+  (let ((vs (vec)))
+    (range (i (0 n)) (push vs (vec)))
+    (range (i (0 n)) (push (get vs i) (get vs (% (+ i 1) n))))
+    (get vs 0)))
+
+(defun eqtest/rings-same-length ()
+  (eq? (eqtest/ring 50) (eqtest/ring 50)))
+
+(defun eqtest/rings-different-length ()
+  (eq? (eqtest/ring 7) (eqtest/ring 11)))
+
+(test eq-terminates-on-rings
+      (= true (eqtest/rings-same-length))
+      (= true (eqtest/rings-different-length)))
+
+;; Shared structure is compared once, not once per path to it. Each
+;; level of `eqtest/share` names the level below it twice, so n levels
+;; are n+1 conses but 2^n leaves when expanded. Without a memo of the
+;; pairs already compared this took 3.3s at n=27 and did not finish at
+;; n=40; it is now sub-millisecond at n=200. A regression here shows up
+;; as the suite hanging rather than as a failing assertion, which is
+;; the reason for the second clause: the comparison must still be able
+;; to find a difference buried under all that sharing.
+(defun eqtest/share (n tail)
+  (let ((x tail))
+    (range (i (0 n)) (set x (list x x)))
+    x))
+
+(defun eqtest/share-equal ()
+  (eq? (eqtest/share 200 (list 1 2)) (eqtest/share 200 (list 1 2))))
+
+(defun eqtest/share-differing ()
+  (eq? (eqtest/share 200 (list 1 2)) (eqtest/share 200 (list 1 3))))
+
+(test eq-memoises-shared-structure
+      (= true (eqtest/share-equal))
+      (= false (eqtest/share-differing)))
