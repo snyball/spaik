@@ -564,6 +564,10 @@ mod sysfns {
             Ok(vm.mem.put_pv(r))
         }
 
+        fn functions(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
+            Ok(vm.mem.put_pv(vm.get_fn_names()))
+        }
+
         fn dump_mem(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             dbg!(&vm.mem.nuke);
             Ok(PV::Nil)
@@ -1652,6 +1656,7 @@ impl R8VM {
 
         // Meta
         addfn!(globals);
+        addfn!(functions);
 
         // Tables
         addfn!("make-table", make_table);
@@ -1731,6 +1736,28 @@ impl R8VM {
                         src.clone()).unwrap();
 
         vm
+    }
+
+    pub fn get_fn_names(&self) -> Vec<PV> {
+        let mut names = vec![];
+        for (name, idx) in self.globals.iter() {
+            let env = self.mem.env[*idx];
+            let t = env.bt_type_of();
+            if t == Builtin::Lambda || t == Builtin::Subr {
+                names.push(PV::Sym(*name));
+            }
+        }
+        for (name, _) in self.funcs.iter() {
+            if name.as_ref().starts_with("<ξ>-") ||
+                name.as_ref().starts_with("<λ>-") ||
+                name.as_ref().starts_with("<ζ>-") ||
+                name.as_ref().starts_with("<δ>-") ||
+                name.as_ref().starts_with("<σ>-") {
+                continue;
+            }
+            names.push(PV::Sym(*name));
+        }
+        names
     }
 
     fn resource_idx<T: Userdata>(&mut self) -> u32 {
