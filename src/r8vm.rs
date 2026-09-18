@@ -290,6 +290,15 @@ pub unsafe fn split_list(mut head: Option<*mut Cons>)
     r
 }
 
+pub fn sysrand_impl() -> Result<f32> {
+    let mut urandom = fs::File::open("/dev/urandom")?;
+    let mut buf = [0; 4];
+    urandom.read_exact(&mut buf)?;
+    let mut uint = u32::from_ne_bytes(buf);
+    uint &= 0x00FFFFFF;
+    Ok(uint as f32 / 16777216.0)
+}
+
 #[allow(non_camel_case_types)]
 mod sysfns {
     use std::{fmt::Write, borrow::Cow, io::BufWriter, fs, any::TypeId, hash::Hash, collections::hash_map::DefaultHasher, cmp::Ordering};
@@ -299,7 +308,7 @@ mod sysfns {
     use crate::utils::{HMap, HSet};
 
     use crate::{subrs::{Subr, IntoLisp}, nkgc::{PV, Cons}, error::{Error, ErrorKind, Result}, fmt::{LispFmt, FmtWrap}, builtins::Builtin, utils::Success, nuke::{cast_mut, Void, Voided, Locked}, r8vm::merge_sort};
-    use super::{R8VM, tostring, ArgSpec};
+    use super::{R8VM, tostring, ArgSpec, sysrand_impl};
 
     fn join_str<IT, S>(args: IT, sep: S) -> String
         where IT: Iterator<Item = PV>, S: AsRef<str>
@@ -546,6 +555,10 @@ mod sysfns {
         fn gc(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
             vm.mem.full_collection();
             Ok(PV::Nil)
+        }
+
+        fn sysrand(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
+            sysrand_impl().map(|r| PV::Real(r))
         }
 
         fn globals(&mut self, vm: &mut R8VM, args: ()) -> Result<PV> {
@@ -1692,6 +1705,7 @@ impl R8VM {
         addfn!(ln);
         addfn!(tan);
         addfn!(tanh);
+        addfn!(sysrand);
 
         // Strings
         addfn!(string);
