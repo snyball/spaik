@@ -622,13 +622,15 @@ impl Spaik {
     /// Add to load path, this influences where `Spaik::load` will search for
     /// spaik files.
     ///
-    /// # Panics
-    ///
-    /// Panics if the `sys/load-path` variable is not defined, or is not a
-    /// vector.
     pub fn add_load_path(&mut self, path: impl AsRef<str>) {
-        let p = self.vm.var(Builtin::SysLoadPath.sym_id()).unwrap();
-        let s = self.vm.mem.put_pv(path.as_ref().to_string());
+        let path = path.as_ref().to_string();
+        let Ok(p) = self.vm.var(Builtin::SysLoadPath.sym_id()) else {
+            return self.vm.set(
+                Builtin::SysLoadPath.sym_id(),
+                vec![path]
+            ).expect("Cannot set sys/load-path")
+        };
+        let s = self.vm.mem.put_pv(path);
         with_ref_mut!(p, Vector(v) => {
             (*v).push(s);
             Ok(())
