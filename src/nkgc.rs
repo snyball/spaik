@@ -726,21 +726,21 @@ impl PV {
         ConsIter { item: *self }
     }
 
-    pub fn with_cell(&self, f: fn(PV, PV) -> PV) -> Option<PV> {
-        with_ref!(*self, Cons(p) => { Ok(f((*p).car, (*p).cdr)) }).ok()
+    pub fn with_cell(&self, f: fn(PV, PV) -> PV) -> Result<PV, Error> {
+        with_ref!(*self, Cons(p) => { Ok(f((*p).car, (*p).cdr)) })
     }
 
     #[inline]
-    pub fn car(&self) -> Option<PV> {
+    pub fn car(&self) -> Result<PV, Error> {
         self.with_cell(|car, _| car)
     }
 
-    pub fn car_mut(&mut self) -> Option<&mut PV> {
-        with_ref_mut!(*self, Cons(p) => { Ok(&mut (*p).car) }).ok()
+    pub fn car_mut(&mut self) -> Result<&mut PV, Error> {
+        with_ref_mut!(*self, Cons(p) => { Ok(&mut (*p).car) })
     }
 
     #[inline]
-    pub fn cdr(&self) -> Option<PV> {
+    pub fn cdr(&self) -> Result<PV, Error> {
         self.with_cell(|_, cdr| cdr)
     }
 
@@ -771,10 +771,10 @@ impl PV {
     }
 
     pub fn quasi_mut(&mut self) -> Option<QuasiMut> {
-        Some(match self.car()?.bt_op()? {
-            Builtin::USplice => QuasiMut::USplice(self.cdr()?.car_mut()?),
-            Builtin::Unquote => QuasiMut::Unquote(self.cdr()?.car_mut()?),
-            Builtin::Quasi => QuasiMut::Quote(self.cdr()?.car_mut()?),
+        Some(match self.car().ok()?.bt_op()? {
+            Builtin::USplice => QuasiMut::USplice(self.cdr().ok()?.car_mut().ok()?),
+            Builtin::Unquote => QuasiMut::Unquote(self.cdr().ok()?.car_mut().ok()?),
+            Builtin::Quasi => QuasiMut::Quote(self.cdr().ok()?.car_mut().ok()?),
             _ => return None
         })
     }
@@ -789,10 +789,10 @@ impl PV {
     }
 
     pub fn quasi(&self) -> Option<Quasi> {
-        Some(match self.car()?.sym().ok().and_then(Builtin::from_sym)? {
-            Builtin::USplice => Quasi::USplice(self.cdr()?.car()?),
-            Builtin::Unquote => Quasi::Unquote(self.cdr()?.car()?),
-            Builtin::Quasi => Quasi::Quote(self.cdr()?.car()?),
+        Some(match self.car().ok()?.sym().ok().and_then(Builtin::from_sym)? {
+            Builtin::USplice => Quasi::USplice(self.cdr().ok()?.car().ok()?),
+            Builtin::Unquote => Quasi::Unquote(self.cdr().ok()?.car().ok()?),
+            Builtin::Quasi => Quasi::Quote(self.cdr().ok()?.car().ok()?),
             _ => return None
         })
     }
