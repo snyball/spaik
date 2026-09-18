@@ -14,6 +14,7 @@ use std::ops::Deref;
 use std::sync::atomic::AtomicU32;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use crate::utils::HMap;
+use ahash::HashSet;
 #[cfg(feature = "math")]
 use glam::{Vec2, Vec3};
 use serde::{Serialize, Deserialize};
@@ -475,6 +476,46 @@ pub enum QuasiMut {
     Quote(*mut PV),
 }
 
+#[derive(Debug, Default)]
+pub struct Equalp {
+    checks: HashSet<(*const NkAtom, *const NkAtom)>,
+}
+
+impl Equalp {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn equalp(&mut self, this: &PV, other: &PV) -> bool {
+        unsafe {
+            match (*this, other) {
+                (PV::Ref(u), PV::Ref(v)) => {
+                    if self.checks.contains(&(u, *v)) {
+                        return true;
+                    }
+                    self.checks.insert((u, *v));
+                    u == *v || match (to_fissile_ref(u), to_fissile_ref(*v)) {
+                        (NkRef::String(u), NkRef::String(v)) => (*u) == (*v),
+                        (NkRef::Cons(u), NkRef::Cons(v)) =>
+                            self.equalp(&(*u).car, &(*v).car) && self.equalp(&(*u).cdr, &(*v).cdr),
+                        (NkRef::PV(u), NkRef::PV(v)) => (*u).equalp(&*v),
+                        (NkRef::Vector(u), NkRef::Vector(v)) =>
+                            (*u).len() == (*v).len() &&
+                            (*u).iter().zip((*v).iter()).all(|(u, v)| self.equalp(u, v)),
+                        (NkRef::Table(u), NkRef::Table(v)) =>
+                            (*u).len() == (*v).len() &&
+                            (*u).iter().zip((*v).iter()).all(|((k0, v0), (k1, v1))| {
+                                self.equalp(k0, k1) && self.equalp(v0, v1)
+                            }),
+                        _ => *this == *other,
+                    }
+                }
+                _ => *this == *other
+            }
+        }
+    }
+}
+
 impl PV {
     pub fn is_zero(&self) -> bool {
            *self == PV::Int(0)
@@ -643,7 +684,7 @@ impl PV {
         type IT = Box<dyn CloneIterator<Item = PV>>;
         macro_rules! e {() => {
             Err(error!(TypeNError,
-                       expect: vec![Builtin::Cons, Builtin::String, Builtin::Vector],
+                       expect: vec![Builtin::Cons, Builtin::String, Builtin::Vector, Builtin::Table],
                        got: self.bt_type_of()).bop(Builtin::Iter))
         };}
         let it: Box<dyn CloneIterator<Item = PV>> = match *self {
@@ -867,45 +908,7 @@ impl PV {
     }
 
     pub fn equalp(&self, other: &PV) -> bool {
-        unsafe {
-            match (*self, other) {
-                (PV::Ref(u), PV::Ref(v)) => u == *v ||
-                    match (to_fissile_ref(u), to_fissile_ref(*v)) {
-                        (NkRef::String(u), NkRef::String(v)) => {
-                            (*u) == (*v)
-                        },
-                        (NkRef::Cons(mut u), NkRef::Cons(mut v)) => loop {
-                            if !(*u).car.equalp(&(*v).car) { break false }
-                            let PV::Ref(u_next) = (*u).cdr else {
-                                break (*u).cdr.equalp(&(*v).cdr);
-                            };
-                            let PV::Ref(v_next) = (*v).cdr else {
-                                break (*u).cdr.equalp(&(*v).cdr);
-                            };
-                            let Some(u_next) = cast::<Cons>(u_next) else {
-                                break (*u).cdr.equalp(&(*v).cdr);
-                            };
-                            let Some(v_next) = cast::<Cons>(v_next) else {
-                                break (*u).cdr.equalp(&(*v).cdr);
-                            };
-                            u = u_next;
-                            v = v_next;
-                        }
-                        (NkRef::PV(u), NkRef::PV(v)) => (*u).equalp(&*v),
-                        (NkRef::Vector(u), NkRef::Vector(v)) =>
-                        (*u).len() == (*v).len() &&
-                            (*u).iter().zip((*v).iter()).all(|(u, v)| u.equalp(v)),
-                        (NkRef::Table(u), NkRef::Table(v)) => {
-                            (*u).len() == (*v).len() &&
-                                (*u).iter().zip((*v).iter()).all(|((k0, v0), (k1, v1))| {
-                                    k0.equalp(k1) && v0.equalp(v1)
-                                })
-                        }
-                        _ => *self == *other,
-                    },
-                _ => *self == *other
-            }
-        }
+        Equalp::new().equalp(self, other)
     }
 
     num_op!(add, Add, +);
