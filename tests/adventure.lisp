@@ -353,8 +353,8 @@
 ;; NOTE: each finder below deliberately keeps its `dolist` out of tail
 ;; position (a trailing `result` reference follows it) and stashes the
 ;; match in `result` rather than `break`-ing a value directly out of a
-;; `let` in tail position. See suspect/tail-dolist-let-break-kills-program.lisp -
-;; that shape silently kills the whole interpreter instead of returning.
+;; `let` in tail position. That shape used to kill the whole
+;; interpreter instead of returning.
 
 (defun find-visible-item (phrase)
   (let ((room (current-room))
@@ -496,7 +496,7 @@
 ;; (not dest) (println ...) (let* ((needs ...) (lacks-needed ...)) (if
 ;; ...))))` - the branch WITHOUT the inner `let*` (taken whenever there's
 ;; no exit that way) silently lost the rest of the program on return.
-;; See suspect/if-branch-asymmetric-let-drops-cleanup.lisp.
+;; That was a compiler bug in asymmetric `let` cleanup, since fixed.
 
 (defun go-blocked-message (dir)
   (println (concat "The way " dir " is sealed. It looks like it needs something specific to open.")))
@@ -571,9 +571,9 @@
    ((not (has-item? 'silver-key)) (println "The chest is locked. You'll need a key."))
    (true (claim-potion!))))
 
-;; Now that the compiler's `popa` bug (see suspect/tail-dolist-let-break-
-;; kills-program.lisp) is fixed, tail-calling a branchy function directly
-;; from here is fine again - no more workaround needed.
+;; Now that the compiler's `popa` bug is fixed, tail-calling a branchy
+;; function directly from here is fine again - no more workaround
+;; needed.
 (defun take-by-phrase (phrase)
   (cond
    ((keyword-match? (get *items* 'golden-tome) phrase) (do-take-golden-tome))
@@ -824,8 +824,8 @@
 ;; other lacks): an earlier version nested a `let`-introducing branch
 ;; inside one arm of an outer `if` whose condition came from another
 ;; `let`, and the arm WITHOUT the extra `let` silently lost the rest of
-;; the program on return - see
-;; suspect/if-branch-asymmetric-let-drops-cleanup.lisp.
+;; the program on return. That was a compiler bug in asymmetric `let`
+;; cleanup, since fixed.
 (defun do-flee (obj)
   (let ((hostile (any-living-hostile-in-room)))
     (do-flee-with-hostile hostile)))
@@ -983,7 +983,7 @@
 ;; ---- demo walkthrough ----
 ;;
 ;; This interpreter's `read`/`read-from` builtins are unimplemented (they
-;; panic - see crashes/read-not-implemented.lisp), and a file passed as
+;; raise `Unimplemented`), and a file passed as
 ;; the `run` argument doesn't also consume stdin, so there is no way for
 ;; a running program to read further interactive input mid-execution.
 ;; Interactive play is still possible: run `./run` with NO file argument

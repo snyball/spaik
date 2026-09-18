@@ -35,3 +35,32 @@
       (= (rme-40) 40)
       (eq? (rme-multi-body) (list 4 8))
       (= (rme-nested-expr) 10))
+
+;;; ---[ runaway expansion is bounded, not fatal ]-----------------------
+
+(defun rme/catch (tag form) (catch tag (eval form)))
+
+;; Expands to itself forever - no base case at all.
+(defmacro rme/self (n) `(rme/self ,n))
+
+;; Terminates after `n` levels.
+(defmacro rme/counted (n) (if (= n 0) 0 `(rme/counted ,(- n 1))))
+
+(defun rme/runaway ()      (rme/catch 'recursion-limit '(rme/self 1)))
+(defun rme/counted-100 ()  (rme/catch 'recursion-limit '(rme/counted 100)))
+(defun rme/counted-900 ()  (rme/catch 'recursion-limit '(rme/counted 900)))
+(defun rme/counted-1100 () (rme/catch 'recursion-limit '(rme/counted 1100)))
+
+(test recursive-macro-expansion-depth-limit
+      ;; runaway expansion is reported, not fatal, and not a crash
+      (string? (rme/runaway))
+      ;; well under the ceiling: expands normally and yields its value
+      (= 0 (rme/counted-100))
+      (= 0 (rme/counted-900))
+      ;; past the ceiling: the same `recursion-limit` report
+      (string? (rme/counted-1100))
+      ;; the limit is a macroexpansion limit, not a general recursion
+      ;; limit - ordinary deep function recursion is untouched
+      (= 10000 (rme/catch 'recursion-limit '(rme/deep-fn 10000))))
+
+(defun rme/deep-fn (n) (if (< n 1) 0 (+ 1 (rme/deep-fn (- n 1)))))

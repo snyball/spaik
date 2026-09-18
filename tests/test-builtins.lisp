@@ -335,8 +335,8 @@
 ;; Regression test for a bug where `catch`, used as a non-tail statement
 ;; inside a `let` body (with the let-bound variable read again
 ;; afterward), would silently truncate the rest of the program - even
-;; when the `catch`'s body never actually `throw`s. See (fixed, moved
-;; from suspect/) fixed/catch-non-tail-in-let-drops-rest.lisp.
+;; when the `catch`'s body never actually `throw`s. Fixed; this holds
+;; the fix in place.
 (defun tests--catch-non-tail-in-let (n)
   (let ((i 0))
     (catch 'x (throw 'x nil))

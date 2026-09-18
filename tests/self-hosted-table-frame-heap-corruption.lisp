@@ -397,10 +397,10 @@
 ;; fuzzing find made while building this: `catch` used as a NON-TAIL
 ;; statement inside a `let`, with the let-bound variable read again
 ;; afterward, silently truncates the program (no output at all, exit 0),
-;; even when the `catch`'s body never actually `throw`s - see
-;; suspect/catch-non-tail-in-let-drops-rest.lisp. Same family as the
-;; (fixed) `if`/`loop`-`break` stack-cleanup bugs, but for `catch`, and
-;; NOT fixed.
+;; even when the `catch`'s body never actually `throw`s. Same family
+;; as the `if`/`loop`-`break` stack-cleanup bugs, but for `catch`.
+;; Since fixed - `tests/test-builtins.lisp` holds the regression test
+;; - so the workaround below is no longer required, only harmless.
 ;;
 ;; Instead, a toy-level `break` is implemented as an ORDINARY VALUE - a
 ;; tagged "break signal" vec - that `eval-body` (see above) recognizes
@@ -533,11 +533,10 @@
 (defun host-list (&rest xs) xs)
 ;; `< > <= >= = eq?` (unlike `+ - * /`, and unlike `cons`/`car`/`cdr`/
 ;; `not` which core.lisp explicitly wraps "so they can be passed as
-;; closures") are NOT first-class values in the host language - see
-;; suspect/comparison-operators-not-first-class.lisp. Wrap them here so
-;; they can live in the toy interpreter's global frame like everything
-;; else. `vec`, `make-table`, and `next` turn out to belong to this same
-;; "not first-class" family (bare references to them fail to compile at
+;; closures") are NOT first-class values in the host language. Wrap
+;; them here so they can live in the toy interpreter's global frame like
+;; everything else. `vec`, `make-table`, and `next` turn out to belong to
+;; this same "not first-class" family (bare references fail to compile at
 ;; all - "Undefined Variable: vec" etc, confirmed empirically) even
 ;; though core.lisp never needed to wrap them itself (it only ever uses
 ;; them in direct call position). `set` is NOT wrapped here at all - it's

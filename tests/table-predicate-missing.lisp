@@ -18,6 +18,6 @@
       (string? "hi")
       (cons? (cons 1 2))
       ;; usable as a first-class value, unlike the opcode-compiled
-      ;; builtins still tracked in
-      ;; `suspect/list-and-vec-not-first-class-functions.lisp`
+      ;; builtins `list` and `vec`, which are not first-class
+      ;; functions in this dialect
       (tpm-via-value tpm-table))

@@ -1,24 +1,6 @@
-;;;
-;;; `=` (reference equality) vs `eq?` (deep structural equality)
-;;; across types.
-;;;
-;;; `eq?` recurses into any container and compares contents,
-;;; regardless of type. This previously did not hold for `string`
-;;; (compared the underlying pointers directly instead of dereferencing
-;;; and comparing the pointed-to bytes) or `table` (structural
-;;; comparison was unimplemented) - see `fixed/eq-not-deep-structural-
-;;; for-string-and-table.lisp` and FIXME.md's "Fixed" section; the
-;;; `eq-string-structural`/`eq-table-structural`/
-;;; `eq-nested-string-and-table` tests below are the regression
-;;; coverage for that fix and now pass. The `eq-baseline-*` tests
-;;; guard the types that were already correct (`vec`, `cons`/list,
-;;; `vec2`/`vec3`/`vec4`) so a future change can't regress them.
-;;;
-;;; NOTE: each clause in a `test` block must be a literal
-;;; `(predicate arg-expr...)` form (see `lisp/test.lisp`) - it is NOT
-;;; a general expression evaluator, so any fixture that needs `let`
-;;; or multiple statements is built by a helper `defun` below instead
-;;; of written inline in the `test` block.
+;;; `=` (reference equality) vs `eq?` (deep structural equality) across
+;;; types. `eq?` recurses into any container and compares contents;
+;;; `string` and `table` were the two that once did not.
 
 (defun eqtest/same-vec-fixture ()
   (let ((v (vec 1 2 3)))
@@ -73,9 +55,8 @@
       ;; separate identity from content, so `=` and `eq?` must always
       ;; agree - both true for equal components, both false as soon
       ;; as any single component differs. (mat2/mat3/mat4 do not exist
-      ;; in this build - see FIXME.md/ATTEMPTS.md - so are not covered
-      ;; here; add matching `eq-baseline-mat*` cases below if/when
-      ;; they're implemented.)
+      ;; in this build, so are not covered here; add matching
+      ;; `eq-baseline-mat*` cases below if/when they're implemented.)
       (eq? (vec2 1 2) (vec2 1 2))
       (= (vec2 1 2) (vec2 1 2))
       (not (eq? (vec2 1 2) (vec2 1 3)))
