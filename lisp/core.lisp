@@ -156,7 +156,7 @@
                (break))
              ,@body))))
 
-(defun map! (f xs)
+(defun for-each (f xs)
   (dolist (x xs)
     (f x)))
 
