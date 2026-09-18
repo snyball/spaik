@@ -1061,8 +1061,10 @@ impl From<PV> for bool {
 macro_rules! mark_gray {
     ($elem:expr, $gray:expr) => {
         if let PV::Ref(ptr) = $elem {
-            (*ptr).set_color(Color::Gray);
-            $gray.push(ptr);
+            if (*ptr).color() == Color::White {
+                (*ptr).set_color(Color::Gray);
+                $gray.push(ptr);
+            }
         }
     }
 }
