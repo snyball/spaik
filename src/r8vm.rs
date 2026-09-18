@@ -8,18 +8,7 @@ use glam::{Mat2, Mat3};
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
 use crate::{
-    ast::{Excavator, Visitor},
-    chasm::{ASMOp, ChASMOpName, Lbl, ASMPV},
-    builtins::Builtin,
-    comp::SourceList,
-    error::{Error, ErrorKind, Source, OpName, Meta, LineCol, SourceFileName, Result, SyntaxErrorKind},
-    fmt::LispFmt,
-    nuke::{*},
-    nkgc::{Arena, Cons, SymID, PV, SPV, self, QuasiMut, Int, ConsOption, Lambda},
-    string_parse::string_parse,
-    subrs::{Subr, BoxSubr, FromLisp, Lispify},
-    tok::Token, limits, comp::R8Compiler,
-    chasm::LblMap, opt::Optomat, swym::{SymRef, self}, tokit, AsSym, IntoLisp};
+    ast::{Excavator, Visitor}, builtins::Builtin, chasm::{ASMOp, ChASMOpName, Lbl, LblMap, ASMPV}, comp::{R8Compiler, SourceList}, error::{Error, ErrorKind, LineCol, Meta, OpName, Result, Source, SourceFileName, SyntaxErrorKind}, fmt::LispFmt, limits, nkgc::{self, Arena, Cons, ConsOption, Int, Lambda, NonRef, QuasiMut, SymID, PV, SPV}, nuke::*, opt::Optomat, string_parse::string_parse, subrs::{BoxSubr, FromLisp, Lispify, Subr}, swym::{self, SymRef}, tok::Token, tokit, AsSym, IntoLisp};
 use crate::utils::{HMap, HSet};
 use std::{any::{type_name, Any, TypeId}, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, fs, io::{self, prelude::*}, mem::{self, replace, take}, path::{Path, PathBuf}, ptr::{self, addr_of_mut}, sync::{atomic::AtomicU32, Arc, Mutex}};
 #[cfg(feature = "freeze")]
@@ -1926,8 +1915,8 @@ impl R8VM {
         let val = self.mem.pop()?;
         let (catchp, frame, dip) = loop {
             let Some(Guard { dip, sym, top, frame }) = self.catch.pop() else {
-                bail!(Throw { tag: tag_sym.to_string(),
-                              obj: val.lisp_to_string() })
+                bail!(Throw { tag: tag_sym.into(),
+                              obj: NonRef::new(val)? })
             };
             match sym {
                 Some(stag) if tag == stag => break (top, frame, dip),
@@ -2599,6 +2588,7 @@ impl R8VM {
     unsafe fn run_from_unwind(&mut self, offs: usize, pframe: usize, internal: bool)
                               -> std::result::Result<usize, Traceback>
     {
+        let cth = mem::replace(&mut self.catch, Default::default());
         let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
             Err((ip, e)) => {
@@ -2608,6 +2598,7 @@ impl R8VM {
         if !internal {
             self.mem.pop_borrows();
         }
+        self.catch = cth;
         self.frame = pframe;
         res
     }
@@ -2771,6 +2762,9 @@ impl R8VM {
      * then you've yee'd your last haw.
      */
     unsafe fn run_from(&mut self, offs: usize) -> std::result::Result<usize, (usize, Error)> {
+        if self.debug_mode.show_frames {
+            eprintln!("[run_from {offs}]");
+        }
         let mut regs: Regs<2> = Regs::new();
         let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
         use r8c::Op::*;
@@ -3055,6 +3049,9 @@ impl R8VM {
                     ip = self.ret_to(pos as usize);
                 }
                 RET() => {
+                    if self.debug_mode.show_stack_on_ret {
+                        self.dump_stack().unwrap();
+                    }
                     let rv = self.mem.pop()?;
                     let old_frame = self.frame;
                     if let PV::UInt(frame) = self.mem.pop()? {
@@ -3139,7 +3136,9 @@ impl R8VM {
                 EVL() => {
                     let dip = self.ip_delta(ip);
                     let v = self.mem.pop()?;
+                    let cth = mem::replace(&mut self.catch, Default::default());
                     let res = self.eval_pv(v);
+                    self.catch = cth;
                     ip = self.ret_to(dip);
                     match res {
                         Ok(x) => self.mem.push(x),
@@ -3183,6 +3182,13 @@ impl R8VM {
         };
 
         let res = run();
+        if self.debug_mode.show_frames {
+            eprintln!("[finished run_from {offs}]");
+        }
+        if self.debug_mode.show_stack_on_ret {
+            self.dump_stack().unwrap();
+        }
+
         let dip = self.ip_delta(ip);
         match res {
             Ok(_) => Ok(dip),

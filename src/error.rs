@@ -289,7 +289,7 @@ pub enum ErrorKind {
     None,
     VoidVariable,
     UnknownSetPattern { pat: String },
-    Throw { tag: String, obj: String },
+    Throw { tag: Sym, obj: NonRef },
     ExtError(ExtError),
     DivideByZero,
 }
@@ -323,6 +323,7 @@ impl Error {
             ErrorKind::Utf8DecodingError { .. } => fmt(Builtin::Utf8DecodingError),
             ErrorKind::Exit { status } => (Builtin::Exit.pv(), PV::Sym(status.as_sym(vm))),
             ErrorKind::LibError { name, value } => (PV::Sym(name.as_sym(vm)), *value),
+            ErrorKind::Throw { tag, obj } => (PV::Sym(tag.as_sym(vm)), *obj),
             _ => return Err(self)
         })
     }
