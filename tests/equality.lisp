@@ -54,9 +54,8 @@
       ;; fixed-size linear-algebra value types (vec2/vec3/vec4): no
       ;; separate identity from content, so `=` and `eq?` must always
       ;; agree - both true for equal components, both false as soon
-      ;; as any single component differs. (mat2/mat3/mat4 do not exist
-      ;; in this build, so are not covered here; add matching
-      ;; `eq-baseline-mat*` cases below if/when they're implemented.)
+      ;; as any single component differs. Matrices are `mat` in this
+      ;; build and get their own block below.
       (eq? (vec2 1 2) (vec2 1 2))
       (= (vec2 1 2) (vec2 1 2))
       (not (eq? (vec2 1 2) (vec2 1 3)))
@@ -71,23 +70,14 @@
       (not (= (vec4 1 2 3 4) (vec4 1 2 3 5))))
 
 (test eq-baseline-mat
-      ;; `mat` (2x2/3x3/4x4 matrices) does not exist in this build yet
-      ;; (raises "Undefined Function" here - not gated behind anything
-      ;; this test can detect ahead of time, so this whole `test`
-      ;; block is EXPECTED TO FAIL until a build with `mat` lands).
-      ;; Unlike the earlier `mat2`/`mat3`/`mat4` design, `mat` is a
-      ;; single function that only accepts column vectors as args and
-      ;; picks its return type (2x2/3x3/4x4) from how many are given:
-      ;; 2 `vec2` columns -> a 2x2 matrix, 3 `vec3` columns -> 3x3, 4
-      ;; `vec4` columns -> 4x4. Once it exists, each of those return
-      ;; types should behave exactly like vec2/vec3/vec4 above: no
-      ;; identity separate from content, so `=` and `eq?` must always
-      ;; agree, for every arity `mat` supports.
+      ;; `mat` is a single constructor that takes column vectors and
+      ;; picks its return type from how many it is given: 2 `vec2`
+      ;; columns -> `mat2`, 3 `vec3` -> `mat3`, 4 `vec4` -> `mat4`.
+      ;; Those three behave like vec2/vec3/vec4 above - no identity
+      ;; separate from content, so `=` and `eq?` must always agree.
       ;;
       ;; NOTE: this only tests `=`/`eq?` consistency, independent of
-      ;; whether matrix construction itself is otherwise correct - it
-      ;; does not target the separately-reported "duplicate pasted"
-      ;; construction bug in the matrix code.
+      ;; whether matrix construction itself is otherwise correct.
 
       ;; 2 columns -> 2x2
       (eq? (mat (vec2 1 0) (vec2 0 1)) (mat (vec2 1 0) (vec2 0 1)))
@@ -122,7 +112,7 @@
       (not (= (mat (vec2 1 0) (vec2 0 1))
               (mat (vec3 1 0 0) (vec3 0 1 0) (vec3 0 0 1)))))
 
-;;; ---[ currently broken: string ]------------------------------------
+;;; ---[ string: was reference-only, now structural ]-------------------
 
 (test eq-string-structural
       ;; two separately-constructed strings with equal content must
@@ -133,7 +123,7 @@
       (not (eq? (concat "hel" "lo") (concat "wor" "ld")))
       (not (eq? "hello" "world")))
 
-;;; ---[ currently broken: table ]--------------------------------------
+;;; ---[ table: was reference-only, now structural ]--------------------
 
 (test eq-table-structural
       ;; two separately-built tables with identical key/value pairs
@@ -143,13 +133,56 @@
       (not (eq? (eqtest/table-a-1) (eqtest/table-b-2)))
       (eq? (make-table) (make-table)))
 
-;;; ---[ currently broken: propagates into containers ]-----------------
+;;; ---[ and it propagates into containers ]----------------------------
 
 (test eq-nested-string-and-table
-      ;; the `string`/`table` bug above must not poison the otherwise-
-      ;; correct `vec`/`cons` recursion once it's fixed: a `vec`
-      ;; holding equal-content strings/tables must itself be `eq?`.
+      ;; `string` and `table` were once compared by reference while
+      ;; `vec`/`cons` recursed structurally. A container holding
+      ;; equal-content strings/tables must itself be `eq?`.
       (eq? (vec "x" "y") (vec "x" "y"))
       (not (eq? (vec "x" "y") (vec "x" "z")))
       (eq? (vec (eqtest/table-a-1)) (vec (eqtest/table-b-1)))
       (eq? (cons "a" "b") (cons "a" "b")))
+
+;;; ---[ cycles: the identity short-circuit ]---------------------------
+
+;; `eq?` compares an object with ITSELF without walking it, so a
+;; structure that contains a reference cycle is answered immediately.
+;; That check is all that stands between these cases and unbounded
+;; recursion: `eq?` has no visited set, so comparing two DISTINCT
+;; cyclic structures still descends forever and takes the interpreter
+;; with it. Only the self-comparison is pinned here; the pair case is
+;; a live crash and has no business in a suite that must exit 0.
+;;
+;; The cycle has to be built before the comparison runs. A top-level
+;; `define` initialiser is evaluated ahead of the rest of the file, so
+;; `(define r (eq? v v))` would compare the vector while it is still
+;; empty and prove nothing - hence the helper.
+(defun eqtest/self-cycle-vec ()
+  (let ((v (vec)))
+    (push v v)
+    (eq? v v)))
+
+(defun eqtest/self-cycle-table ()
+  (let ((tbl (make-table)))
+    (set (get tbl :self) tbl)
+    (eq? tbl tbl)))
+
+(defun eqtest/self-cycle-member ()
+  (let ((v (vec)))
+    (push v v)
+    (member? v (list v))))
+
+;; A cyclic operand against a plain one terminates for a different
+;; reason: they differ at the first level, so the walk answers before
+;; it has anywhere to descend to.
+(defun eqtest/cycle-vs-shorter ()
+  (let ((v (vec)))
+    (push v v)
+    (member? v (list (vec)))))
+
+(test eq-self-comparison-survives-a-cycle
+      (eqtest/self-cycle-vec)
+      (eqtest/self-cycle-table)
+      (= true (eqtest/self-cycle-member))
+      (nil? (eqtest/cycle-vs-shorter)))

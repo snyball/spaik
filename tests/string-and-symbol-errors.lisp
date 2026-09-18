@@ -41,7 +41,7 @@
       ;; the message identifies WHICH argument was wrong, which `concat`
       ;; never has to do
       (strx/msg? 'type-error
-                 "Type Error: Expected one of cons, string, vec for argument 1 of (join ...), but got integer"
+                 "Type Error: Expected one of cons, string, vec, table for argument 1 of (join ...), but got integer"
                  '(join 5 ","))
       (strx/msg? 'type-error
                  "Type Error: Expected string for argument 2 of (join ...), but got integer"
@@ -72,7 +72,7 @@
       ;; the message says `(iter ...)` - worth pinning, since the name in
       ;; the message is not the name the caller wrote
       (strx/msg? 'type-error
-                 "Type Error: Expected one of cons, string, vec for argument 1 of (iter ...), but got integer"
+                 "Type Error: Expected one of cons, string, vec, table for argument 1 of (iter ...), but got integer"
                  '(chr 5))
       ;; the first character of a non-empty string ...
       (= true (strx/catch 'type-error '(= (chr "abc") (chr "a"))))

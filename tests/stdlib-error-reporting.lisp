@@ -34,7 +34,7 @@
       (stdx/msg? 'type-error "Type Error: Expected one of lambda, subr, continuation, object"
                  '(map 5 (list 1)))
       (stdx/msg? 'type-error "Type Error: Expected one of lambda, subr, continuation, object"
-                 '(map! 5 (list 1)))
+                 '(for-each 5 (list 1)))
       (stdx/msg? 'type-error "Type Error: Expected one of lambda, subr, continuation, object"
                  '(filter 5 (list 1)))
       (stdx/msg? 'type-error "Type Error: Expected one of lambda, subr, continuation, object"
@@ -50,9 +50,9 @@
 
 (test stdx-higher-order-propagates-the-callee-error
       ;; the tag is the callee's, not a wrapper's, and it survives the
-      ;; trip out through map/filter/map!
+      ;; trip out through map/filter/for-each
       (stdx/msg? 'type-error "Type Error: Expected cons in car" '(map car (list 5)))
-      (stdx/msg? 'type-error "Type Error: Expected cons in car" '(map! car (list 5)))
+      (stdx/msg? 'type-error "Type Error: Expected cons in car" '(for-each car (list 5)))
       (stdx/msg? 'type-error "Type Error: Expected cons in car" '(filter car (list 5)))
       ;; a user error raised inside the callee keeps its own tag too
       (eq? :from-callee
@@ -66,7 +66,7 @@
       ;; sum/mean/elem?/member? funnel through `iter`, whose message
       ;; names the argument position as well as the type
       (stdx/msg? 'type-error
-                 "Type Error: Expected one of cons, string, vec for argument 1 of (iter ...), but got integer"
+                 "Type Error: Expected one of cons, string, vec, table for argument 1 of (iter ...), but got integer"
                  '(sum 5))
       (stdx/msg? 'type-error "Type Error: Expected one of cons, string, vec"
                  '(mean 5))
