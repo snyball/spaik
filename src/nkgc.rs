@@ -502,11 +502,18 @@ impl Equalp {
                         (NkRef::Vector(u), NkRef::Vector(v)) =>
                             (*u).len() == (*v).len() &&
                             (*u).iter().zip((*v).iter()).all(|(u, v)| self.equalp(u, v)),
-                        (NkRef::Table(u), NkRef::Table(v)) =>
-                            (*u).len() == (*v).len() &&
-                            (*u).iter().zip((*v).iter()).all(|((k0, v0), (k1, v1))| {
-                                self.equalp(k0, k1) && self.equalp(v0, v1)
-                            }),
+                        (NkRef::Table(u), NkRef::Table(v)) => {
+                            if (*u).len() != (*v).len() { return false }
+                            for (k0, v0) in (*u).iter() {
+                                if !(*v).contains_key(&k0) {
+                                    return false
+                                }
+                                if !self.equalp(v0, &(&(*v))[k0]) {
+                                    return false
+                                }
+                            }
+                            true
+                        }
                         _ => *this == *other,
                     }
                 }
