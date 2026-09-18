@@ -605,6 +605,36 @@ impl PV {
         }
     }
 
+    pub fn to_int(&self) -> Result<isize, Error> {
+        let err = || err!(TypeNError,
+            expect: vec![
+                Builtin::Number,
+                Builtin::Bool,
+                Builtin::Char,
+                Builtin::String,
+            ],
+            got: self.bt_type_of()
+        );
+        Ok(match *self {
+            PV::Int(x) => x,
+            PV::Real(x) => x.floor() as Int,
+            PV::UInt(x) => x.try_into()?,
+            PV::Bool(x) => x.into(),
+            PV::Char(x) => x as Int,
+            PV::Ref(p) => unsafe {
+                match to_fissile_ref(p) {
+                    NkRef::String(x) =>
+                        (*x).parse()
+                            .map_err(|_| {
+                                error!(IntegerParseError, lit: (*x).clone())
+                            })?,
+                    _ => return err(),
+                }
+            }
+            _ => return err()
+        })
+    }
+
     pub fn real(&self) -> Result<f32, Error> {
         match self {
             PV::Int(x) => Ok(*x as f32),

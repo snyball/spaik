@@ -728,6 +728,22 @@ mod sysfns {
             x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.atan()))
         }
 
+        fn round(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.round()))
+        }
+
+        fn floor(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.floor()))
+        }
+
+        fn ceil(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.real().map_err(|e| e.argn(1)).map(|x| PV::Real(x.ceil()))
+        }
+
+        fn int(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+            x.to_int().map(PV::Int)
+        }
+
         fn atan2(&mut self, vm: &mut R8VM, args: (x, y)) -> Result<PV> {
             let x = x.real().map_err(|e| e.argn(1))?;
             let y = y.real().map_err(|e| e.argn(2))?;
@@ -1702,6 +1718,10 @@ impl R8VM {
         addfn!(atan);
         addfn!(atan2);
         addfn!(atanh);
+        addfn!(round);
+        addfn!(int);
+        addfn!(ceil);
+        addfn!(floor);
         addfn!(ln);
         addfn!(tan);
         addfn!(tanh);

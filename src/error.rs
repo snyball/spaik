@@ -7,7 +7,7 @@ use crate::r8vm::{ArgSpec, RuntimeError, TraceFrame, Traceback, R8VM};
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::mem::{discriminant, replace};
-use std::error;
+use std::{error, num};
 use std::fmt::{self, write, Debug, Display, Write};
 use std::num::TryFromIntError;
 use std::rc::Rc;
@@ -293,6 +293,8 @@ pub enum ErrorKind {
     ExtError(ExtError),
     DivideByZero,
     IntegerLiteralTooLarge { lit: String },
+    IntegerParseError { lit: String },
+    FloatParseError { lit: String },
 }
 
 impl Error {
@@ -695,6 +697,8 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         ZeroLengthSymbol => write!(f, "Attempted to create empty symbol ε")?,
         NotAProperList { tail } => write!(f, "A proper list must not end with (… . {tail})")?,
         IntegerLiteralTooLarge { lit } => write!(f, "Integer literal too large {lit}")?,
+        IntegerParseError { lit } => write!(f, "Cannot parse integer from {lit:?}")?,
+        FloatParseError { lit } => write!(f, "Cannot parse float from {lit:?}")?,
     }
 
     write!(f, "{}", SourceDisplayHack(" ", meta, ""))?;
