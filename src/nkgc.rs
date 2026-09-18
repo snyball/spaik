@@ -869,40 +869,40 @@ impl PV {
     pub fn equalp(&self, other: &PV) -> bool {
         unsafe {
             match (*self, other) {
-                (PV::Ref(u), PV::Ref(v)) => match (to_fissile_ref(u),
-                                                   to_fissile_ref(*v)) {
-                    (NkRef::String(u), NkRef::String(v)) => {
-                        (*u) == (*v)
+                (PV::Ref(u), PV::Ref(v)) => u == *v ||
+                    match (to_fissile_ref(u), to_fissile_ref(*v)) {
+                        (NkRef::String(u), NkRef::String(v)) => {
+                            (*u) == (*v)
+                        },
+                        (NkRef::Cons(mut u), NkRef::Cons(mut v)) => loop {
+                            if !(*u).car.equalp(&(*v).car) { break false }
+                            let PV::Ref(u_next) = (*u).cdr else {
+                                break (*u).cdr.equalp(&(*v).cdr);
+                            };
+                            let PV::Ref(v_next) = (*v).cdr else {
+                                break (*u).cdr.equalp(&(*v).cdr);
+                            };
+                            let Some(u_next) = cast::<Cons>(u_next) else {
+                                break (*u).cdr.equalp(&(*v).cdr);
+                            };
+                            let Some(v_next) = cast::<Cons>(v_next) else {
+                                break (*u).cdr.equalp(&(*v).cdr);
+                            };
+                            u = u_next;
+                            v = v_next;
+                        }
+                        (NkRef::PV(u), NkRef::PV(v)) => (*u).equalp(&*v),
+                        (NkRef::Vector(u), NkRef::Vector(v)) =>
+                        (*u).len() == (*v).len() &&
+                            (*u).iter().zip((*v).iter()).all(|(u, v)| u.equalp(v)),
+                        (NkRef::Table(u), NkRef::Table(v)) => {
+                            (*u).len() == (*v).len() &&
+                                (*u).iter().zip((*v).iter()).all(|((k0, v0), (k1, v1))| {
+                                    k0.equalp(k1) && v0.equalp(v1)
+                                })
+                        }
+                        _ => *self == *other,
                     },
-                    (NkRef::Cons(mut u), NkRef::Cons(mut v)) => loop {
-                        if !(*u).car.equalp(&(*v).car) { break false }
-                        let PV::Ref(u_next) = (*u).cdr else {
-                            break (*u).cdr.equalp(&(*v).cdr);
-                        };
-                        let PV::Ref(v_next) = (*v).cdr else {
-                            break (*u).cdr.equalp(&(*v).cdr);
-                        };
-                        let Some(u_next) = cast::<Cons>(u_next) else {
-                            break (*u).cdr.equalp(&(*v).cdr);
-                        };
-                        let Some(v_next) = cast::<Cons>(v_next) else {
-                            break (*u).cdr.equalp(&(*v).cdr);
-                        };
-                        u = u_next;
-                        v = v_next;
-                    }
-                    (NkRef::PV(u), NkRef::PV(v)) => (*u).equalp(&*v),
-                    (NkRef::Vector(u), NkRef::Vector(v)) =>
-                        (*u).len() == (*v).len() &&
-                        (*u).iter().zip((*v).iter()).all(|(u, v)| u.equalp(v)),
-                    (NkRef::Table(u), NkRef::Table(v)) => {
-                        (*u).len() == (*v).len() &&
-                        (*u).iter().zip((*v).iter()).all(|((k0, v0), (k1, v1))| {
-                            k0.equalp(k1) && v0.equalp(v1)
-                        })
-                    }
-                    _ => *self == *other,
-                },
                 _ => *self == *other
             }
         }
