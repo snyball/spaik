@@ -5,7 +5,7 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-use spaik::{run_tests, TestRunner, VmDebugOpts};
+use spaik::{TestRunner, VmDebugOpts};
 use std::process::exit;
 
 #[derive(Debug, clap::Parser)]
@@ -15,6 +15,7 @@ pub struct Opts {
 }
 
 fn main() {
+    pretty_env_logger::init();
     let opts = Opts::parse();
     let mut runner = TestRunner::new("./tests").unwrap();
     runner.set_debug(opts.vm_dbg);

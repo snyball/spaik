@@ -128,6 +128,7 @@ use std::any::type_name;
 
 use std::fmt::Debug;
 
+use std::path::Path;
 use std::sync::Arc;
 
 pub use crate::builtins::Builtin;
@@ -544,6 +545,11 @@ impl Spaik {
         let lib = lib.as_sym(&mut self.vm);
         self.vm.load_eval(lib)
                .and_then(|pv| pv.from_lisp_3(&mut self.vm.mem))
+    }
+
+    pub fn exec_from_path(&mut self, path: impl AsRef<Path>) -> Result<()> {
+        self.vm.load_eval_path(path)?;
+        Ok(())
     }
 
     /// Load a SPAIK library from a string, this is useful both for embedding code

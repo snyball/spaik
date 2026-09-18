@@ -1989,6 +1989,12 @@ impl R8VM {
         self.read_compile(&src, src_name)
     }
 
+    pub fn load_eval_path(&mut self, path: impl AsRef<Path>) -> Result<PV> {
+        let src = fs::read_to_string(path.as_ref())?;
+        let src_name = Some(Cow::Owned(path.as_ref().to_string_lossy().into_owned()));
+        self.read_compile(&src, src_name)
+    }
+
     pub fn var(&self, sym: SymID) -> Result<PV> {
         let idx = self.get_env_global(sym)
                       .ok_or(error!(UndefinedVariable, var: sym.into()))?;
@@ -2128,7 +2134,7 @@ impl R8VM {
                         if tokit.peek().is_some() {
                             cc.compile_top(ast)?;
                         } else {
-                            modfn_pos = cc.compile_top_tail(ast)?;
+                            modfn_pos = cc.compile_top_tail(ast, file.clone())?;
                         }
                         cc.take(self)?;
                     } else {
@@ -2174,7 +2180,7 @@ impl R8VM {
                         let excv = Excavator::new(&self.mem);
                         let src = LineCol { line, col }.into_source(file.clone());
                         let ast = excv.to_ast(pv, src)?;
-                        modfn_pos = cc.compile_top_tail(ast)?;
+                        modfn_pos = cc.compile_top_tail(ast, file.clone())?;
                         cc.take(self)?;
                     } else {
                         continue;
@@ -3311,7 +3317,7 @@ impl R8VM {
             let mut opto = Optomat::new();
             opto.visit(&mut ast)?;
             let mut cc = R8Compiler::new(self);
-            let modfn_pos = cc.compile_top_tail(ast)?;
+            let modfn_pos = cc.compile_top_tail(ast, None)?;
             cc.take(self)?;
             Ok(call_with!(self, modfn_pos, 0, {}))
         })

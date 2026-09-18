@@ -5,8 +5,6 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 use spaik::{Spaik, VmDebugOpts};
-use std::env;
-use std::fs::File;
 use std::io::prelude::*;
 use std::io;
 use std::path::PathBuf;
@@ -22,16 +20,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "pretty_env_logger")]
     pretty_env_logger::init();
     let opts = Opts::parse();
-    let mut f: Box<dyn Read> = if let Some(path) = opts.file {
-        Box::new(File::open(path)?)
-    } else {
-        Box::new(io::stdin())
-    };
-    let mut code = String::new();
-    f.read_to_string(&mut code)?;
     let mut vm = Spaik::new();
     vm.set_debug(opts.vm_dbg);
-    match vm.exec(&code) {
+    let r = if let Some(path) = opts.file {
+        vm.exec_from_path(path)
+    } else {
+        let mut code = String::new();
+        io::stdin().read_to_string(&mut code)?;
+        vm.exec(code)
+    };
+    match r {
         Ok(_) => (),
         Err(e) => eprintln!("{}", e),
     }

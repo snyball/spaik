@@ -1,5 +1,6 @@
 //! SPAIK v2 Compiler
 
+use std::borrow::Cow;
 use std::collections::hash_map;
 use std::{iter, mem};
 use std::sync::atomic::{Ordering, AtomicUsize};
@@ -10,7 +11,7 @@ use crate::utils::{HSet, HMap};
 use crate::nkgc::{PV, SymID, Int};
 use crate::r8vm::{R8VM, ArgSpec, r8c, Func};
 use crate::chasm::{ChOp, ChASM, Lbl, self, Arg};
-use crate::error::Source;
+use crate::error::{Source, SourceFileName};
 use crate::ast::{AST2, M, Prog, Progn, M2, ArgList2, VarDecl, Visitor, Visitable};
 use crate::r8vm::r8c::{OpName::*, Op as R8C};
 use crate::builtins::*;
@@ -1229,9 +1230,9 @@ impl R8Compiler {
         self.compile(false, code)
     }
 
-    pub fn compile_top_tail(&mut self, code: AST2) -> Result<usize> {
+    pub fn compile_top_tail(&mut self, code: AST2, src: SourceFileName) -> Result<usize> {
         let num = MODULE_COUNT.fetch_add(1, Ordering::SeqCst);
-        let name = format!("<σ>-{num}");
+        let name = format!("{}-toplevel-{num}", src.unwrap_or(Cow::Borrowed("unknown")));
         self.compile(true, code)?;
         self.leave_fn();
         let pos = self.code.len() + self.code_offset;
