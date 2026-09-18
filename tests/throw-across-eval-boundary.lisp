@@ -53,7 +53,8 @@
 ;; position is NOT correct in this build: the earlier slots come back
 ;; as raw untyped memory, which is a separate open bug and deliberately
 ;; not asserted here.
-(defun tae/first-arg () (catch 'tae-k (list (eval '(throw 'tae-k 3)) :b)))
+(defun tae/first-arg ()
+  (catch 'tae-k (list (eval '(throw 'tae-k 3)) :b)))
 
 (test throw-across-eval-boundary
       ;; the value the throw carries
@@ -68,4 +69,4 @@
       ;; recursive consumer
       (= 300 (tae/filter-count 300))
       ;; first argument position
-      (eq? '(3 :b) (tae/first-arg)))
+      (eq? 3 (tae/first-arg)))

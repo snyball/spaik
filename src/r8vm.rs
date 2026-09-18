@@ -1923,7 +1923,7 @@ impl R8VM {
         self.catch.clear()
     }
 
-    pub fn unwind(&mut self) -> Result<usize> {
+    pub fn op_unwind(&mut self) -> Result<usize> {
         let tag_sym = self.mem.pop().and_then(|s| s.sym()).map_err(|e| e.bop(Builtin::Throw))?;
         let tag = tag_sym.as_int() as usize;
         let val = self.mem.pop()?;
@@ -2553,7 +2553,7 @@ impl R8VM {
                                      src });
 
             self.mem.stack.drain(frame..frame+nenv).for_each(drop);
-            if frame >= self.mem.stack.len() {
+            if frame+1 >= self.mem.stack.len() {
                 log::warn!("Incomplete stack trace!");
                 break;
             }
@@ -2794,6 +2794,7 @@ impl R8VM {
     unsafe fn run_from(&mut self, offs: usize) -> std::result::Result<usize, (usize, Error)> {
         if self.debug_mode.show_frames {
             eprintln!("[run_from {offs}]");
+            self.dump_stack().unwrap();
         }
         let mut regs: Regs<2> = Regs::new();
         let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
@@ -2829,6 +2830,7 @@ impl R8VM {
         }
         let mut run = || loop {
             let op = *ip;
+            let ipd = self.ip_delta(ip);
             ip = ip.offset(1);
 
             if self.debug_mode.show_frames {
@@ -2843,7 +2845,7 @@ impl R8VM {
             }
 
             if self.debug_mode.show_opcodes {
-                eprintln!("  {}", op);
+                eprintln!("  {} {}", ipd, op);
             }
 
             match op {
@@ -3116,7 +3118,7 @@ impl R8VM {
                     self.catch(dip, Some(tag));
                 }
                 UWND() => {
-                    let dip = self.unwind()?;
+                    let dip = self.op_unwind()?;
                     ip = self.ret_to(dip);
                 }
 
@@ -3166,9 +3168,7 @@ impl R8VM {
                 EVL() => {
                     let dip = self.ip_delta(ip);
                     let v = self.mem.pop()?;
-                    let cth = mem::replace(&mut self.catch, Default::default());
                     let res = self.eval_pv(v);
-                    self.catch = cth;
                     ip = self.ret_to(dip);
                     match res {
                         Ok(x) => self.mem.push(x),
@@ -3176,7 +3176,8 @@ impl R8VM {
                             let (tag, v) = e.as_throw(self)?;
                             self.mem.push(v);
                             self.mem.push(tag);
-                            self.unwind()?;
+                            let dip = self.op_unwind()?;
+                            ip = self.ret_to(dip)
                         },
                     }
                 }
@@ -3213,7 +3214,7 @@ impl R8VM {
 
         let res = run();
         if self.debug_mode.show_frames {
-            eprintln!("[finished run_from {offs}]");
+            eprintln!("[finished run_from {offs} with {res:?}]");
         }
         if self.debug_mode.show_stack_on_ret {
             self.dump_stack().unwrap();
