@@ -1755,10 +1755,11 @@ impl Arena {
         }
         let n_elems = self.stack.len() - stack_top;
         self.stack.push(self.stack[stack_top-1]);
-        self.list_dot(
-            (1+n_elems).try_into()
-                       .expect("No. cons exceeded integer limit"),
-            true);
+        let num = (1+n_elems).try_into()
+                             .expect("No. cons exceeded integer limit");
+        if num >= 2 {
+            self.list_dot(num, true);
+        }
         let pv = self.stack.pop().unwrap();
         self.stack.truncate(stack_top - (n as usize));
         self.stack.push(pv);
