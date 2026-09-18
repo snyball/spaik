@@ -83,8 +83,7 @@
 (defun ibx/unsigned-any? ()
   (or (unsigned-integer? 0)
       (unsigned-integer? 1)
-      (unsigned-integer? (len (vec 1 2)))
-      (unsigned-integer? 18446744073709551615)))
+      (unsigned-integer? (len (vec 1 2)))))
 
 (defun ibx/void-any? ()
   (or (void? nil)

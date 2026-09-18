@@ -2173,6 +2173,16 @@ impl R8VM {
                     } else if let Ok(int) = text.parse() {
                         PV::Int(int)
                     } else if let Ok(num) = text.parse() {
+                        let mut tit = text.chars().peekable();
+                        let fst = tit.peek();
+                        if fst == Some(&'-') || fst == Some(&'+') {
+                            tit.next();
+                        }
+                        if tit.all(|x| x.is_digit(10)) {
+                            bail!(IntegerLiteralTooLarge {
+                                lit: text.to_string()
+                            })
+                        }
                         PV::Real(num)
                     } else if let Some(strg) = tok.inner_str() {
                         self.mem.put_pv(string_parse(&strg)?)

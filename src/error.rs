@@ -292,6 +292,7 @@ pub enum ErrorKind {
     Throw { tag: Sym, obj: NonRef },
     ExtError(ExtError),
     DivideByZero,
+    IntegerLiteralTooLarge { lit: String },
 }
 
 impl Error {
@@ -693,6 +694,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Unimplemented { feature } => write!(f, "Unimplemented: {feature}")?,
         ZeroLengthSymbol => write!(f, "Attempted to create empty symbol ε")?,
         NotAProperList { tail } => write!(f, "A proper list must not end with (… . {tail})")?,
+        IntegerLiteralTooLarge { lit } => write!(f, "Integer literal too large {lit}")?,
     }
 
     write!(f, "{}", SourceDisplayHack(" ", meta, ""))?;
