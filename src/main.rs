@@ -19,9 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => panic!("Invalid arguments: {:?}", args),
     };
     let mut code = String::new();
-    if f.read_to_string(&mut code).is_err() {
-        return Ok(())
-    }
+    f.read_to_string(&mut code)?;
     let mut vm = Spaik::new();
     match vm.exec(&code) {
         Ok(_) => (),
