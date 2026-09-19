@@ -848,7 +848,13 @@ impl<'a> Excavator<'a> {
         let mut it = args.iter_src(self.mem, src);
         let mut argn = 0;
         while let Some((init, src)) = it.next() {
-            let (sym, _) = syms[argn];
+            let Some((sym, _)) = syms.get(argn) else {
+                return Err(error!(
+                    ArgError,
+                    expect: spec,
+                    got_num: (argn+1+it.count()).try_into().unwrap()
+                ).src(src.clone()).bop(Builtin::GreekLambda));
+            };
             argn += 1;
             if argn > spec.nopt() {
                 if !spec.rest {
@@ -867,7 +873,7 @@ impl<'a> Excavator<'a> {
                 return Ok(AST2 { src: orig_src, kind: M::Let(binds, body) });
             }
             let init = Box::new(init.car().and_then(|v| self.dig(v, src.clone()))?);
-            binds.push(VarDecl(sym, src.clone(), init));
+            binds.push(VarDecl(*sym, src.clone(), init));
         }
         if argn < spec.nargs() {
             let (sym, src) = syms[argn].clone();
