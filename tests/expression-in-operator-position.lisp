@@ -48,19 +48,16 @@
 
 ;; `car` was always accepted in this position, and so were the stdlib
 ;; accessors that reach past the head without compiling to the `cdr`
-;; opcode. `tail` is `cdr` by another name - on the dotted pair below it
-;; answers the lambda, where on `(list 1 f)` it would answer the
-;; one-element list `(f)`. The point of these is that all four agree.
+;; opcode: `cadr` and `cddr` are ordinary stdlib functions that end in
+;; a `car`/`cdr` chain. The point of these is that all three agree.
 
 (defun opos/car () ((car (cons (lambda (x) (* x 5)) 1)) 8))
 (defun opos/cadr () ((cadr (list 1 (lambda (x) (* x 5)))) 8))
-(defun opos/tail () ((tail (cons 1 (lambda (x) (* x 5)))) 8))
 (defun opos/cddr () ((cddr (cons 1 (cons 2 (lambda (x) (* x 5))))) 8))
 
 (test opos-every-accessor-agrees
       (= 40 (opos/car))
       (= 40 (opos/cadr))
-      (= 40 (opos/tail))
       (= 40 (opos/cddr)))
 
 ;;; ---[ shapes the operator expression can take ]------------------------

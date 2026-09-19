@@ -13,10 +13,6 @@
    (intern (concat '<ξ>- name))))
 (set-macro! defmacro <ξ>-defmacro)
 
-(defun head (x)
-  (car x))
-(defun tail (x)
-  (cdr x))
 (defun caar (x)
   (car (car x)))
 (defun cadr (x)
