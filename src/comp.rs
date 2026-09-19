@@ -127,6 +127,21 @@ pub enum Sym {
     Str(String),
 }
 
+#[derive(Debug)]
+pub struct Unit {
+    asm: ChASM<R8C>,
+    loops: Vec<LoopCtx>,
+}
+
+impl Unit {
+    pub fn new() -> Self {
+        Self {
+            asm: ChASM::new(),
+            loops: vec![],
+        }
+    }
+}
+
 /**
  * Compile Value into R8C code.
  */
@@ -134,7 +149,7 @@ pub enum Sym {
 pub struct R8Compiler {
     labels: LblMap,
     code: Vec<R8C>,
-    units: Vec<ChASM<R8C>>,
+    units: Vec<Unit>,
     srctbl: SourceList,
     estack: Vec<Env>,
     loops: Vec<LoopCtx>,
@@ -282,20 +297,21 @@ impl R8Compiler {
     }
 
     pub fn unit(&mut self) -> &mut ChASM<R8C> {
-        self.units.last_mut().expect("No unit to save asm to")
+        &mut self.units.last_mut().expect("No unit to save asm to").asm
     }
 
     pub fn end_unit(&mut self) -> Result<usize> {
         let len = self.code.len();
         self.units.pop()
                   .expect("No unit to end")
+                  .asm
                   .link_into(&mut self.code,
                              len + self.code_offset,
                              &mut self.labels)
     }
 
     pub fn begin_unit(&mut self) {
-        self.units.push(ChASM::new())
+        self.units.push(Unit::new())
     }
 
     pub fn set_source(&mut self, src: Source) {
@@ -429,12 +445,25 @@ impl R8Compiler {
         (flipped, code)
     }
 
+    fn begin_loop(&mut self, lup: LoopCtx) {
+        self.units.last_mut().expect("No unit").loops.push(lup);
+    }
+
+    fn end_loop(&mut self) -> LoopCtx {
+        self.units.last_mut().expect("No unit")
+                             .loops
+                             .pop()
+                             .expect("No loop context")
+    }
+
     fn loop_ctx(&self) -> Result<&LoopCtx> {
-        self.loops
-            .last()
-            .ok_or(error!(OutsideContext,
-                          op: Builtin::Break,
-                          ctx: Builtin::Loop))
+        self.units.last()
+                  .expect("No unit")
+                  .loops
+                  .last()
+                  .ok_or(error!(OutsideContext,
+                      op: Builtin::Break,
+                      ctx: Builtin::Loop))
     }
 
     fn loop_epilogue(&self) -> Result<Lbl> {
@@ -779,7 +808,7 @@ impl R8Compiler {
         let end = self.unit().label("loop_end");
         let epl_lbl = if epl.is_some() { Some(self.unit().label("epilogue")) } else { None };
         let height = self.with_env(|env| env.len())?;
-        self.loops.push(LoopCtx { start, end, epilogue: epl_lbl, ret, height });
+        self.begin_loop(LoopCtx { start, end, epilogue: epl_lbl, ret, height });
         self.unit().mark(start);
         self.compile_seq(false, seq)?;
         if let Some(epl) = epl {
@@ -788,18 +817,14 @@ impl R8Compiler {
         }
         self.unit().op(chasm!(JMP start));
         self.unit().mark(end);
-        self.loops.pop();
+        self.end_loop();
         Ok(())
     }
 
     fn bt_break(&mut self, src: Source, arg: Option<Prog>) -> Result<()> {
-        let outer = self.loops
-                        .last()
-                        .copied()
-                        .ok_or(error_src!(src, OutsideContext,
-                                          op: Builtin::Break,
-                                          ctx: Builtin::Loop))?;
-        let LoopCtx { end, ret, height, .. } = outer;
+        let LoopCtx {
+            end, ret, height, ..
+        } = *self.loop_ctx().map_err(|e| e.src(src))?;
         let dist = self.with_env(|env| env.len())? - height;
         let popa = |cc: &mut R8Compiler| if dist > 0 {
             cc.popa(dist);
@@ -825,13 +850,9 @@ impl R8Compiler {
     }
 
     fn bt_loop_next(&mut self, src: Source) -> Result<()> {
-        let outer = self.loops
-                        .last()
-                        .copied()
-                        .ok_or(error_src!(src, OutsideContext,
-                                          op: Builtin::Next,
-                                          ctx: Builtin::Loop))?;
-        let LoopCtx { start, epilogue, height, .. } = outer;
+        let LoopCtx {
+            start, epilogue, height, ..
+        } = *self.loop_ctx().map_err(|e| e.src(src))?;
         let dist = self.with_env(|env| env.len())? - height;
         self.asm_op(chasm!(POP dist));
         if let Some(epl) = epilogue {
