@@ -55,12 +55,36 @@
                 tbl))
          2)
       (= (len (make-table)) 0)
+      ;; `len` is overloaded on two different meanings. On the container
+      ;; types above it is a COUNT and answers an integer. On the numeric
+      ;; vector types it is the EUCLIDEAN NORM and answers a float:
+      ;; `(len (vec2 3 4))` is 5.0, not 2.
+      ;;
+      ;; Nothing is lost by that. A `vec2`/`vec3`/`vec4` has its width
+      ;; fixed by its TYPE, so code that needs the component count reads
+      ;; `(type-of x)` and gets `vec2`/`vec3`/`vec4` directly; a count
+      ;; from `len` would be redundant with the type and of no use to
+      ;; linear-algebra code, whereas the magnitude is wanted constantly.
+      ;; Intended behaviour, and the same at all three widths.
       (= (len (vec2 1 1)) 1.4142135)
       (= (len (vec2 0 0)) 0.0)
       (= (len (vec3 1 1 1)) 1.7320508)
       (= (len (vec3 0 0 0)) 0.0)
       (= (len (vec4 1 1 1 1)) 2.0)
-      (= (len (vec4 0 0 0 0)) 0.0))
+      (= (len (vec4 0 0 0 0)) 0.0)
+      ;; Exact on Pythagorean triples at each width, which pins the norm
+      ;; rather than just "some float".
+      (= (len (vec2 3 4)) 5.0)
+      (= (len (vec3 1 2 2)) 3.0)
+      (= (len (vec4 2 3 6 0)) 7.0)
+      ;; and the two return types differ, not only the two meanings
+      (eq? 'float (type-of (len (vec2 3 4))))
+      (eq? 'integer (type-of (len (vec 3 4))))
+      ;; the width really is carried by the type, which is what makes a
+      ;; count from `len` unnecessary
+      (eq? 'vec2 (type-of (vec2 1 2)))
+      (eq? 'vec3 (type-of (vec3 1 2 3)))
+      (eq? 'vec4 (type-of (vec4 1 2 3 4))))
 
 ;;; ---[ loops ]---------------------------------------
 (test loops

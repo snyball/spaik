@@ -88,7 +88,10 @@
 ;;; ---[ iteration ]--------------------------------------------------------
 
 (test errx-iteration-builtins
-      (errx/msg? 'type-error "Type Error: Expected one of cons, string, vec" '(iter 5))
+      ;; the accepted-type list names `list`, not `cons`: `nil` iterates
+      ;; as the empty sequence, so the one name covers both
+      (errx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
+                 '(iter 5))
       (errx/msg? 'type-error "Type Error: Expected iter in next" '(next 5))
       (errx/msg? 'type-error "Type Error: Expected iter in next" '(next (list 1)))
       (errx/msg? 'type-error "Type Error: Expected iter in next" '(next "abc")))
@@ -177,12 +180,15 @@
       (= 2 (errx/catch 'index-error '(nth (vec 1 2) 1))))
 
 (test errx-stdlib-propagates-the-underlying-error
-      ;; `min`/`max`/`sum` are `car`/`iter` loops, so a bad argument
-      ;; surfaces as the error of whatever primitive they reached - the
-      ;; tag is still correct, which is what a caller needs
-      (errx/msg? 'type-error "Type Error: Expected cons in car" '(min 5))
-      (errx/msg? 'type-error "Type Error: Expected cons in car" '(max 5))
-      (errx/msg? 'type-error "Type Error: Expected one of cons, string, vec" '(sum 5))
+      ;; `min`/`max`/`sum` are `iter` loops and `map` is a `car` loop, so
+      ;; a bad argument surfaces as the error of whatever primitive they
+      ;; reached - the tag is still correct, which is what a caller needs
+      (errx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
+                 '(min 5))
+      (errx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
+                 '(max 5))
+      (errx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
+                 '(sum 5))
       ;; an error inside the function `map` applies propagates out of `map`
       (errx/msg? 'type-error "Type Error: Expected cons in car" '(map car (list 5))))
 

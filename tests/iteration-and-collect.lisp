@@ -54,19 +54,27 @@
 (test itc-an-iterator-is-consumed
       (eq? '(2 0) (itc/collect-twice)))
 
-;; `iter`'s type error lists four of the five things it accepts: `nil`
-;; is missing from the message and iterates fine as an empty sequence.
-;; Pinned as the message currently reads - a correction should be a
-;; deliberate change.
-(test itc-iter-error-omits-nil-from-the-accepted-list
+;; `iter`'s type error names its accepted set as `list, string, vec,
+;; table`. `list` rather than `cons` is what makes the list complete:
+;; `nil` iterates fine as the empty sequence and is covered by that
+;; name, where `cons` used to read as excluding it. The list is the same
+;; for every rejected type, so it is the declared set and not a
+;; per-call description of what would have worked.
+(test itc-iter-error-names-its-accepted-types
       (itc/msg? 'type-error
-                "Type Error: Expected one of cons, string, vec, table for argument 1 of (iter ...)"
+                "Type Error: Expected one of list, string, vec, table for argument 1 of (iter ...)"
                 '(if (iter 5) 1 2))
       (itc/msg? 'type-error
-                "Type Error: Expected one of cons, string, vec, table for argument 1 of (iter ...)"
+                "Type Error: Expected one of list, string, vec, table for argument 1 of (iter ...)"
                 '(if (iter car) 1 2))
-      ;; and yet
+      (itc/msg? 'type-error
+                "Type Error: Expected one of list, string, vec, table for argument 1 of (iter ...)"
+                '(if (iter 1.5) 1 2))
+      ;; every name in that list really is iterable, `nil` included
       (= 1 (len (collect (iter (make-table :a 1)))))
+      (= 2 (len (collect (iter (list 1 2)))))
+      (= 3 (len (collect (iter "abc"))))
+      (= 2 (len (collect (iter (vec 1 2)))))
       (= 0 (len (collect (iter nil)))))
 
 ;; The cons-only camp. These walk with `car`/`cdr` instead of `iter`, so

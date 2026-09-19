@@ -63,39 +63,57 @@
 ;;; ---[ iter-based functions reject a non-iterable ]---------------------
 
 (test stdx-iter-based-reject-a-non-iterable
-      ;; sum/mean/elem?/member? funnel through `iter`, whose message
-      ;; names the argument position as well as the type
+      ;; sum/mean/elem?/member?/min/max funnel through `iter`, whose
+      ;; message names the argument position as well as the type
       (stdx/msg? 'type-error
-                 "Type Error: Expected one of cons, string, vec, table for argument 1 of (iter ...), but got integer"
+                 "Type Error: Expected one of list, string, vec, table for argument 1 of (iter ...), but got integer"
                  '(sum 5))
-      (stdx/msg? 'type-error "Type Error: Expected one of cons, string, vec"
+      (stdx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
                  '(mean 5))
-      (stdx/msg? 'type-error "Type Error: Expected one of cons, string, vec"
+      (stdx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
                  '(elem? 1 5))
-      (stdx/msg? 'type-error "Type Error: Expected one of cons, string, vec"
+      (stdx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
                  '(member? 1 5))
+      (stdx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
+                 '(min 5))
+      (stdx/msg? 'type-error "Type Error: Expected one of list, string, vec, table"
+                 '(max 5))
       ;; `collect` wants a live iterator, not the sequence itself
       (stdx/msg? 'type-error "Type Error: Expected iter in next" '(collect 5))
       (stdx/msg? 'type-error "Type Error: Expected iter in next" '(collect (list 1))))
 
+;;; ---[ min/max on a sequence with no elements ]--------------------------
+
+;; `min`/`max` have no identity element, so an empty sequence of ANY
+;; iterable type raises `empty` rather than answering something. The
+;; payload is the container's type as a symbol, with every cons list and
+;; `nil` reported as `list` - the same naming `iter`'s message uses.
+
+(defun stdx/empty-tag (form) (catch 'empty (eval form)))
+
+(test stdx-min-max-of-an-empty-sequence
+      (eq? 'list   (stdx/empty-tag '(if (min (list)) 1 2)))
+      (eq? 'list   (stdx/empty-tag '(if (max (list)) 1 2)))
+      (eq? 'list   (stdx/empty-tag '(if (min nil) 1 2)))
+      (eq? 'vec    (stdx/empty-tag '(if (min (vec)) 1 2)))
+      (eq? 'string (stdx/empty-tag '(if (min "") 1 2)))
+      (eq? 'table  (stdx/empty-tag '(if (min (make-table)) 1 2)))
+      ;; ... while the iter-based sum does have an identity
+      (= 0 (stdx/catch 'type-error '(sum (list)))))
+
 ;;; ---[ car/cdr-based functions reject anything that is not a cons ]------
 
 (test stdx-cons-walkers-reject-a-non-cons
-      ;; min/max/zip/find-first-duplicate are raw car/cdr loops, so the
+      ;; zip and find-first-duplicate are raw car/cdr loops, so the
       ;; error they surface is `car`'s, naming the type actually passed
-      (stdx/msg? 'type-error "Type Error: Expected cons in car, but got integer" '(min 5))
-      (stdx/msg? 'type-error "Type Error: Expected cons in car, but got integer" '(max 5))
       (stdx/msg? 'type-error "Type Error: Expected cons in car, but got integer" '(zip 5 (list 1)))
       (stdx/msg? 'type-error "Type Error: Expected cons in car, but got integer"
                  '(find-first-duplicate 5))
-      ;; an EMPTY list is not a cons either, so min/max have no identity
-      (stdx/msg? 'type-error "Type Error: Expected cons in car, but got nil" '(min (list)))
-      (stdx/msg? 'type-error "Type Error: Expected cons in car, but got nil" '(max (list)))
-      ;; ... while the iter-based sum does have one
-      (= 0 (stdx/catch 'type-error '(sum (list))))
-      ;; a `vec` reaches the same car check: these walkers are
-      ;; cons-only, while the iter-based ones accept both
-      (stdx/msg? 'type-error "Type Error: Expected cons in car, but got vec" '(min (vec 1 2))))
+      ;; a `vec` reaches the same car check: these walkers are cons-only,
+      ;; while the iter-based ones take a vec as readily as a list
+      (stdx/msg? 'type-error "Type Error: Expected cons in car, but got vec" '(zip (vec 1) (list 1)))
+      (= 1 (stdx/catch 'type-error '(min (vec 3 1 2))))
+      (= 3 (stdx/catch 'type-error '(max (vec 3 1 2)))))
 
 ;;; ---[ division by zero reached through the stdlib ]---------------------
 

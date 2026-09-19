@@ -46,23 +46,49 @@
       (amt/msg? 'arg-error "Argument Error: nth expected from 2 to 3 argument, but got 1"
                 '(if (nth (vec 1)) 1 2)))
 
-;; Six builtins name their internal Rust function instead of themselves
-;; (`%` reports as `modulo`, pinned further down with its type error).
-;; The name in the message is not callable and is not in `(functions)`.
-(test amt-some-builtins-report-an-internal-name
-      (amt/msg? 'arg-error "Argument Error: void? expected"
+;; These four used to report the interpreter's internal snake_case `fn`
+;; name (`is_void`, `split_list`, `sort_inplace`, `reverse_inplace`),
+;; which is not callable and is not in `(functions)`. They now report
+;; the name the caller typed. Pinned so a regression is loud.
+(test amt-bang-builtins-and-void-name-themselves
+      (amt/msg? 'arg-error "Argument Error: void? expected 1 arguments, but got 0"
                 '(if (void?) 1 2))
-      (amt/msg? 'arg-error "Argument Error: split! expected"
+      (amt/msg? 'arg-error "Argument Error: split! expected 1 arguments, but got 0"
                 '(if (split!) 1 2))
-      (amt/msg? 'arg-error "Argument Error: sort! expected"
+      (amt/msg? 'arg-error "Argument Error: sort! expected 1 arguments, but got 0"
                 '(if (sort!) 1 2))
-      (amt/msg? 'arg-error "Argument Error: reverse! expected"
+      (amt/msg? 'arg-error "Argument Error: reverse! expected 1 arguments, but got 0"
                 '(if (reverse!) 1 2))
       (not (elem? 'split_list (functions)))
       (elem? 'split! (functions)))
 
-;; The neighbouring predicates name themselves, which is what makes the
-;; six above look like omissions rather than a convention.
+;; The matrix-rotation constructors were the other half of that group -
+;; they reported `mat2_rot`, `mat3_rot_x` and so on, differing from the
+;; lisp name only in punctuation. They name themselves now too.
+(test amt-matrix-rotation-constructors-name-themselves
+      (amt/msg? 'arg-error "Argument Error: mat2-rot expected 1 arguments, but got 0"
+                '(if (mat2-rot) 1 2))
+      (amt/msg? 'arg-error "Argument Error: mat3-rot-x expected 1 arguments, but got 0"
+                '(if (mat3-rot-x) 1 2))
+      (amt/msg? 'arg-error "Argument Error: mat4-rot-z expected 1 arguments, but got 0"
+                '(if (mat4-rot-z) 1 2))
+      (amt/msg? 'arg-error "Argument Error: translate expected 1 arguments, but got 0"
+                '(if (translate) 1 2)))
+
+;; Two members of that group are left, and neither names anything you
+;; can call. `sys/freeze` reports the bare `freeze` - the namespace
+;; prefix is dropped rather than the name being snake_case - and `%`
+;; still answers to `modulo`, pinned further down with its type error.
+(test amt-two-builtins-still-report-an-uncallable-name
+      (amt/msg? 'arg-error "Argument Error: freeze expected 1 arguments, but got 0"
+                '(if (sys/freeze) 1 2))
+      (not (elem? 'freeze (functions)))
+      (elem? 'sys/freeze (functions))
+      (not (elem? 'modulo (functions)))
+      (elem? '% (functions)))
+
+;; The neighbouring predicates name themselves, which is what made the
+;; group above look like omissions rather than a convention.
 (test amt-most-builtins-report-their-own-name
       (amt/msg? 'arg-error "Argument Error: nil? expected 1 arguments, but got 0"
                 '(if (nil?) 1 2))
@@ -86,8 +112,10 @@
                 '(if (-) 1 2)))
 
 ;; `%` answers to `modulo` when the arity is wrong and to `%` when the
-;; types are. The type message asks for `(number number)` and then
-;; refuses a float, which `number?` accepts.
+;; types are. The type message asks for `(integer integer)`, which is
+;; what it actually accepts: a float in either position is refused, and
+;; the message no longer contradicts itself by naming the wider
+;; `(number number)` that `number?` admits a float to.
 ;;
 ;; Its two failures also arrive under different TAGS while both messages
 ;; begin "Argument Error": the arity one is `arg-error`, the type one is
@@ -95,8 +123,12 @@
 (test amt-percent-has-two-names-and-refuses-floats
       (amt/msg? 'arg-error "Argument Error: modulo expected 2 argument, but got 1"
                 '(if (% 1) 1 2))
-      (amt/msg? 'type-error "Argument Error: % expected (number number) but got (float integer)"
+      (amt/msg? 'type-error "Argument Error: % expected (integer integer) but got (float integer)"
                 '(if (% 7.5 2) 1 2))
+      (amt/msg? 'type-error "Argument Error: % expected (integer integer) but got (integer float)"
+                '(if (% 7 2.5) 1 2))
+      (amt/msg? 'type-error "Argument Error: % expected (integer integer) but got (float float)"
+                '(if (% 7.5 2.5) 1 2))
       (number? 7.5)
       (= 1 (% 7 3))
       (= -1 (% -7 3)))

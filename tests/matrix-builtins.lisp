@@ -54,13 +54,27 @@
       (mtx/msg? 'arg-error "Argument Error: expected from 2 to 4 argument"
                 '(mat)))
 
-;; Those two messages are the only ones in this build that do not say
-;; which function raised them - every other builtin names itself ("in
-;; car", "of (iter ...)", a leading "vec2"). Pinned as it currently
-;; reads; if a name appears, that should be a deliberate change.
+;; Neither of these two messages says which function raised it, while
+;; every other builtin names itself somehow ("in car", "of (iter ...)",
+;; a leading "vec2"). Pinned as it currently reads; if a name appears,
+;; that should be a deliberate change.
+;;
+;; This comment used to claim they were "the only ones in this build".
+;; That was never checked and is false: under-calling all 176 names in
+;; `(functions)` finds `(error)` reporting "Argument Error: expected
+;; from 1 to 2 arguments, but got 0" with no name either. Pinned just
+;; below so the pair stays honest.
 (test mtx-mat-errors-do-not-name-mat
       (not (mtx/msg? 'arg-error "Argument Error: mat " '(mat)))
       (not (mtx/msg? 'type-error "Type Error: Expected vec2 in mat" '(mat 1 2))))
+
+;; `error` is the other one, and is not a matrix builtin at all - it is
+;; pinned here only to keep the two facts next to each other, since the
+;; claim above is about how many there are.
+(test mtx-error-builtin-also-names-nothing
+      (mtx/msg? 'arg-error "Argument Error: expected from 1 to 2 arguments, but got 0"
+                '(error))
+      (not (mtx/msg? 'arg-error "Argument Error: error " '(error))))
 
 ;;; ---[ the affine helpers ]--------------------------------------------
 
@@ -123,5 +137,5 @@
                 '(if (get (mtx/m2) 0) 1 2))
       (mtx/msg? 'type-error "Type Error: Expected one of nil, cons, string, vec, table"
                 '(if (len (mtx/m2)) 1 2))
-      (mtx/msg? 'type-error "Type Error: Expected one of cons, string, vec, table for argument 1 of (iter ...)"
+      (mtx/msg? 'type-error "Type Error: Expected one of list, string, vec, table for argument 1 of (iter ...)"
                 '(if (iter (mtx/m2)) 1 2)))

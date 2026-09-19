@@ -41,7 +41,7 @@
       ;; the message identifies WHICH argument was wrong, which `concat`
       ;; never has to do
       (strx/msg? 'type-error
-                 "Type Error: Expected one of cons, string, vec, table for argument 1 of (join ...), but got integer"
+                 "Type Error: Expected one of list, string, vec, table for argument 1 of (join ...), but got integer"
                  '(join 5 ","))
       (strx/msg? 'type-error
                  "Type Error: Expected string for argument 2 of (join ...), but got integer"
@@ -72,25 +72,25 @@
       ;; the message says `(iter ...)` - worth pinning, since the name in
       ;; the message is not the name the caller wrote
       (strx/msg? 'type-error
-                 "Type Error: Expected one of cons, string, vec, table for argument 1 of (iter ...), but got integer"
+                 "Type Error: Expected one of list, string, vec, table for argument 1 of (iter ...), but got integer"
                  '(chr 5))
       ;; the first character of a non-empty string ...
       (= true (strx/catch 'type-error '(= (chr "abc") (chr "a"))))
       ;; ... and the iterator sentinel for an empty one, NOT an error
       (iter-end? (strx/catch 'iter-stop '(chr ""))))
 
-;;; ---[ keyword-name mangles instead of raising ]-----------------------------
+;;; ---[ keyword-name guards its argument ]-----------------------------------
 
-(test strx-keyword-name-does-not-type-check
-      ;; It drops the first character of whatever it is handed, so a
-      ;; non-keyword argument silently produces a wrong string rather
-      ;; than an error.
-      ;; Pinned as-is so the day it starts raising is a deliberate change.
-      (eq? "bc" (strx/catch 'type-error '(keyword-name 'abc)))
-      (eq? "2345" (strx/catch 'type-error '(keyword-name 12345)))
-      (string? (strx/catch 'type-error '(keyword-name 5)))
+(test strx-keyword-name-rejects-a-non-keyword
+      ;; A non-keyword raises under its OWN tag, `not-a-keyword`, not
+      ;; under `type-error` like the builtins in this file - so a caller
+      ;; wrapping it in `(catch 'type-error ...)` will not see it. The
+      ;; payload is the argument rendered and interned.
+      (eq? 'abc (strx/catch 'not-a-keyword '(if (keyword-name 'abc) 1 2)))
+      (eq? (intern "12345") (strx/catch 'not-a-keyword '(if (keyword-name 12345) 1 2)))
+      (symbol? (strx/catch 'not-a-keyword '(if (keyword-name 5) 1 2)))
       ;; the intended use is unaffected
-      (eq? "kw" (strx/catch 'type-error '(keyword-name :kw)))
-      ;; and the predicate it pairs with does answer rather than raise
-      (nil? (strx/catch 'type-error '(keyword? 5)))
-      (= true (strx/catch 'type-error '(keyword? :kw))))
+      (eq? "kw" (strx/catch 'not-a-keyword '(keyword-name :kw)))
+      ;; and the predicate it pairs with answers rather than raises
+      (nil? (strx/catch 'not-a-keyword '(keyword? 5)))
+      (= true (strx/catch 'not-a-keyword '(keyword? :kw))))

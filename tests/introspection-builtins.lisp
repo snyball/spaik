@@ -67,13 +67,26 @@
       (eq? 'lambda (type-of car))
       (eq? 'lambda (type-of (lambda (x) x))))
 
-;; `keyword-name` drops the first character of whatever it is given, so
-;; a non-keyword argument silently produces a wrong string rather than
-;; an error. Pinned as-is: the day it starts raising should be a
-;; deliberate change, not a silent one.
-(test ibx-keyword-name-strips-one-character
+;; `keyword-name` strips the leading `:` off a keyword, and guards that
+;; the argument IS a keyword first. A non-keyword raises `not-a-keyword`
+;; - its own tag, not `type-error` - carrying the argument's text as an
+;; interned symbol. It used to bite the first character off anything at
+;; all and hand back the mangled string.
+(defun ibx/not-a-keyword (form) (catch 'not-a-keyword (eval form)))
+
+(test ibx-keyword-name-strips-the-leading-colon
       (= "abc" (keyword-name :abc))
-      (= "ymbol" (keyword-name 'symbol)))
+      (= "a" (keyword-name :a)))
+
+(test ibx-keyword-name-guards-its-argument
+      (eq? 'symbol (ibx/not-a-keyword '(if (keyword-name 'symbol) 1 2)))
+      (eq? 'hello (ibx/not-a-keyword '(if (keyword-name "hello") 1 2)))
+      ;; the payload is the argument rendered and interned, so a number
+      ;; comes back as a symbol spelled like the number
+      (eq? (intern "12345") (ibx/not-a-keyword '(if (keyword-name 12345) 1 2)))
+      ;; the single-character case used to be the worst of it: the whole
+      ;; rendering was eaten and the caller got an empty string
+      (eq? (intern "5") (ibx/not-a-keyword '(if (keyword-name 5) 1 2))))
 
 ;; These three predicates are in `(functions)` and are callable, and
 ;; nothing a lisp program can build makes any of them true. They
