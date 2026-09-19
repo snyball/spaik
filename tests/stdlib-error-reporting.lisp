@@ -133,8 +133,8 @@
 (test stdx-stdlib-arity
       ;; defined with `defun`, so they are arity-checked like any user
       ;; function
-      (stdx/msg? 'arg-error "Argument Error: sqrt expected 1 arguments, but got 0" '(sqrt))
-      (stdx/msg? 'arg-error "Argument Error: gensym expected 0 argument, but got 1" '(gensym 1))
+      (stdx/msg? 'arg-error "Argument Error: sqrt expected 1 argument, but got 0" '(sqrt))
+      (stdx/msg? 'arg-error "Argument Error: gensym expected 0 arguments, but got 1" '(gensym 1))
       (stdx/raises? 'arg-error '(map car))
       (stdx/raises? 'arg-error '(filter car))
       (stdx/raises? 'arg-error '(zip (list 1)))

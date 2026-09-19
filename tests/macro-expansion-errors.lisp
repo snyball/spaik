@@ -29,21 +29,21 @@
 ;; mangling is visible to a program.
 
 (test macx-macro-arity-reports-the-mangled-name
-      (macx/msg? 'arg-error "Argument Error: <ξ>-while expected at least 1 arguments, but got 0"
+      (macx/msg? 'arg-error "Argument Error: <ξ>-while expected at least 1 argument, but got 0"
                  '(while))
-      (macx/msg? 'arg-error "Argument Error: <ξ>-until expected at least 1 arguments, but got 0"
+      (macx/msg? 'arg-error "Argument Error: <ξ>-until expected at least 1 argument, but got 0"
                  '(until))
-      (macx/msg? 'arg-error "Argument Error: <ξ>-when expected at least 1 arguments, but got 0"
+      (macx/msg? 'arg-error "Argument Error: <ξ>-when expected at least 1 argument, but got 0"
                  '(when))
-      (macx/msg? 'arg-error "Argument Error: <ξ>-case expected at least 1 arguments, but got 0"
+      (macx/msg? 'arg-error "Argument Error: <ξ>-case expected at least 1 argument, but got 0"
                  '(case))
-      (macx/msg? 'arg-error "Argument Error: <ξ>-range expected at least 1 arguments, but got 0"
+      (macx/msg? 'arg-error "Argument Error: <ξ>-range expected at least 1 argument, but got 0"
                  '(range))
-      (macx/msg? 'arg-error "Argument Error: <ξ>-let expected at least 1 arguments, but got 0"
+      (macx/msg? 'arg-error "Argument Error: <ξ>-let expected at least 1 argument, but got 0"
                  '(let))
-      (macx/msg? 'arg-error "Argument Error: <ξ>-defvar expected 2 argument, but got 1"
+      (macx/msg? 'arg-error "Argument Error: <ξ>-defvar expected 2 arguments, but got 1"
                  '(defvar macx-v))
-      (macx/msg? 'arg-error "Argument Error: <ξ>-set* expected 2 argument, but got 1"
+      (macx/msg? 'arg-error "Argument Error: <ξ>-set* expected 2 arguments, but got 1"
                  '(set* 1))
       (macx/msg? 'arg-error "Argument Error: <ξ>-inc! expected from 1 to 2 arguments, but got 0"
                  '(inc!))

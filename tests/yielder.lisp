@@ -559,8 +559,8 @@
 (defun yld/gen-of-an-integer-is-made () (if (gen 5) true false))
 
 (test yld-argument-checks
-      (yld/msg? 'arg-error "Argument Error: gen expected 1 arguments, but got 0" '(gen))
-      (yld/msg? 'arg-error "Argument Error: gen expected 1 arguments, but got 2"
+      (yld/msg? 'arg-error "Argument Error: gen expected 1 argument, but got 0" '(gen))
+      (yld/msg? 'arg-error "Argument Error: gen expected 1 argument, but got 2"
                 '(gen (lambda (yi) 1) 2))
       ;; constructing with a non-callable succeeds ...
       (yld/gen-of-an-integer-is-made)
@@ -568,15 +568,15 @@
       (yld/msg? 'type-error "Type Error: Expected one of lambda, subr, continuation, object"
                 '(if ((gen 5) nil) 1 2))
       ;; the body must take exactly the one yielder argument
-      (yld/msg? 'arg-error "Argument Error: λ expected 0 argument, but got 1"
+      (yld/msg? 'arg-error "Argument Error: λ expected 0 arguments, but got 1"
                 '(if ((gen (lambda () 1)) nil) 1 2))
       ;; the plural follows the RECEIVED count, so "got 1" reads "argument"
-      (yld/msg? 'arg-error "Argument Error: λ expected 2 argument, but got 1"
+      (yld/msg? 'arg-error "Argument Error: λ expected 2 arguments, but got 1"
                 '(if ((gen (lambda (yi z) 1)) nil) 1 2))
       ;; and the yielder itself takes exactly one value
-      (yld/msg? 'arg-error "Argument Error: λ expected 1 arguments, but got 0"
+      (yld/msg? 'arg-error "Argument Error: λ expected 1 argument, but got 0"
                 '(if ((gen (lambda (yi) (yi))) nil) 1 2))
-      (yld/msg? 'arg-error "Argument Error: λ expected 1 arguments, but got 2"
+      (yld/msg? 'arg-error "Argument Error: λ expected 1 argument, but got 2"
                 '(if ((gen (lambda (yi) (yi 1 2))) nil) 1 2)))
 
 ;;; ---[ suspended generators are live references ]--------------------------

@@ -32,8 +32,8 @@
       (eq? "(1)2" (strx/catch 'type-error '(concat (list 1) 2)))
       (eq? "(vec 1)" (strx/catch 'type-error '(string (vec 1))))
       (eq? "(table)" (strx/catch 'type-error '(string (make-table))))
-      (strx/msg? 'arg-error "Argument Error: string expected 1 arguments, but got 0" '(string))
-      (strx/msg? 'arg-error "Argument Error: string expected 1 arguments, but got 2" '(string 1 2)))
+      (strx/msg? 'arg-error "Argument Error: string expected 1 argument, but got 0" '(string))
+      (strx/msg? 'arg-error "Argument Error: string expected 1 argument, but got 2" '(string 1 2)))
 
 ;;; ---[ join checks both arguments, and names the position ]--------------
 
