@@ -434,6 +434,28 @@
     `(call/cc (lambda (,k)
                 (throw 'yield (cons ,expr ,k))))))
 
+(defun gen (f)
+  (let ((st (make-table :resume nil
+                        :return nil)))
+    (let ((yi (lambda (x)
+                (call/cc (lambda (k)
+                           (set (get st :resume) k)
+                           (let ((ret (get st :return)))
+                             (ret x)))))))
+      (lambda (v)
+        (call/cc
+         (lambda (k)
+           (set (get st :return) k)
+           (let ((res (get st :resume)))
+             (if res
+                 (res v)
+                 (progn
+                   (let ((fin (f yi)))
+                     (set (get st :resume)
+                          (lambda (v)
+                            (throw (get st :return) 'done fin)))
+                     (throw (get st :return) 'done fin)))))))))))
+
 (defun nth (xs i &opt alt)
   (cond
    ((vec? xs) (if (< i (len xs))

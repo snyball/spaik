@@ -59,6 +59,7 @@ pub enum M {
     TailCall(Progn),
     Next,
     Throw(Prog, Prog),
+    Yeet(Prog, Prog, Prog),
     Catch(Prog, Progn),
     Var(SymID),
     Eval(Prog),
@@ -194,6 +195,7 @@ impl Display for M {
             M::Break(None) => write!(f, "(break)")?,
             M::Next => write!(f, "(next)")?,
             M::Throw(x, y) => write!(f, "(throw {x} {y})")?,
+            M::Yeet(cc, tag, init) => write!(f, "(throw {cc} {tag} {init})")?,
             M::Catch(x, body) => {
                 write!(f, "(catch {x} ")?;
                 for x in body.iter() { write!(f, " {x}")? }
@@ -332,6 +334,7 @@ impl Visitable for AST2 {
             M::Break(None) => (),
             M::Next => (),
             M::Throw(ref mut tag, ref mut init) => visit!(tag, init),
+            M::Yeet(ref mut cc, ref mut tag, ref mut init) => visit!(cc, tag, init),
             M::Catch(ref mut tag, ref mut body) => {
                 visit!(tag);
                 vvisit!(body);
@@ -747,6 +750,29 @@ impl<'a> Excavator<'a> {
         Ok(AST2 { kind: M::Append(li), src: root_src })
     }
 
+    fn bt_throw(&self, args: PV, src: Source) -> Result<AST2> {
+        let expect = ArgSpec::opt(2, 1);
+        let err = |n| {
+            let src = &src;
+            move || { error!(ArgError, expect, got_num: n).src(src.clone()) }
+        };
+        let mut it = args.iter();
+        let arg0 = Box::new(self.dig(it.next().ok_or_else(err(0))?, src.clone())?);
+        let arg1 = Box::new(self.dig(it.next().ok_or_else(err(1))?, src.clone())?);
+        let mut nargs = 2;
+        let kind = if let Some(arg2) = it.next() {
+            nargs += 1;
+            M::Yeet(arg0, arg1, Box::new(self.dig(arg2, src.clone())?))
+        } else {
+            M::Throw(arg0, arg1)
+        };
+        let extra = it.count();
+        if extra > 0 {
+            return Err(err((nargs + extra) as u32)());
+        }
+        Ok(AST2 { kind, src })
+    }
+
     fn bt_catch(&self, args: PV, src: Source) -> Result<AST2> {
         let expect = ArgSpec::normal(2);
         let err = |n| {
@@ -797,7 +823,7 @@ impl<'a> Excavator<'a> {
             Builtin::Vector => self.wrap_any_args(M::Vector, args, src),
             Builtin::Push => self.wrap_two_args(M::Push, args, src),
             Builtin::Get => self.wrap_two_args(M::Get, args, src),
-            Builtin::Throw => self.wrap_two_args(M::Throw, args, src),
+            Builtin::Throw => self.bt_throw(args, src),
             Builtin::Catch => self.bt_catch(args, src),
             Builtin::Len => self.wrap_one_arg(|a| M::Bt1(Builtin::Len, a), args, src),
             Builtin::Apply =>

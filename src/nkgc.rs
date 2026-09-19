@@ -165,7 +165,7 @@ impl std::fmt::Display for NonRef {
 impl NonRef {
     pub fn new(pv: PV) -> Result<Self, Error> {
         if pv.is_ref() {
-            bail!(ReferenceNotAllowed);
+            bail!(ReferenceNotAllowed { repr: pv.lisp_to_string() });
         }
         Ok(Self(pv))
     }

@@ -46,8 +46,13 @@
 
 (test cte-arity
       (cte/msg? 'arg-error "Argument Error: catch expected 2" '(catch))
-      (cte/msg? 'arg-error "Argument Error: throw expected 2" '(throw))
-      (cte/msg? 'arg-error "Argument Error: throw expected 2 argument, but got 1" '(throw 'cte-k))
+      ;; `throw` takes 2 OR 3. The 3-argument form is (throw <continuation>
+      ;; <tag> <value>); the plural still follows the RECEIVED count, so
+      ;; "got 1" reads "argument" and "got 0" reads "arguments".
+      (cte/msg? 'arg-error "Argument Error: throw expected from 2 to 3 arguments, but got 0" '(throw))
+      (cte/msg? 'arg-error "Argument Error: throw expected from 2 to 3 argument, but got 1" '(throw 'cte-k))
+      (cte/msg? 'arg-error "Argument Error: throw expected from 2 to 3 arguments, but got 4"
+                '(throw 'cte-k 1 2 3))
       (cte/msg? 'arg-error "Argument Error: expected from 1 to 2 arguments, but got 0" '(error))
       (cte/msg? 'arg-error "Argument Error: call/cc expected 1 arguments, but got 0" '(call/cc))
       ;; `catch` is the lenient one: a tag with NO body is legal and
@@ -95,3 +100,48 @@
       (= 6 (cte/catch 'type-error '(call/cc (lambda (k) 6))))
       ;; a throw out of a call/cc reaches an enclosing catch normally
       (= 3 (cte/throw-from-call-cc)))
+
+;;; ---[ the three-argument throw ]----------------------------------------
+
+;; `(throw k tag value)` reinstates the continuation `k` and then performs
+;; `(throw tag value)` THERE, so the catch that answers is the one live at
+;; k's capture site - not the one around the `throw` itself.
+
+(defun cte/throw-to-self ()
+  (catch 'cte-k (call/cc (lambda (k) (throw k 'cte-k 42)))))
+
+(defun cte/throw-to-self-string ()
+  (catch 'cte-k (call/cc (lambda (k) (throw k 'cte-k "payload")))))
+
+(test cte-three-argument-throw
+      ;; argument 1 must be a continuation, and complains without naming
+      ;; an argument position
+      (cte/msg? 'type-error "Type Error: Expected continuation but got string"
+                '(throw "k" 'cte-k 1))
+      (cte/msg? 'type-error "Type Error: Expected continuation but got integer"
+                '(throw 5 'cte-k 1))
+      ;; argument 2 is still the tag, and is still checked as a symbol,
+      ;; under the same message as the two-argument form
+      (cte/msg? 'type-error "Type Error: Expected symbol in throw, but got string"
+                '(call/cc (lambda (k) (throw k "cte-k" 1))))
+      (cte/msg? 'type-error "Type Error: Expected symbol in throw, but got nil"
+                '(call/cc (lambda (k) (throw k nil 1))))
+      ;; throwing to the continuation you are standing in is the same as a
+      ;; plain throw, and the payload is unrestricted
+      (= 42 (cte/throw-to-self))
+      (eq? "payload" (cte/throw-to-self-string)))
+
+;;; ---[ throw in function position stayed at two arguments ]---------------
+
+;; `lisp/core.lisp` defines `(defun throw (s v) (throw s v))` so that the
+;; special form can be passed around as a value. That wrapper was not
+;; widened, so the three-argument form is reachable only by writing the
+;; special form out literally.
+
+(defun cte/apply-throw () (catch 'cte-k (apply throw (list 'cte-k 9))))
+
+(test cte-throw-as-a-value-takes-two
+      (= 9 (cte/apply-throw))
+      ;; and the arity complaint comes from the WRAPPER, naming `λ`
+      (cte/msg? 'arg-error "Argument Error: λ expected 2 arguments, but got 3"
+                '(apply throw (list 'cte-k 1 2))))

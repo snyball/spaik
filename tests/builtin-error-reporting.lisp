@@ -121,8 +121,11 @@
       (errx/msg? 'arg-error "Argument Error: if expected" '(if))
       (errx/msg? 'arg-error "Argument Error: if expected" '(if 1))
       (errx/msg? 'arg-error "Argument Error: catch expected 2" '(catch))
-      (errx/msg? 'arg-error "Argument Error: throw expected 2" '(throw 'k))
-      (errx/msg? 'arg-error "Argument Error: throw expected 2" '(throw))
+      ;; `throw` takes 2 OR 3 arguments - the 3-argument form throws into
+      ;; a saved continuation's extent - so its arity reads as a range
+      (errx/msg? 'arg-error "Argument Error: throw expected from 2 to 3" '(throw 'k))
+      (errx/msg? 'arg-error "Argument Error: throw expected from 2 to 3" '(throw))
+      (errx/msg? 'arg-error "Argument Error: throw expected from 2 to 3" '(throw 'k 1 2 3))
       (errx/msg? 'arg-error "Argument Error: lambda expected at least 1" '(lambda))
       (errx/msg? 'arg-error "Argument Error: set expected 2" '(set))
       (errx/msg? 'arg-error "Argument Error: define expected at least 1" '(define)))

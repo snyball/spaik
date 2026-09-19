@@ -57,6 +57,7 @@ chasm_def! {
     CTH(dip: i32),
     CTHPOP(),
     UWND(),
+    YEET(),
     HCF(),
 
     // Stack operations
@@ -1217,7 +1218,8 @@ pub struct VmStats {
     instructions: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Guard {
     dip: usize,
     sym: Option<usize>,
@@ -2653,6 +2655,28 @@ impl R8VM {
         res
     }
 
+    fn op_yeet(&mut self) -> Result<usize> {
+        let cc = self.mem.pop()?;
+        let tag = self.mem.pop()?;
+        let val = self.mem.pop()?;
+        let _dip = with_ref!(cc, Continuation(cont) => {
+            Ok(self.warp(&*cont, PV::Nil))
+        })?;
+        self.mem.push(val);
+        self.mem.push(tag);
+        self.op_unwind()
+    }
+
+    fn warp(&mut self, cont: &Continuation, val: PV) -> usize {
+        self.mem.stack.clear();
+        self.mem.stack.extend((*cont).stack.iter());
+        self.catch.clear();
+        self.catch.extend((*cont).catch.iter());
+        self.mem.stack.push(val);
+        self.frame = (*cont).frame;
+        cont.dip
+    }
+
     #[inline]
     fn op_clzcall(&mut self,
                   ip: *mut r8c::Op,
@@ -2714,10 +2738,8 @@ impl R8VM {
                 let cont = fastcast::<Continuation>(p);
                 ArgSpec::normal(1).check(nargs).map_err(|e| e.bop(Builtin::Continuation))?;
                 let pv = self.mem.pop().unwrap();
-                (*cont).inst(&mut self.mem.stack);
-                self.mem.stack.push(pv);
-                self.frame = (*cont).frame;
-                Ok(self.ret_to((*cont).dip))
+                let dip = self.warp(&*cont, pv);
+                Ok(self.ret_to(dip))
             }
             NkT::Object => unsafe {
                 let s = fastcast_mut::<Object>(p);
@@ -3120,10 +3142,14 @@ impl R8VM {
                 APL() => ip = self.apl(ip)?,
                 CCONT(dip) => {
                     let dip = self.ip_delta(ip) as isize + dip as isize;
-                    let mut stack_dup = self.mem.stack.clone();
-                    stack_dup.pop();
-                    let cnt = self.mem.put_pv(
-                        Continuation::new(stack_dup, self.frame, dip as usize));
+                    let mut stack = self.mem.stack.clone();
+                    stack.pop();
+                    let cnt = self.mem.put_pv(Continuation {
+                        stack,
+                        frame: self.frame,
+                        dip: dip as usize,
+                        catch: self.catch.clone(),
+                    });
                     self.mem.push(cnt);
                     ip = self.op_clzcall(ip, 1)?;
                 }
@@ -3139,6 +3165,10 @@ impl R8VM {
                 }
                 UWND() => {
                     let dip = self.op_unwind()?;
+                    ip = self.ret_to(dip);
+                }
+                YEET() => {
+                    let dip = self.op_yeet()?;
                     ip = self.ret_to(dip);
                 }
 

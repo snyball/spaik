@@ -1180,6 +1180,12 @@ impl R8Compiler {
                 self.compile(true, *tag)?;
                 asm!(UWND);
             },
+            M::Yeet(cc, tag, arg) => {
+                self.compile(true, *arg)?;
+                self.compile(true, *tag)?;
+                self.compile(true, *cc)?;
+                asm!(YEET);
+            },
             M::Eval(x) => self.opcall(ret, EVL, [x])?,
             M::Not(x) => self.opcall(ret, NOT, [x])?,
             M::Gt(x, y) => self.opcall(ret, GT, [x, y])?,

@@ -5,6 +5,7 @@ use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::builtins::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 
+use crate::r8vm::{Guard, R8VM};
 use crate::subrs::{IntoLisp, FromLisp, self};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
@@ -917,16 +918,13 @@ pub struct Continuation {
     pub stack: Vec<PV>,
     pub frame: usize,
     pub dip: usize,
+    pub catch: Vec<Guard>,
 }
 
 impl Continuation {
-    pub fn new(stack: Vec<PV>, frame: usize, dip: usize) -> Continuation {
-        Continuation { stack, frame, dip }
-    }
-
-    pub fn inst(&self, s: &mut Vec<PV>) {
-        s.clear();
-        s.extend(self.stack.iter());
+    pub fn inst(&self, vm: &mut R8VM) {
+        vm.mem.stack.clear();
+        vm.mem.stack.extend(self.stack.iter());
     }
 }
 
@@ -946,20 +944,9 @@ impl Traceable for Continuation {
 
 impl LispFmt for Continuation {
     fn lisp_fmt(&self,
-        visited: &mut VisitSet,
+        _visited: &mut VisitSet,
         f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            writeln!(f, "stack:")?;
-            if self.stack.is_empty() {
-                writeln!(f, "    (empty)")?;
-            }
-            for (idx, val) in self.stack.iter().enumerate().rev() {
-                let (idx, frame) = (idx as i64, self.frame as i64);
-                write!(f, "{}", if idx == frame { " -> " } else { "    " })?;
-                write!(f, "{}: ", idx - frame)?;
-                val.lisp_fmt(visited, f)?;
-                writeln!(f)?;
-            }
-            Ok(())
+            write!(f, "(continuation {:?})", self as *const Continuation)
         }
 }
 
