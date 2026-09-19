@@ -54,17 +54,22 @@ impl Fragment {
     }
 
     pub fn insert(&mut self, text: &str) {
-        if text.is_empty() {
+        let mut it = text.char_indices();
+        let Some((_, c)) = it.next() else {
             self.end = true;
-        } else if let Some(sub) = self.find_mut(text) {
-            sub.insert(&text[1..]);
+            return
+        };
+        let c2 = it.next().map(|(i, _)| i).unwrap_or(text.len());
+        if let Some(sub) = self.find_mut(text) {
+            sub.insert(&text[c2..]);
         } else {
-            self.choices.push(Fragment { c: text.chars().next().unwrap(),
-                                         choices: Default::default(),
-                                         end: false });
-            self.choices.last_mut()
-                        .unwrap()
-                        .insert(&text[1..])
+            let mut frag = Fragment {
+                c,
+                choices: Default::default(),
+                end: false,
+            };
+            frag.insert(&text[c2..]);
+            self.choices.push(frag);
         }
     }
 
