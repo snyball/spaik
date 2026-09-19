@@ -34,6 +34,69 @@ where IT: Iterator<Item = PV>, S: AsRef<str>
     out
 }
 
+macro_rules! featurefn {
+    ($ft:expr, $e:expr) => {{
+        #[allow(unused_mut)]
+        #[cfg(feature = $ft)]
+        let mut funk = || -> Result<_> {
+            $e
+        };
+        #[cfg(not(feature = $ft))]
+        let funk = || -> Result<_> {
+            err!(MissingFeature, flag: $ft)
+        };
+        funk()
+    }};
+}
+
+macro_rules! subr {
+    (fn $name:ident[$name_s:expr](&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
+                    -> Result<PV> $body:block) => {
+        #[derive(Clone, Copy, Debug)]
+        pub struct $name;
+
+        #[allow(unused_variables)]
+        unsafe impl Subr for $name {
+            fn call(&mut $self, $vm: &mut R8VM, $args: &[PV]) -> Result<PV> $body
+            fn name(&self) -> &'static str { spaik_proc_macros::kebabify_plus!($name) }
+        }
+    };
+
+    (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, $args:ident : &[PV])
+                    -> Result<PV> $body:block) => {
+        subr!(fn $name[stringify!($name)](&mut $self, $vm : &mut R8VM, $args : &[PV])
+                                          -> Result<PV> $body);
+    };
+
+    (fn $name:ident(&mut $self:ident, $vm:ident : &mut R8VM, args: ($($arg:ident),*)) -> Result<PV> $body:block) => {
+        subr!(fn $name(&mut $self, $vm: &mut R8VM, args: &[PV]) -> Result<PV> {
+            subr_args!(($($arg),*) $self $vm args {
+                $body
+            })
+        });
+    };
+}
+
+macro_rules! subr_args {
+    (($($arg:ident),*) $self:ident $vm:ident $args:ident $body:block) => {
+        match &$args[..] {
+            [$($arg),*] => {
+                $body
+            },
+            _ => Err(error!(ArgError,
+                            expect: ArgSpec::normal(count_args!($($arg),*)),
+                            got_num: $args.len() as u32)
+                     .op($vm.sym($self.name())))
+        }
+    };
+}
+
+macro_rules! std_subrs {
+    ($(fn $name:ident($($inner:tt)*) -> Result<PV> $body:block)*) => {
+        $(subr!(fn $name($($inner)*) -> Result<PV> $body);)*
+    };
+}
+
 std_subrs! {
     fn println(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
         let s = tostring(*x);
@@ -143,10 +206,6 @@ std_subrs! {
             Ok(vm.mem.put_pv(glam::vec4(x, y, z, w)))
         })
     }
-
-    // fn mat3_rot(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-    //     featurefn!("math", Ok(vm.mem.put_pv(glam::Mat3::from_rotation(x.real()?))))
-    // }
 
     fn mat2_rot(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
         featurefn!("math", Ok(vm.mem.put_pv(glam::Mat2::from_angle(x.real()?))))
