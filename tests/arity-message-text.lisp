@@ -160,21 +160,34 @@
       (amt/msg? 'arg-error "Argument Error: keyword-name expected 1 argument, but got 0"
                 '(if (keyword-name) 1 2)))
 
-;; The variadic COMPARISON builtins lose the received count on the "at
-;; least N" path: they report 0 however many arguments were passed.
-;; Pinned as what it says, and not a property of "at least N" itself -
-;; a lisp-defined `&rest` function reports the real count, above.
-;; `-` and `/` are in the same family but have a minimum of 1, so 0 is
-;; the only way to under-call them and their count is right anyway.
-(test amt-variadic-comparisons-always-report-zero-received
-      (amt/msg? 'arg-error "Argument Error: < expected at least 2 arguments, but got 0"
+;; The variadic comparison builtins used to report `but got 0` however
+;; many arguments arrived, so `(< 1)` and `(<)` produced the identical
+;; message. They count for real now. Their minimum is 2, so 0 and 1 are
+;; the only under-calls there are, and both are pinned.
+(test amt-variadic-comparisons-report-the-count-they-received
+      (amt/msg? 'arg-error "Argument Error: < expected at least 2 arguments, but got 1"
                 '(if (< 1) 1 2))
-      (amt/msg? 'arg-error "Argument Error: >= expected at least 2 arguments, but got 0"
+      (amt/msg? 'arg-error "Argument Error: > expected at least 2 arguments, but got 1"
+                '(if (> 1) 1 2))
+      (amt/msg? 'arg-error "Argument Error: <= expected at least 2 arguments, but got 1"
+                '(if (<= 1) 1 2))
+      (amt/msg? 'arg-error "Argument Error: >= expected at least 2 arguments, but got 1"
                 '(if (>= 1) 1 2))
-      (amt/msg? 'arg-error "Argument Error: = expected at least 2 arguments, but got 0"
+      (amt/msg? 'arg-error "Argument Error: = expected at least 2 arguments, but got 1"
                 '(if (= 1) 1 2))
+      (amt/msg? 'arg-error "Argument Error: < expected at least 2 arguments, but got 0"
+                '(if (<) 1 2))
+      (amt/msg? 'arg-error "Argument Error: = expected at least 2 arguments, but got 0"
+                '(if (=) 1 2)))
+
+;; `-` and `/` belong to the same family at a minimum of 1, where 0 is
+;; the only way to under-call them - which is why their count read
+;; correctly all along and they never showed the defect above.
+(test amt-minus-and-divide-need-one-argument
       (amt/msg? 'arg-error "Argument Error: - expected at least 1 argument, but got 0"
-                '(if (-) 1 2)))
+                '(if (-) 1 2))
+      (amt/msg? 'arg-error "Argument Error: / expected at least 1 argument, but got 0"
+                '(if (/) 1 2)))
 
 ;; `%` answers to `modulo` when the arity is wrong and to `%` when the
 ;; types are. The type message asks for `(integer integer)`, which is

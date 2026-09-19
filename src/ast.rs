@@ -511,7 +511,7 @@ impl<'a> Excavator<'a> {
         };
         let mut it = args.iter();
         let fst = Box::new(self.dig(it.next().ok_or_else(err(0))?, src.clone())?);
-        let prev = Box::new(self.dig(it.next().ok_or_else(err(0))?, src.clone())?);
+        let prev = Box::new(self.dig(it.next().ok_or_else(err(1))?, src.clone())?);
         let icmp = cmp(fst, prev.clone());
         if let Some(nx) = it.next() {
             let nx = Box::new(self.dig(nx, src.clone())?);
