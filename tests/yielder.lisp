@@ -614,6 +614,88 @@
       (eq? '(2 5 3 6) (yld/survives-gc))
       (eq? '(1 2) (yld/gc-through-a-table)))
 
+;;; ---[ driving from a loop, with state in the driver's own frame ]---------
+
+;; A driver written as a loop has to be able to keep its own state - a
+;; counter, an accumulator - across every resume. That is the difference
+;; between a generator and a raw continuation: resuming a bare
+;; continuation reinstates the stack that was live when it was captured,
+;; so the driver re-enters its earlier frame and a counter written there
+;; reverts. `gen` keeps its return continuation in a table and refreshes
+;; it on every call, so the caller's frame is left alone and a loop
+;; driver counts what it actually got.
+
+(defun yld/counting-drain (co)
+  (let ((seen 0) (out (vec)))
+    (catch 'done
+      (loop (push out (co nil))
+            (inc! seen)))
+    (list seen out)))
+
+(defun yld/counted-seen ()  (car (yld/counting-drain (yld/of '(:a :b :c)))))
+(defun yld/counted-out ()   (cadr (yld/counting-drain (yld/of '(:a :b :c)))))
+(defun yld/counted-empty () (car (yld/counting-drain (yld/of '()))))
+
+;; The same thing driven by `while` on a sentinel instead of by `done`:
+;; the generator is left suspended, and the values after the sentinel
+;; are never asked for.
+(defun yld/until-sentinel ()
+  (gen (lambda (yi) (dolist (x '(1 2 3 :stop 4)) (yi x)))))
+
+(defun yld/drive-until-stop ()
+  (let ((seen 0) (out (vec)) (co (yld/until-sentinel)) (v nil))
+    (set v (co nil))
+    (while (not (eq? v :stop))
+      (push out v)
+      (inc! seen)
+      (set v (co nil)))
+    (list seen out)))
+
+(defun yld/stop-seen () (car (yld/drive-until-stop)))
+(defun yld/stop-out ()  (cadr (yld/drive-until-stop)))
+
+;; The body's return value arrives at the driver as the value of the
+;; `catch`, and the count kept alongside it counts only the suspends.
+(defun yld/with-final ()
+  (gen (lambda (yi) (yi :one) (yi :two) :fin)))
+
+(defun yld/drain-final ()
+  (let ((n 0) (co (yld/with-final)))
+    (list (catch 'done (loop (co nil) (inc! n))) n)))
+
+(defun yld/final-value () (car (yld/drain-final)))
+(defun yld/final-count () (cadr (yld/drain-final)))
+
+;; Two generators advanced in lockstep by ONE loop, with the pairing
+;; accumulated in the driver. Neither resume may disturb the other's
+;; state or the driver's.
+(defun yld/two-in-one-loop ()
+  (let ((a (yld/of '(1 2 3))) (b (yld/of '(:x :y :z))) (out (vec)) (n 0))
+    (catch 'done
+      (loop (push out (list (a nil) (b nil)))
+            (inc! n)))
+    (list n out)))
+
+(defun yld/lockstep-count () (car (yld/two-in-one-loop)))
+(defun yld/lockstep-out ()   (cadr (yld/two-in-one-loop)))
+
+(test yld-loop-driver-keeps-its-own-state
+      (= 3 (yld/counted-seen))
+      (eq? (vec :a :b :c) (yld/counted-out))
+      (= 0 (yld/counted-empty)))
+
+(test yld-loop-driver-stops-early
+      (= 3 (yld/stop-seen))
+      (eq? (vec 1 2 3) (yld/stop-out)))
+
+(test yld-loop-driver-receives-the-final-value
+      (eq? :fin (yld/final-value))
+      (= 2 (yld/final-count)))
+
+(test yld-one-loop-drives-two-generators
+      (= 3 (yld/lockstep-count))
+      (eq? (vec (list 1 :x) (list 2 :y) (list 3 :z)) (yld/lockstep-out)))
+
 ;;; ---[ volume ]------------------------------------------------------------
 
 ;; A thousand suspend/resume round trips through one generator, and a
