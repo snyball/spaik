@@ -979,8 +979,8 @@ impl PV {
             (Int(_), Int(0)) => return Err(error!(DivideByZero,).bop(Builtin::Modulo)),
             (Int(x), Int(y)) => Int(x % y),
             (x, y) => return Err(error!(ArgTypeError,
-                                        expect: vec![Builtin::Number,
-                                                     Builtin::Number],
+                                        expect: vec![Builtin::Integer,
+                                                     Builtin::Integer],
                                         got: vec![x.bt_type_of(), y.bt_type_of()])
                                  .bop(Builtin::Modulo))
         })
