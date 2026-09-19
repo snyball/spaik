@@ -278,7 +278,7 @@ impl AST2 {
             M::Or(_) | M::And(_) | M::Not(_) | M::Eq(_, _) |
             M::Eqp(_, _) | M::Gt(_, _) | M::Gte(_, _) | M::Lt(_, _) |
             M::Lte(_, _) => Builtin::Bool,
-            M::Cdr(_) | M::List(_) | M::Append(_) => Builtin::List,
+            M::List(_) | M::Append(_) => Builtin::List,
             M::Vector(_) => Builtin::Vector,
             M::Cons(_, _) => Builtin::Cons,
             M::Lambda(_, _) => Builtin::Lambda,
