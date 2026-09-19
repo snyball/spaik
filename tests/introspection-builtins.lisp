@@ -106,10 +106,7 @@
 (test ibx-those-predicates-still-check-arity
       (ibx/msg? 'arg-error "Argument Error: unsigned-integer? expected 1"
                 '(if (unsigned-integer?) 1 2))
-      ;; `void?` reports itself under its internal Rust name, `is_void`,
-      ;; which is not a callable name in this language. Pinned as what it
-      ;; says so the day it starts saying `void?` is visible.
-      (ibx/msg? 'arg-error "Argument Error: is_void expected 1"
+      (ibx/msg? 'arg-error "Argument Error: void? expected 1"
                 '(if (void?) 1 2)))
 
 ;; `integer?` does answer true for the same values, so the distinction

@@ -102,6 +102,21 @@ pub fn kebabify(inp: TokenStream) -> TokenStream {
     quote!(#kebab).into()
 }
 
+#[proc_macro]
+pub fn kebabify_plus(inp: TokenStream) -> TokenStream {
+    let ident = parse_macro_input!(inp as Ident);
+    let mut kebab = format!("{ident}");
+    kebab = kebab.replace(|x| x == '_', "-");
+    if kebab.starts_with("is-") {
+        kebab = format!("{}?", &kebab[3..]);
+    } else if kebab.ends_with("-mut") {
+        kebab = format!("{}!", &kebab[..kebab.len()-4])
+    } else if kebab.ends_with("-inplace") {
+        kebab = format!("{}!", &kebab[..kebab.len()-8])
+    }
+    quote!(#kebab).into()
+}
+
 #[proc_macro_attribute]
 pub fn spaikfn(attr: TokenStream, item: TokenStream) -> TokenStream {
     let namespace = parse_macro_input!(attr as Ident);

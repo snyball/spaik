@@ -50,13 +50,13 @@
 ;; (`%` reports as `modulo`, pinned further down with its type error).
 ;; The name in the message is not callable and is not in `(functions)`.
 (test amt-some-builtins-report-an-internal-name
-      (amt/msg? 'arg-error "Argument Error: is_void expected"
+      (amt/msg? 'arg-error "Argument Error: void? expected"
                 '(if (void?) 1 2))
-      (amt/msg? 'arg-error "Argument Error: split_list expected"
+      (amt/msg? 'arg-error "Argument Error: split! expected"
                 '(if (split!) 1 2))
-      (amt/msg? 'arg-error "Argument Error: sort_inplace expected"
+      (amt/msg? 'arg-error "Argument Error: sort! expected"
                 '(if (sort!) 1 2))
-      (amt/msg? 'arg-error "Argument Error: reverse_inplace expected"
+      (amt/msg? 'arg-error "Argument Error: reverse! expected"
                 '(if (reverse!) 1 2))
       (not (elem? 'split_list (functions)))
       (elem? 'split! (functions)))
