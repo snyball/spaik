@@ -6,7 +6,7 @@ use tikv_jemallocator::Jemalloc;
 static GLOBAL: Jemalloc = Jemalloc;
 
 use spaik::{TestRunner, VmDebugOpts};
-use std::process::exit;
+use std::{path::PathBuf, process::exit};
 
 #[derive(Debug, clap::Parser)]
 pub struct Opts {
@@ -14,12 +14,20 @@ pub struct Opts {
     pub vm_dbg: VmDebugOpts,
     #[cfg_attr(feature = "cli", arg(long))]
     pub only_load: bool,
+    pub files: Vec<PathBuf>,
 }
 
 fn main() {
     pretty_env_logger::init();
     let opts = Opts::parse();
-    let mut runner = TestRunner::new("./tests").unwrap();
+    let mut runner = TestRunner::new().unwrap();
+    if opts.files.is_empty() {
+        runner.load_all_from("./tests").unwrap();
+    } else {
+        for path in opts.files.iter() {
+            runner.load(path).unwrap();
+        }
+    }
     if opts.only_load {
         return;
     }

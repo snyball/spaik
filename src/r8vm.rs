@@ -980,7 +980,7 @@ mod sysfns {
                                   got: x.bt_type_of(),)
                            .bop(Builtin::SymID)
                            .argn(1)),
-                _ => ArgSpec::normal(1).check(args.len() as u16)
+                _ => ArgSpec::normal(1).check(args.len())
                                        .map_err(|e| e.bop(Builtin::SymID))
                                        .map(|_| unreachable!())
             }
@@ -1137,11 +1137,13 @@ impl ArgSpec {
         self.nargs + self.nopt + self.rest as ArgInt + self.env
     }
 
-    pub const fn is_valid_num(&self, nargs: u16) -> bool {
-        (nargs == self.nargs) ||
-        (self.has_body() && nargs >= self.nargs) ||
+    pub const fn is_valid_num(&self, nargs: usize) -> bool {
+        if self.has_body() && nargs >= self.nargs as usize {
+            return true;
+        }
+        (nargs == self.nargs as usize) ||
         (!self.has_body() && self.has_opt() &&
-         nargs >= self.nargs && nargs <= self.nargs + self.nopt)
+         nargs >= self.nargs as usize && nargs <= (self.nargs + self.nopt) as usize)
     }
 
     pub const fn normal(nargs: u16) -> ArgSpec {
@@ -1164,13 +1166,13 @@ impl ArgSpec {
         ArgSpec::normal(0)
     }
 
-    pub fn check(&self, nargs: u16) -> Result<()> {
-        if self.is_valid_num(nargs) {
+    pub fn check(&self, nargs: impl Into<usize> + Clone) -> Result<()> {
+        if self.is_valid_num(nargs.clone().into()) {
             Ok(())
         } else {
             Err(error!(ArgError,
                        expect: *self,
-                       got_num: nargs.into()))
+                       got_num: nargs.clone().into() as u32))
         }
     }
 }
@@ -1358,7 +1360,7 @@ macro_rules! call_with {
 macro_rules! symcall_with {
     ($vm:expr, $func:expr, $nargs:expr, $body:block) => {{
         let func = $vm.funcs.get(&$func.into()).ok_or("No such function")?;
-        func.args.check($nargs.try_into().unwrap()).map_err(|e| e.op($func))?;
+        func.args.check($nargs as usize).map_err(|e| e.op($func))?;
 
         let frame = $vm.frame;
 
@@ -2257,7 +2259,7 @@ impl R8VM {
                 return Err(error!(UnexpectedDottedList,).bop(Builtin::Apply))
             }
             let func = self.funcs.get(&m).ok_or("No such function")?;
-            let chk = func.args.check((n - 1) as u16).map_err(|e| e.op(m));
+            let chk = func.args.check((n - 1) as usize).map_err(|e| e.op(m));
             if let Err(e) = chk {
                 self.mem.popn(n as usize);
                 return Err(e);
@@ -2342,7 +2344,7 @@ impl R8VM {
                 }
 
                 // Check for correct number of arguments
-                if let Err(e) = func.args.check(nargs).map_err(|e| e.op(m)) {
+                if let Err(e) = func.args.check(nargs as usize).map_err(|e| e.op(m)) {
                     // Pop arguments off stack again in case of error, and
                     // restore call-frame
                     self.mem.popn(nargs as usize);
@@ -2680,8 +2682,8 @@ impl R8VM {
     #[inline]
     fn op_clzcall(&mut self,
                   ip: *mut r8c::Op,
-                  nargs: u16) -> Result<*mut r8c::Op> {
-        let idx = self.mem.stack.len() - nargs as usize - 1;
+                  nargs: usize) -> Result<*mut r8c::Op> {
+        let idx = self.mem.stack.len() - nargs - 1;
         let lambda_pv = self.mem.stack[idx];
         let err = move || err!(TypeNError,
                                expect: vec![Builtin::Lambda,
@@ -2701,7 +2703,7 @@ impl R8VM {
                 self.call_pre(ip);
                 self.frame = self.mem.stack.len()
                     - 2
-                    - nargs as usize
+                    - nargs
                     - has_env as usize;
                 Ok(self.ret_to((*lambda).pos))
             }
@@ -2720,7 +2722,7 @@ impl R8VM {
                 //};
                 // FIXME: Avoid having to always clone
                 let top = self.mem.stack.len();
-                let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
+                let args: Vec<_> = self.mem.stack[top - nargs..].to_vec();
 
                 let dip = self.ip_delta(ip);
                 let res = (*subr).call(self, &args[..]).map_err(|e| {
@@ -2744,7 +2746,7 @@ impl R8VM {
             NkT::Object => unsafe {
                 let s = fastcast_mut::<Object>(p);
                 let top = self.mem.stack.len();
-                let args: Vec<_> = self.mem.stack[top - nargs as usize..].to_vec();
+                let args: Vec<_> = self.mem.stack[top - nargs..].to_vec();
                 let dip = self.ip_delta(ip);
                 let res = self.call_method(ip, s, &args[..]);
                 self.mem.stack.drain(idx..).for_each(drop); // drain gang
@@ -2756,7 +2758,7 @@ impl R8VM {
     }
 
     #[inline(never)]
-    fn vcall(&mut self, mut ip: *mut r8c::Op, idx: u32, nargs: u16) -> Result<*mut r8c::Op> {
+    fn vcall(&mut self, mut ip: *mut r8c::Op, idx: u32, nargs: usize) -> Result<*mut r8c::Op> {
         let sym = self.mem.env[idx as usize].sym().unwrap();
         match self.funcs.get(&sym) {
             Some(func) => {
@@ -2816,14 +2818,6 @@ impl R8VM {
                  expect: vec![Builtin::List, Builtin::Vector],
                  got: args.bt_type_of())
         })().map_err(|e| e.bop(Builtin::Apply))?;
-        let nargs: u16 = match nargs.try_into() {
-            Ok(n) => n,
-            Err(e) => {
-                self.mem.popn(nargs);
-                self.mem.push(PV::Nil);
-                return Err(e.into());
-            }
-        };
         self.op_clzcall(ip, nargs)
     }
 
@@ -3116,7 +3110,7 @@ impl R8VM {
                     let d = cmp::min((mul as isize) * n, max as isize);
                     ip = ip.offset(d);
                 }
-                VCALL(idx, nargs) => ip = self.vcall(ip, idx, nargs)?,
+                VCALL(idx, nargs) => ip = self.vcall(ip, idx, nargs.into())?,
                 CALL(pos, nargs) => {
                     self.call_pre(ip);
                     self.frame = self.mem.stack.len() - 2 - (nargs as usize);
@@ -3138,7 +3132,7 @@ impl R8VM {
                     self.mem.stack.truncate(old_frame);
                     self.mem.push(rv);
                 }
-                ZCALL(nargs) => ip = self.op_clzcall(ip, nargs)?,
+                ZCALL(nargs) => ip = self.op_clzcall(ip, nargs as usize)?,
                 APL() => ip = self.apl(ip)?,
                 CCONT(dip) => {
                     let dip = self.ip_delta(ip) as isize + dip as isize;

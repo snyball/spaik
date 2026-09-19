@@ -57,7 +57,7 @@ pub struct TestRunner {
 }
 
 impl TestRunner {
-    pub fn new(tests_path: impl AsRef<Path>) -> crate::error::Result<Self> {
+    pub fn new() -> crate::error::Result<Self> {
         let mut vm = R8VM::new();
         let buf: Box<dyn OutStream> = Box::new(DevNull);
         let outbuf = Arc::new(Mutex::new(buf));
@@ -65,18 +65,26 @@ impl TestRunner {
         let test = vm.sym_id("test");
         vm.eval(r#"(push sys/load-path "./lisp")"#).unwrap();
         vm.load_eval(test)?;
-
-        let paths = fs::read_dir(tests_path)?.map(|p| p.map(|p| p.path()))
-                                             .collect::<Result<Vec<_>, _>>()?;
-        for path in paths {
-            vm.read_compile_from(&path)?;
-        }
-
-        vm.minimize();
-
         Ok(Self {
             vm
         })
+    }
+
+    pub fn load(&mut self, file: impl AsRef<Path>) -> crate::error::Result<()> {
+        self.vm.read_compile_from(file)?;
+        Ok(())
+    }
+
+    pub fn load_all_from(&mut self, dir: impl AsRef<Path>) -> crate::error::Result<()> {
+        let paths = fs::read_dir(dir)?.map(|p| p.map(|p| p.path()))
+                                      .collect::<Result<Vec<_>, _>>()?;
+        for path in paths {
+            self.vm.read_compile_from(&path)?;
+        }
+
+        self.vm.minimize();
+
+        Ok(())
     }
 
     pub fn set_debug(&mut self, dbg: VmDebugOpts) {
@@ -162,7 +170,8 @@ impl Error for TestError {
 
 /// Run SPAIK tests from the `./tests` directory and report any errors.
 pub fn run_tests() -> Result<Vec<TestError>, Box<dyn Error>> {
-    let runner = TestRunner::new("./tests")?;
+    let mut runner = TestRunner::new()?;
+    runner.load_all_from("./tests")?;
     let res = runner.run()?;
     Ok(res)
 }

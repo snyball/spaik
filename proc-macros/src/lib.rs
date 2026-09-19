@@ -71,7 +71,7 @@ fn spaik_fn_impl(namespace: Ident, spaik_root: proc_macro2::TokenStream, item: T
                 use #spaik_root::__private::ArgSpec;
                 use #spaik_root::error::Error;
                 const SPEC: ArgSpec = ArgSpec::normal(#nargs);
-                SPEC.check(args.len() as u16)?;
+                SPEC.check(args.len())?;
                 #(let #spaik_root::__private::ObjRef(#inputs_it)
                   =
                   args[#inputs_it_idx_1].try_into()
@@ -306,7 +306,7 @@ fn maker(p: proc_macro2::TokenStream,
             fn call(&mut self, vm: &mut #root::__private::R8VM,
                     args: &[#root::__private::PV]) -> #root::Result<#root::__private::PV> {
                 use #root::{__private::*, FromLisp3};
-                ArgSpec::normal(#num_fields).check(args.len().try_into()?)?;
+                ArgSpec::normal(#num_fields).check(args.len())?;
                 let common_err = |e: Error| e.sop(#name);
                 let mut make_obj = || Ok(Object::new(#obj_init));
                 let obj = make_obj().map_err(common_err)?;
@@ -622,7 +622,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
                 use #root::{Lispify, FromLisp, FromLisp3, __private::*};
                 const METHODS: [(&'static str, #root::__private::ArgSpec, #root::__private::ObjMethod); #num_methods] =
                 [#((#kwnames, ArgSpec::normal(#nargs), |this: *mut u8, vm: &mut R8VM, args: &[PV]| unsafe {
-                    ArgSpec::normal(#nargs).check(args.len() as u16)?;
+                    ArgSpec::normal(#nargs).check(args.len())?;
                     #set_args
                     #wraps
                     (*(this as *mut #name)).#mnames(#get_args).lispify(&mut vm.mem)
@@ -639,7 +639,7 @@ pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
                   unsafe impl #root::Subr for #st_rs_names {
                       fn call(&mut self, vm: &mut R8VM, args: &[PV]) -> #root::Result<PV> {
                           use #root::{Lispify, FromLisp, FromLisp3, __private::*};
-                          ArgSpec::normal(#st_nargs).check(args.len() as u16)?;
+                          ArgSpec::normal(#st_nargs).check(args.len())?;
                           unsafe {
                               #st_set_args
                               #st_wraps
