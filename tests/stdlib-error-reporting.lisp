@@ -138,9 +138,10 @@
       (stdx/raises? 'arg-error '(map car))
       (stdx/raises? 'arg-error '(filter car))
       (stdx/raises? 'arg-error '(zip (list 1)))
-      ;; `nth`'s third argument is optional, so two AND three are legal
-      (= 2 (stdx/catch 'arg-error '(nth (list 1 2) 1)))
-      (= 7 (stdx/catch 'arg-error '(nth (list 1 2) 9 7))))
+      ;; `nth` is `(nth idx xs &opt alt)` - index first - and its third
+      ;; argument is optional, so two AND three are legal
+      (= 2 (stdx/catch 'arg-error '(nth 1 (list 1 2))))
+      (= 7 (stdx/catch 'arg-error '(nth 9 (list 1 2) 7))))
 
 ;;; ---[ empty input that is legal, not an error ]--------------------------
 

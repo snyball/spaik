@@ -47,21 +47,33 @@
 
 ;;; ---[ one tag, two payload shapes ]--------------------------------------
 
-;; The hazard worth pinning: the SAME tag arrives with a message when the
-;; VM raised it and with `nil` when `lisp/core.lisp` raised it by hand.
-;; A handler that assumes a string will break on the stdlib path.
+;; The hazard worth pinning: the SAME tag arrives with a message string
+;; when the VM raised it and with a bare type SYMBOL when
+;; `lisp/core.lisp` raised it by hand. A handler that assumes a string
+;; will break on the stdlib path.
 
 (test shp-same-tag-two-shapes
-      ;; index-error: a message from the VM ...
-      (string? (shp/catch 'index-error '(get (vec 1 2) 9)))
-      (string? (shp/catch 'index-error '(nth (vec 1 2) 9)))
-      ;; ... and nil from `nth`'s own raise on a cons list
-      (nil? (shp/catch 'index-error '(nth (list 1 2) 9)))
-      (nil? (shp/catch 'index-error '(nth nil 0)))
-      ;; type-error the same way: a message from `car` ...
+      ;; type-error: a message from `car` ...
       (string? (shp/catch 'type-error '(car 5)))
-      ;; ... and nil from `nth`'s own type check
-      (nil? (shp/catch 'type-error '(nth 5 0))))
+      ;; ... and the container type as a symbol from `nth`'s own check,
+      ;; whose sequence argument is the SECOND one
+      (symbol? (shp/catch 'type-error '(nth 0 5)))
+      (eq? 'integer (shp/catch 'type-error '(nth 0 5)))
+      (not (string? (shp/catch 'type-error '(nth 0 5))))
+      ;; `empty` is the same shape: the container type of whatever was
+      ;; found to be empty
+      (eq? 'vec (shp/catch 'empty '(min (vec))))
+      (eq? 'list (shp/catch 'empty '(min nil)))
+      ;; index-error has only the VM shape left: `nth` answers `alt` for
+      ;; a missing index instead of raising, so `get` is the only source
+      (string? (shp/catch 'index-error '(get (vec 1 2) 9)))
+      (eq? :shp-else (shp/catch 'index-error '(if (nth 9 (vec 1 2)) :shp-then :shp-else)))
+      (eq? :shp-else (shp/catch 'index-error '(if (nth 9 (list 1 2)) :shp-then :shp-else)))
+      (eq? :shp-else (shp/catch 'index-error '(if (nth 0 nil) :shp-then :shp-else)))
+      ;; `negative-index` is a third shape again: a bare integer, the
+      ;; index that was out of range
+      (= -1 (shp/catch 'negative-index '(if (nth -1 (vec 1 2)) :shp-then :shp-else)))
+      (not (string? (shp/catch 'negative-index '(if (nth -1 (vec 1 2)) :shp-then :shp-else)))))
 
 ;;; ---[ user payloads round-trip unchanged ]--------------------------------
 

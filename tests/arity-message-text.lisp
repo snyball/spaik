@@ -77,7 +77,7 @@
 (defun amt/o1 (a &opt b) a)
 (test amt-a-range-is-always-plural
       (amt/msg? 'arg-error "Argument Error: nth expected from 2 to 3 arguments, but got 1"
-                '(if (nth (vec 1)) 1 2))
+                '(if (nth 1) 1 2))
       (amt/msg? 'arg-error "Argument Error: amt/o0 expected from 0 to 1 arguments, but got 2"
                 '(if (amt/o0 1 2) 1 2))
       (amt/msg? 'arg-error "Argument Error: amt/o1 expected from 1 to 2 arguments, but got 0"
@@ -146,9 +146,9 @@
       (amt/msg? 'arg-error "Argument Error: error expected from 1 to 2 arguments, but got 3"
                 '(if (apply error (list 'amt-k 1 2)) 1 2))
       (amt/msg? 'arg-error "Argument Error: nth expected from 2 to 3 arguments, but got 4"
-                '(if (nth (vec 1) 1 2 3) 1 2))
+                '(if (nth 1 (vec 1) 2 3) 1 2))
       (amt/msg? 'arg-error "Argument Error: nth expected from 2 to 3 arguments, but got 6"
-                '(if (nth (vec 1) 1 2 3 4 5) 1 2)))
+                '(if (nth 1 (vec 1) 2 3 4 5) 1 2)))
 
 ;; The neighbouring predicates name themselves, which is what made the
 ;; group above look like omissions rather than a convention.

@@ -153,13 +153,23 @@
 (defun errc/ie-vec-get ()  (errc/msg? 'index-error "Index Error: " '(get (vec 1 2) 9)))
 (defun errc/ie-vec-set ()  (errc/msg? 'index-error "Index Error: " '(set (get (vec 1) 5) 2)))
 (defun errc/ie-empty ()    (errc/msg? 'index-error "Index Error: " '(get (vec) 0)))
-(defun errc/ie-nth-vec ()  (errc/msg? 'index-error "Index Error: " '(nth (vec 1 2) 9)))
+
+;; `nth` is NOT one of these: it answers its `alt` argument - nil by
+;; default - for an index past the end, so nothing is raised and nothing
+;; is converted. `get` on the same vec still raises, which is the whole
+;; difference between the two. Note the arguments are in opposite
+;; orders: `get` is (get xs idx), `nth` is (nth idx xs).
+(defun errc/ie-nth-vec-misses ()
+  (eq? :errc-else (errc/catch 'index-error '(if (nth 9 (vec 1 2)) :errc-then :errc-else))))
+(defun errc/ie-get-still-raises ()
+  (errc/msg? 'index-error "Index Error: " '(if (get (vec 1 2) 9) :errc-then :errc-else)))
 
 (test errc-index-error
       (errc/ie-vec-get)
       (errc/ie-vec-set)
       (errc/ie-empty)
-      (errc/ie-nth-vec))
+      (errc/ie-nth-vec-misses)
+      (errc/ie-get-still-raises))
 
 ;;; ---[ divide-by-zero: payload is nil ]---------------------------------
 

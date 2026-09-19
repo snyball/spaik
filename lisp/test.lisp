@@ -5,7 +5,7 @@
                         (defs (map (lambda (x)
                                      `(,(gensym) ,x))
                                    args))
-                        (vars (map head defs)))
+                        (vars (map car defs)))
                    `(let ,defs
                       (unless (,op ,@vars)
                         (list :fail ',test (list ',op ,@vars))))))))

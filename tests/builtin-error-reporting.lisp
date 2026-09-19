@@ -155,29 +155,114 @@
 
 ;;; ---[ stdlib functions written in lisp ]------------------------------------
 
-;; `lisp/core.lisp` raises its own `(error 'index-error)` / `(error
-;; 'type-error)` from `nth`, with no message - so the payload is `nil`
-;; where a VM-raised error of the same tag carries a string. Both shapes
-;; are pinned below; a caller that wants to tell them apart has only the
-;; payload to go on.
+;; `nth` takes the INDEX first and the sequence second - `(nth 1 xs)`,
+;; not `(nth xs 1)`. That is the Common Lisp order and the opposite of
+;; `get`, which stays `(get xs 1)`. The two read alike and mean
+;; different things, so an argument-order slip is silent rather than
+;; loud. The index goes through `int`, so a float one is floored.
 
-(test errx-nth-error-paths
-      ;; past the end of a list: index-error, raised by core.lisp
-      (nil? (errx/catch 'index-error '(nth (list 1 2) 9)))
-      ;; ... and of nil
-      (nil? (errx/catch 'index-error '(nth nil 0)))
-      ;; a non-sequence first argument: type-error, also from core.lisp
-      (nil? (errx/catch 'type-error '(nth 5 0)))
-      ;; past the end of a VEC the error comes from the VM instead, with
-      ;; a message
-      (errx/msg? 'index-error "Index Error: " '(nth (vec 1 2) 9))
-      ;; an explicit default suppresses all of them
-      (= 7 (errx/catch 'index-error '(nth (list 1 2) 9 7)))
-      (= 7 (errx/catch 'index-error '(nth nil 0 7)))
-      (= 7 (errx/catch 'index-error '(nth (vec 1 2) 9 7)))
-      ;; in-range lookups are untouched
-      (= 2 (errx/catch 'index-error '(nth (list 1 2) 1)))
-      (= 2 (errx/catch 'index-error '(nth (vec 1 2) 1))))
+;; A lookup past the end - of a vec, of a cons list, of nil - raises
+;; nothing: it answers the optional third argument, nil when none was
+;; given. Two raises are left, and neither carries a message string the
+;; way a VM-raised error of the same tag would: `negative-index` for an
+;; index below zero, whose payload is that index, and `type-error` for a
+;; second argument that is no sequence, whose payload is the container
+;; type SYMBOL.
+
+;; A miss answers nil, and so does a `catch` of a tag nothing threw, so
+;; the two are indistinguishable at the call site. Evaluate the lookup in
+;; the test of an `if` instead: a miss comes back as `:errx-else`, a
+;; raise skips both branches and answers the payload.
+(defun errx/nth-missed? (form)
+  (eq? :errx-else (errx/catch 'index-error form)))
+
+(test errx-nth-index-misses-do-not-raise
+      ;; past the end of a cons list ...
+      (errx/nth-missed? '(if (nth 9 (list 1 2)) :errx-then :errx-else))
+      ;; ... of nil ...
+      (errx/nth-missed? '(if (nth 0 nil) :errx-then :errx-else))
+      ;; ... and of a vec, which used to be the one case the VM raised on
+      (errx/nth-missed? '(if (nth 9 (vec 1 2)) :errx-then :errx-else))
+      ;; one past the last element is a miss like any other, for both
+      (errx/nth-missed? '(if (nth 2 (list 1 2)) :errx-then :errx-else))
+      (errx/nth-missed? '(if (nth 2 (vec 1 2)) :errx-then :errx-else))
+      ;; the empty vec has no in-range index at all
+      (errx/nth-missed? '(if (nth 0 (vec)) :errx-then :errx-else)))
+
+;; A negative index is NOT a miss and not a lookup from the end: it
+;; raises `negative-index` carrying the index itself. The check runs
+;; before the second argument is examined at all, so it fires on a
+;; non-sequence too, and `alt` does not suppress it.
+(test errx-nth-negative-index-raises
+      (= -1 (errx/catch 'negative-index '(if (nth -1 (list 1 2)) :errx-then :errx-else)))
+      (= -1 (errx/catch 'negative-index '(if (nth -1 (vec 1 2)) :errx-then :errx-else)))
+      (= -1 (errx/catch 'negative-index '(if (nth -1 nil) :errx-then :errx-else)))
+      ;; the payload is the index, so it tracks the argument given
+      (= -2 (errx/catch 'negative-index '(if (nth -2 (vec 1 2)) :errx-then :errx-else)))
+      ;; supplying a default does not turn the raise back into a miss
+      (= -1 (errx/catch 'negative-index '(if (nth -1 (list 1 2) 7) :errx-then :errx-else)))
+      ;; ... and the negative check beats the sequence type check
+      (= -1 (errx/catch 'negative-index '(if (nth -1 5) :errx-then :errx-else)))
+      ;; an integer payload, not a message string
+      (not (string? (errx/catch 'negative-index '(if (nth -1 nil) :errx-then :errx-else)))))
+
+(test errx-nth-answers-its-default
+      ;; the third argument is what a miss answers, for every container
+      (= 7 (errx/catch 'index-error '(nth 9 (list 1 2) 7)))
+      (= 7 (errx/catch 'index-error '(nth 0 nil 7)))
+      (= 7 (errx/catch 'index-error '(nth 9 (vec 1 2) 7)))
+      (= 7 (errx/catch 'index-error '(nth 0 (vec) 7)))
+      ;; in-range lookups ignore it, first index and last alike
+      (= 1 (errx/catch 'index-error '(nth 0 (list 1 2) 7)))
+      (= 2 (errx/catch 'index-error '(nth 1 (list 1 2) 7)))
+      (= 1 (errx/catch 'index-error '(nth 0 (vec 1 2) 7)))
+      (= 2 (errx/catch 'index-error '(nth 1 (vec 1 2) 7)))
+      ;; ... and so do lookups with no default given
+      (= 2 (errx/catch 'index-error '(nth 1 (list 1 2))))
+      (= 2 (errx/catch 'index-error '(nth 1 (vec 1 2)))))
+
+;; The index is floored by `int` once, up front, and the same floored
+;; value is used for the bounds check and for the lookup. A vec and the
+;; equivalent cons list therefore agree on a float index: both answer the
+;; element at the floored position. They did not always - the vec branch
+;; used to range-check the truncated index and then look up with the raw
+;; one, so an IN-RANGE float raised "Expected one of vec, vec2, vec3,
+;; table in get, but got vec" out of `get` while the cons branch missed
+;; and answered `alt`.
+(test errx-nth-floors-a-float-index
+      ;; in range: the floored position, on both containers
+      (= 2 (errx/catch 'type-error '(nth 1.7 (list 1 2 3))))
+      (= 2 (errx/catch 'type-error '(nth 1.7 (vec 1 2 3))))
+      ;; a default changes nothing when the lookup is in range
+      (= 2 (errx/catch 'type-error '(nth 1.7 (list 1 2 3) 7)))
+      (= 2 (errx/catch 'type-error '(nth 1.7 (vec 1 2 3) 7)))
+      ;; out of range after flooring is an ordinary miss, so `alt` again
+      (= 7 (errx/catch 'type-error '(nth 9.5 (vec 1 2 3) 7)))
+      (= 7 (errx/catch 'type-error '(nth 9.5 (list 1 2 3) 7)))
+      ;; `int` floors toward negative infinity, so -1.5 becomes -2 and
+      ;; raises with THAT as the payload, not with -1
+      (= -2 (errx/catch 'negative-index '(if (nth -1.5 (vec 1 2 3) 7) :errx-then :errx-else)))
+      (= -2 (errx/catch 'negative-index '(if (nth -1.5 (list 1 2 3) 7) :errx-then :errx-else)))
+      ;; `get` still refuses a float index outright - that is `get`'s
+      ;; own behaviour and `nth` no longer reaches it
+      (errx/msg? 'type-error "Type Error: Expected one of vec, vec2, vec3, table in get"
+                 '(get (vec 1 2 3) 1.7)))
+
+(test errx-nth-type-error-payload-is-a-symbol
+      ;; the surviving type raise: a SECOND argument that is no sequence,
+      ;; reported as the container type rather than as a message
+      (symbol? (errx/catch 'type-error '(nth 0 5)))
+      (eq? 'integer (errx/catch 'type-error '(nth 0 5)))
+      ;; a string iterates elsewhere in the stdlib but is not a sequence
+      ;; to `nth`, so it lands here rather than answering a character
+      (eq? 'string (errx/catch 'type-error '(nth 0 "ab")))
+      (eq? 'table (errx/catch 'type-error '(nth 0 (make-table))))
+      (eq? 'bool (errx/catch 'type-error '(nth 0 true)))
+      ;; a keyword is a symbol to `container-type-of`, so that is what
+      ;; comes back - the payload names the TYPE, never the value
+      (eq? 'symbol (errx/catch 'type-error '(nth 0 :kw)))
+      ;; not a string, which is what the VM's own type-error gives
+      (not (string? (errx/catch 'type-error '(nth 0 5)))))
 
 (test errx-stdlib-propagates-the-underlying-error
       ;; `min`/`max`/`sum` are `iter` loops and `map` is a `car` loop, so
