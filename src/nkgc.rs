@@ -14,7 +14,7 @@ use std::ops::Deref;
 use std::sync::atomic::AtomicU32;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use crate::utils::HMap;
-use ahash::HashSet;
+use crate::utils::HSet;
 #[cfg(feature = "math")]
 use glam::{Vec2, Vec3};
 use serde::{Serialize, Deserialize};
@@ -478,7 +478,7 @@ pub enum QuasiMut {
 
 #[derive(Debug, Default)]
 pub struct Equalp {
-    checks: HashSet<(*const NkAtom, *const NkAtom)>,
+    checks: HSet<(*const NkAtom, *const NkAtom)>,
 }
 
 impl Equalp {

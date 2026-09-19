@@ -63,7 +63,7 @@
               pkgsCross.mingwW64.windows.pthreads
             ];
             nativeBuildInputs = with pkgs; [
-	      wineWow64Packages.stable
+              wineWow64Packages.stable
               #wineWowPackages.stable
               clang
             ];

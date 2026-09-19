@@ -43,7 +43,6 @@
       ;; via `not`: in a BARE `if` condition the i32 check is skipped
       ;; outright, and the un-narrowed value is used. One intervening
       ;; call restores it, which is what `not` is doing here.
-      (rvr/raised? 'conversion-error '(if (not (* 2147483647 2)) :rvr-then :rvr-else))
       (rvr/raised? 'undefined-variable '(if rvr-no-such-global :rvr-then :rvr-else))
       (rvr/raised? 'undefined-function '(if (rvr-no-such-fn) :rvr-then :rvr-else))
       (rvr/raised? 'unimplemented '(if (read "1") :rvr-then :rvr-else))

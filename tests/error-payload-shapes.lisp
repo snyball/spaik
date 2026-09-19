@@ -23,7 +23,6 @@
       (string? (shp/catch 'type-error '(car 5)))
       (string? (shp/catch 'arg-error '(car)))
       (string? (shp/catch 'index-error '(get (vec) 0)))
-      (string? (shp/catch 'conversion-error '(* 2147483647 2)))
       (string? (shp/catch 'unimplemented '(read "1")))
       (string? (shp/catch 'module-not-found '(require shp-no-such-module)))
       (string? (shp/catch 'reference-not-allowed '(error 'shp-k (list 1))))

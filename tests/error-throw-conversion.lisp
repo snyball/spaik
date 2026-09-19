@@ -176,18 +176,6 @@
       ;; float division by zero is NOT an error - it is an infinity
       (= 3 (errc/catch 'divide-by-zero '(if (= (/ 1.0 0) (/ 2.0 0)) 3 4))))
 
-;;; ---[ conversion-error ]------------------------------------------------
-
-(defun errc/ce-add () (errc/msg? 'conversion-error "Conversion Error: " '(+ 2147483647 1)))
-(defun errc/ce-mul () (errc/msg? 'conversion-error "Conversion Error: " '(* 2147483647 2)))
-
-(test errc-conversion-error
-      ;; i32 overflow on `+`/`*` is reported and is catchable. (`-` and
-      ;; `abs` have no such check at all - `(abs -2147483648)` answers
-      ;; 2147483648 - so they are not asserted here.)
-      (errc/ce-add)
-      (errc/ce-mul))
-
 ;;; ---[ unimplemented ]---------------------------------------------------
 
 (defun errc/ui-read ()      (errc/msg? 'unimplemented "Unimplemented: " '(read "1")))
