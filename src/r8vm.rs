@@ -2286,12 +2286,17 @@ impl R8VM {
                     }
                     let rv = self.mem.pop()?;
                     let old_frame = self.frame;
-                    if let PV::UInt(frame) = self.mem.pop()? {
-                        self.frame = frame;
-                    }
-                    if let PV::UInt(delta) = self.mem.pop()? {
-                        ip = self.ret_to(delta);
-                    }
+                    let frame_pv = self.mem.pop()?;
+                    let dip_pv = self.mem.pop()?;
+                    let (PV::UInt(frame), PV::UInt(dip)) = (frame_pv, dip_pv) else {
+                        self.mem.push(rv);
+                        self.mem.push(dip_pv);
+                        self.mem.push(frame_pv);
+                        self.dump_stack().unwrap();
+                        panic!("Invalid frame, expected two unsigned-integers")
+                    };
+                    self.frame = frame;
+                    ip = self.ret_to(dip);
                     // yeet the stack frame
                     self.mem.stack.truncate(old_frame);
                     self.mem.push(rv);
