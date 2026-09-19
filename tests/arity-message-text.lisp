@@ -124,6 +124,32 @@
       (not (elem? 'modulo (functions)))
       (elem? '% (functions)))
 
+;; `error` used to carry no name at all - "Argument Error: expected from
+;; 1 to 2 arguments, but got 0" - which left a caller nothing to search
+;; for. It names itself now. `mat` is the last builtin that does not.
+(test amt-error-builtin-names-itself
+      (amt/msg? 'arg-error "Argument Error: error expected from 1 to 2 arguments, but got 0"
+                '(if (error) 1 2))
+      (amt/msg? 'arg-error "Argument Error: expected from 2 to 4 arguments, but got 0"
+                '(if (mat) 1 2)))
+
+;; `error` used to pay for that with the other number: its RECEIVED
+;; count was a constant, so three arguments and eleven both read "but
+;; got 0", where every other range-arity builtin - `nth` here, and
+;; `throw` and `mat` - reported what actually arrived. It counts for
+;; real now, the tag argument included, and on the `apply` path too.
+(test amt-error-reports-the-count-it-received
+      (amt/msg? 'arg-error "Argument Error: error expected from 1 to 2 arguments, but got 3"
+                '(if (error 'amt-k 1 2) 1 2))
+      (amt/msg? 'arg-error "Argument Error: error expected from 1 to 2 arguments, but got 11"
+                '(if (error 'amt-k 1 2 3 4 5 6 7 8 9 10) 1 2))
+      (amt/msg? 'arg-error "Argument Error: error expected from 1 to 2 arguments, but got 3"
+                '(if (apply error (list 'amt-k 1 2)) 1 2))
+      (amt/msg? 'arg-error "Argument Error: nth expected from 2 to 3 arguments, but got 4"
+                '(if (nth (vec 1) 1 2 3) 1 2))
+      (amt/msg? 'arg-error "Argument Error: nth expected from 2 to 3 arguments, but got 6"
+                '(if (nth (vec 1) 1 2 3 4 5) 1 2)))
+
 ;; The neighbouring predicates name themselves, which is what made the
 ;; group above look like omissions rather than a convention.
 (test amt-most-builtins-report-their-own-name

@@ -59,22 +59,18 @@
 ;; a leading "vec2"). Pinned as it currently reads; if a name appears,
 ;; that should be a deliberate change.
 ;;
-;; This comment used to claim they were "the only ones in this build".
-;; That was never checked and is false: under-calling all 176 names in
-;; `(functions)` finds `(error)` reporting "Argument Error: expected
-;; from 1 to 2 arguments, but got 0" with no name either. Pinned just
-;; below so the pair stays honest.
+;; `mat` is now the ONLY builtin whose arity error carries no name at
+;; all. Under-calling every name in `(functions)` that can be
+;; under-called finds four others that report a name the caller did not
+;; type - `%` says `modulo`, `sys/freeze` says `freeze`, and the
+;; `print`/`println` macros report their `<ξ>-` expansion name - and
+;; nothing else. `error` used to be in the nameless pair with `mat`; it
+;; identifies itself now and is pinned doing so in
+;; tests/arity-message-text.lisp.
 (test mtx-mat-errors-do-not-name-mat
       (not (mtx/msg? 'arg-error "Argument Error: mat " '(mat)))
+      (mtx/msg? 'arg-error "Argument Error: expected from 2 to 4 arguments, but got 0" '(mat))
       (not (mtx/msg? 'type-error "Type Error: Expected vec2 in mat" '(mat 1 2))))
-
-;; `error` is the other one, and is not a matrix builtin at all - it is
-;; pinned here only to keep the two facts next to each other, since the
-;; claim above is about how many there are.
-(test mtx-error-builtin-also-names-nothing
-      (mtx/msg? 'arg-error "Argument Error: expected from 1 to 2 arguments, but got 0"
-                '(error))
-      (not (mtx/msg? 'arg-error "Argument Error: error " '(error))))
 
 ;;; ---[ the affine helpers ]--------------------------------------------
 

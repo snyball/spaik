@@ -272,12 +272,18 @@ std_subrs! {
     }
 
     fn error(&mut self, vm: &mut R8VM, args: &[PV]) -> Result<PV> {
+        let argerr = |got_num| error!(ArgError,
+            expect: ArgSpec::opt(1, 1),
+            got_num)
+        .bop(Builtin::Error);
         let mut it = args.iter().copied();
-        let name_arg = it.next().ok_or(error!(ArgError, expect: ArgSpec::opt(1, 1), got_num: 0 ))?;
+        let name_arg = it.next().ok_or_else(|| argerr(0))?;
         if let PV::Sym(name) = name_arg {
-            err!(LibError,
-                name: name.into(),
-                value: crate::nkgc::NonRef::new(it.next().unwrap_or(PV::Nil))?)
+            let value = crate::nkgc::NonRef::new(it.next().unwrap_or(PV::Nil))?;
+            if it.next().is_some() {
+                return Err(argerr(3 + it.count() as u32))
+            }
+            err!(LibError, name: name.into(), value)
         } else {
             Err(error!(TypeError,
                 expect: Builtin::Symbol,

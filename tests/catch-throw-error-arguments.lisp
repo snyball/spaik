@@ -47,18 +47,41 @@
 (test cte-arity
       (cte/msg? 'arg-error "Argument Error: catch expected 2" '(catch))
       ;; `throw` takes 2 OR 3. The 3-argument form is (throw <continuation>
-      ;; <tag> <value>); the plural still follows the RECEIVED count, so
-      ;; "got 1" reads "argument" and "got 0" reads "arguments".
+      ;; <tag> <value>). The plural agrees with the count the word is
+      ;; attached to - the EXPECTED one - so a range always reads
+      ;; "arguments" however many actually arrived.
       (cte/msg? 'arg-error "Argument Error: throw expected from 2 to 3 arguments, but got 0" '(throw))
       (cte/msg? 'arg-error "Argument Error: throw expected from 2 to 3 arguments, but got 1" '(throw 'cte-k))
       (cte/msg? 'arg-error "Argument Error: throw expected from 2 to 3 arguments, but got 4"
                 '(throw 'cte-k 1 2 3))
-      (cte/msg? 'arg-error "Argument Error: expected from 1 to 2 arguments, but got 0" '(error))
+      ;; `error` takes 1 OR 2, identifies itself like every other builtin
+      ;; here, and reports the count that actually arrived - see
+      ;; `cte-error-surplus-arguments-raise` below.
+      (cte/msg? 'arg-error "Argument Error: error expected from 1 to 2 arguments, but got 0" '(error))
       (cte/msg? 'arg-error "Argument Error: call/cc expected 1 argument, but got 0" '(call/cc))
       ;; `catch` is the lenient one: a tag with NO body is legal and
       ;; answers nil, and a multi-form body answers its last form
       (nil? (cte/catch 'arg-error '(catch 'cte-k)))
       (= 2 (cte/catch 'arg-error '(catch 'cte-k 1 2))))
+
+;; A third argument to `error` used to be accepted and silently dropped,
+;; along with every argument after it. It is an arity error now, and the
+;; arity check happens FIRST: the surplus call raises `arg-error` and
+;; never raises the tag it was given, so the catch below has to be
+;; `arg-error` - catching `cte-k` would meet the arity message instead.
+;;
+;; The count in that message was a constant 0 when the check was new -
+;; three arguments and eleven read alike. It is the real count now, and
+;; the tag counts as one of them.
+(test cte-error-surplus-arguments-raise
+      (cte/msg? 'arg-error "Argument Error: error expected from 1 to 2 arguments, but got 3"
+                '(error 'cte-k 1 2))
+      (cte/msg? 'arg-error "Argument Error: error expected from 1 to 2 arguments, but got 11"
+                '(error 'cte-k 1 2 3 4 5 6 7 8 9 10))
+      ;; one and two arguments are unaffected: the tag is raised and the
+      ;; payload is the second argument, or nil when there is none
+      (nil? (cte/catch 'cte-k '(error 'cte-k)))
+      (eq? :cte-p (cte/catch 'cte-k '(error 'cte-k :cte-p))))
 
 ;;; ---[ error's payload rejects reference types ]-------------------------
 
