@@ -11,13 +11,18 @@ use std::process::exit;
 #[derive(Debug, clap::Parser)]
 pub struct Opts {
     #[command(flatten)]
-    vm_dbg: VmDebugOpts,
+    pub vm_dbg: VmDebugOpts,
+    #[cfg_attr(feature = "cli", arg(long))]
+    pub only_load: bool,
 }
 
 fn main() {
     pretty_env_logger::init();
     let opts = Opts::parse();
     let mut runner = TestRunner::new("./tests").unwrap();
+    if opts.only_load {
+        return;
+    }
     runner.set_debug(opts.vm_dbg);
     exit(match runner.run() {
         Ok(errs) if errs.len() == 0 => 0,
