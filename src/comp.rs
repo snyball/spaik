@@ -994,10 +994,12 @@ impl R8Compiler {
                 if flip { self.unit().op(chasm!(NOT)); }
                 self.unit().op(chasm!(DUP));
             }
-            if flip && !ret {
-                self.unit().op(chasm!(JN end_l));
-            } else {
-                self.unit().op(chasm!(JT end_l));
+            if ret || !it.peek().is_none() {
+                if flip && !ret {
+                    self.unit().op(chasm!(JN end_l));
+                } else {
+                    self.unit().op(chasm!(JT end_l));
+                }
             }
             if ret { self.unit().op(chasm!(POP 1)); }
         }
