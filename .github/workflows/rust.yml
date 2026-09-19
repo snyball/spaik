@@ -55,7 +55,7 @@ jobs:
     #     export PATH="$PATH:$HOME/.cargo/bin"
     #     cargo valgrind test --target i686-unknown-linux-gnu
     - name: Run tests on Miri
-      run: cargo +nightly miri run --bin spaik-test -- --only-load
+      run: cargo +nightly miri run --bin spaik-test -- tests/miri-min.lisp
       env:
         MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-tree-borrows -Zmiri-backtrace=full"
     # - name: Run tests on Miri 32-Bit
