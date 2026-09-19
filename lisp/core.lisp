@@ -349,6 +349,18 @@
         (car out)
         (reverse! out))))
 
+(defun shallow-copy-list (xs)
+  (when xs
+    (cons (car xs)
+          (shallow-copy-list (cdr xs)))))
+
+(defun shallow-copy-container (xs)
+  (case (type-of xs)
+    ('cons (shallow-copy-list xs))
+    ('vec (copy xs))
+    ('table (copy xs))
+    (_ xs)))
+
 ;; Functions for builtins, these do not override the builtins when used in
 ;; function-position, but allow them to be passed as closures
 (defun cons (x y) (cons x y))
@@ -362,7 +374,8 @@
 (defun apply (f xs) (apply f xs))
 (defun throw (s v) (throw s v))
 (defun next (it) (next it))
-(defun sort (xs) (sort! (clone xs)))
+
+(defun sort (xs) (sort! (shallow-copy-container xs)))
 
 (defun or (&rest r)
   (loop (if (not r) (break))

@@ -809,6 +809,7 @@ impl R8VM {
         addfn!(read);
         addfn!(macroexpand);
         addfn!(clone);
+        addfn!(copy);
         addfn!(intern);
         addfn!(gc);
         addfn!("sys/freeze", freeze);

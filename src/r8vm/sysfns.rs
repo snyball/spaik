@@ -108,6 +108,13 @@ std_subrs! {
         x.deep_clone(&mut vm.mem)
     }
 
+    fn copy(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
+        unsafe {
+            let mut pv = *x;
+            Ok(vm.mem.copy_value(&mut pv))
+        }
+    }
+
     fn freeze(&mut self, vm: &mut R8VM, args: (_dst)) -> Result<PV> {
         featurefn!("modules", {
             let module = vm.freeze();

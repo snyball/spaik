@@ -181,6 +181,7 @@ impl Deref for NonRef {
 /// Primitive values
 #[derive(Debug, Copy, Clone, Default)]
 pub enum PV {
+    Void,
     Ref(*mut NkAtom),
     Sym(SymID),
     Int(Int),
@@ -691,6 +692,7 @@ impl PV {
     pub fn bt_type_of(&self) -> Builtin {
         use PV::*;
         match *self {
+            Void => Builtin::Void,
             Bool(_) => Builtin::Bool,
             Int(_) => Builtin::Integer,
             UInt(_) => Builtin::UnsignedInteger,
@@ -1053,6 +1055,7 @@ impl PartialOrd for PV {
 impl Hash for PV {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match *self {
+            PV::Void => (0xDEADC0DEu32).hash(state),
             PV::Sym(x) => x.hash(state),
             PV::Int(x) => x.hash(state),
             PV::UInt(x) => x.hash(state),
@@ -1078,6 +1081,7 @@ impl LispFmt for PV {
                 visited: &mut VisitSet,
                 f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
+            PV::Void => write!(f, "void"),
             PV::Nil => write!(f, "nil"),
             PV::Bool(true) => write!(f, "true"),
             PV::Bool(false) => write!(f, "false"),
@@ -1976,6 +1980,19 @@ impl Arena {
             }
         }
         p
+    }
+
+    pub unsafe fn copy_value(&mut self, v: &mut PV) -> PV {
+        if let PV::Ref(ref mut p) = v {
+            let (np, tok) = dup_atom(&mut self.nuke, *p);
+            if let Some(tok) = tok {
+                *p = self.nuke.reloc().get(*p) as *mut NkAtom;
+                self.update_ptrs(tok);
+            }
+            PV::Ref(np)
+        } else {
+            *v
+        }
     }
 
     pub fn put_pv<T>(&mut self, v: T) -> PV where T: Fissile {

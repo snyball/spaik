@@ -206,6 +206,11 @@ macro_rules! fissile_types {
             P(p).lisp_to_string()
         }
 
+        #[inline]
+        pub unsafe fn dup_atom(mem: &mut Nuke, src: *mut NkAtom) -> (*mut NkAtom, Option<RelocateToken>) {
+            with_atom_mut!(src, {mem.put((*src).clone())}, $(($t,$path)),+)
+        }
+
         $(unsafe impl Fissile for $path {
             fn type_of() -> NkT { NkT::$t }
         })+
@@ -1677,6 +1682,12 @@ impl Nuke {
         }
     }
 
+    pub unsafe fn put<T: Fissile>(&mut self, obj: T) -> (*mut NkAtom, Option<RelocateToken>) {
+        let (p, tp, reloc) = self.alloc::<T>();
+        ptr::write(tp, obj);
+        (p, reloc)
+    }
+
     pub unsafe fn alloc<T: Fissile>(&mut self) -> (*mut NkAtom, *mut T, Option<RelocateToken>) {
         let max_padding = ALIGNMENT - 1;
         let max_sz = size_of::<T>() + size_of::<NkAtom>() + max_padding;
@@ -1727,6 +1738,10 @@ impl Nuke {
 
     pub fn will_overflow(&mut self, sz: usize) -> bool {
         self.free as usize + sz >= self.offset::<u8>(self.sz) as usize
+    }
+
+    pub unsafe fn fit_obj<T: Fissile>(&mut self, _obj: &T) -> Option<RelocateToken> {
+        self.fit::<T>(1)
     }
 
     #[inline]
