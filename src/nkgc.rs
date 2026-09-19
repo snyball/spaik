@@ -605,6 +605,14 @@ impl PV {
         }
     }
 
+    pub fn int(&self) -> Result<Int, Error> {
+        if let PV::Int(x) = *self {
+            Ok(x)
+        } else {
+            err!(TypeError, expect: Builtin::Integer, got: self.bt_type_of())
+        }
+    }
+
     pub fn to_int(&self) -> Result<isize, Error> {
         let err = || err!(TypeNError,
             expect: vec![
@@ -721,7 +729,7 @@ impl PV {
         type IT = Box<dyn CloneIterator<Item = PV>>;
         macro_rules! e {() => {
             Err(error!(TypeNError,
-                       expect: vec![Builtin::Cons, Builtin::String, Builtin::Vector, Builtin::Table],
+                       expect: vec![Builtin::List, Builtin::String, Builtin::Vector, Builtin::Table],
                        got: self.bt_type_of()).bop(Builtin::Iter))
         };}
         let it: Box<dyn CloneIterator<Item = PV>> = match *self {

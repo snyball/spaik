@@ -1,6 +1,6 @@
 //! Structured Errors
 
-use crate::nkgc::{NonRef, PV};
+use crate::nkgc::{Int, NonRef, PV};
 use crate::nuke::VTable;
 use crate::{AsSym, Builtin, Sym, SPV};
 use crate::r8vm::{ArgSpec, RuntimeError, TraceFrame, Traceback, R8VM};
@@ -257,7 +257,7 @@ pub enum ErrorKind {
     ModuleNotFound { lib: Sym },
     Unsupported { op: &'static str },
     Traceback { tb: Box<Traceback> },
-    IndexError { idx: usize },
+    IndexError { idx: Int },
     KeyError { idx: String },
     KeyReference { key: String },
     ReferenceNotAllowed { repr: String },
