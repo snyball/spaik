@@ -287,9 +287,11 @@
           (%chr ":"))))
 
 (defun keyword-name (x)
-  (let ((it (iter (string x))))
-    (next it)
-    (apply concat (collect it))))
+  (if (keyword? x)
+      (let ((it (iter (string x))))
+        (next it)
+        (apply concat (collect it)))
+      (error 'not-a-keyword (intern (string x)))))
 
 (defun number? (x)
   (or (integer? x)
