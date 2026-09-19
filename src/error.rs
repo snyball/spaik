@@ -714,7 +714,7 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Throw { tag, obj } =>
             write!(f, "{tag}: {obj}")?,
         // FIXME: Better error message
-        UnlinkedFunction => write!(f, "Unlinked functino")?,
+        UnlinkedFunction => write!(f, "Unlinked function")?,
         ExtError(err) => write!(f, "{:?}", err.0)?,
         DivideByZero => write!(f, "Attemped integer division by zero")?,
         Unimplemented { feature } => write!(f, "Unimplemented: {feature}")?,
