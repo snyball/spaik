@@ -1154,8 +1154,9 @@ impl R8Compiler {
             M::Progn(seq) => self.compile_seq(ret, seq)?,
             M::SymApp(op, args) => self.bt_sym_app(ret, src, op, args)?,
             M::App(op, args) => self.gapp(ret, *op, args)?,
-            M::Lambda(ArgList2(spec, names), progn) =>
-                self.bt_lambda(spec, names, progn, src)?,
+            M::Lambda(ArgList2(spec, names), progn) => if ret {
+                self.bt_lambda(spec, names, progn, src)?
+            },
             M::Defvar(sym, init) => {
                 let spec = ArgSpec::none();
                 let (pos, sz) = self.lambda(None, spec, vec![], Some(*init))?;
