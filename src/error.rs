@@ -551,13 +551,13 @@ fn fmt_error(err: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match expect {
                 ArgSpec { nargs, nopt: 0, rest: false, .. } =>
                     write!(f, "expected {} argument{}, but got {}",
-                            nargs, plurs(*got_num), got_num)?,
+                            nargs, plurs(*nargs), got_num)?,
                 ArgSpec { nargs, nopt, rest: false, .. } =>
-                    write!(f, "expected from {} to {} argument{}, but got {}",
-                            nargs, nargs+nopt, plurs(*got_num), got_num)?,
+                    write!(f, "expected from {} to {} arguments, but got {}",
+                            nargs, nargs+nopt, got_num)?,
                 ArgSpec { nargs, rest: true, .. } =>
                     write!(f, "expected at least {} argument{}, but got {}",
-                            nargs, plurs(*got_num), got_num)?,
+                            nargs, plurs(*nargs), got_num)?,
             }
         }
         IfaceNotImplemented { got } => {
