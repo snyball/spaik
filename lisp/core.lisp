@@ -375,6 +375,13 @@
 (defun throw (s v) (throw s v))
 (defun next (it) (next it))
 
+(defmacro \d (&body body)
+  (let ((name (gensym)))
+    `(progn
+       (defun ,name ()
+         ,@body)
+       (disassemble ',name))))
+
 (defun sort (xs) (sort! (shallow-copy-container xs)))
 
 (defun or (&rest r)
