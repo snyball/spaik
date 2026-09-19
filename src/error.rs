@@ -192,6 +192,7 @@ impl fmt::Display for FmtArgnOp<'_> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyntaxErrorKind {
+    DotAtStartOfList,
     DotAtEndOfList,
     DotAfterDot,
     SpliceAfterDot,
@@ -204,6 +205,8 @@ impl fmt::Display for SyntaxErrorKind {
         match self {
             SyntaxErrorKind::DotAtEndOfList =>
                 write!(f, "Dot [.] operator at end of list"),
+            SyntaxErrorKind::DotAtStartOfList =>
+                write!(f, "Dot [.] operator at start of list"),
             SyntaxErrorKind::DotAfterDot =>
                 write!(f, "Dot [.] operator immediately after dot [.] operator"),
             SyntaxErrorKind::SpliceAfterDot =>

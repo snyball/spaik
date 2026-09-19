@@ -1279,6 +1279,7 @@ impl R8VM {
                     ctx: Builtin::List,
                     op: Builtin::ConsDot
                 }),
+                "." if num == 0 => bail!(SyntaxError(SyntaxErrorKind::DotAtStartOfList)),
                 "." if dot.is_some() => bail!(SyntaxError(SyntaxErrorKind::DotAfterDot)),
                 "." => {
                     if tokit.peek().map(|t| t.text == ")").unwrap_or_default() {
