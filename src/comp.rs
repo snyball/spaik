@@ -807,7 +807,11 @@ impl R8Compiler {
         match arg {
             Some(code) => {
                 self.compile(ret, *code)?;
-                popa(self);
+                if ret {
+                    popa(self);
+                } else {
+                    self.asm_op(chasm!(POP dist));
+                }
             }
             None if ret => {
                 self.asm_op(chasm!(NIL));
