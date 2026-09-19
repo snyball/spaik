@@ -2135,6 +2135,11 @@ impl R8VM {
                                                           .ok_or(error!(IndexError, idx))
                                                           .copied()
                             }
+                            (x, NkT::Vector) => return ierr(x).map(|_| ())
+                                                              .map_err(|e| {
+                                                                  e.object(Builtin::Vector)
+                                                                   .subject("index")
+                                                              }),
                             (PV::Ref(_), NkT::Table) => err!(KeyReference, key: idx.to_string()),
                             (idx, NkT::Table) =>
                                 Ok((*fastcast::<HMap<PV, PV>>(p)).get(&idx).copied().unwrap_or_default()),
@@ -2143,12 +2148,14 @@ impl R8VM {
                         #[cfg(feature = "math")] (PV::Int(0), PV::Vec2(glam::Vec2 { x, .. })) => Ok(PV::Real(x)),
                         #[cfg(feature = "math")] (PV::Int(1), PV::Vec2(glam::Vec2 { y, .. })) => Ok(PV::Real(y)),
                         #[cfg(feature = "math")] (PV::Int(x), PV::Vec2(_)) => err!(IndexError, idx: x),
-                        #[cfg(feature = "math")] (x, PV::Vec2(_)) => ierr(x),
+                        #[cfg(feature = "math")] (x, PV::Vec2(_)) =>
+                            ierr(x).map_err(|e| e.object(Builtin::Vec2).subject("index")),
                         #[cfg(feature = "math")] (PV::Int(0), PV::Vec3(glam::Vec3 { x, .. })) => Ok(PV::Real(x)),
                         #[cfg(feature = "math")] (PV::Int(1), PV::Vec3(glam::Vec3 { y, .. })) => Ok(PV::Real(y)),
                         #[cfg(feature = "math")] (PV::Int(2), PV::Vec3(glam::Vec3 { z, .. })) => Ok(PV::Real(z)),
                         #[cfg(feature = "math")] (PV::Int(x), PV::Vec3(_)) => err!(IndexError, idx: x),
-                        #[cfg(feature = "math")] (x, PV::Vec3(_)) => ierr(x),
+                        #[cfg(feature = "math")] (x, PV::Vec3(_)) =>
+                            ierr(x).map_err(|e| e.object(Builtin::Vec3).subject("index")),
                         _ => Err(err())
                     }.map_err(|e| e.bop(Builtin::Get))?;
                     self.mem.push(elem);
@@ -2158,7 +2165,10 @@ impl R8VM {
                     let len = self.mem.stack.len();
                     let args = &mut self.mem.stack[len - 3..];
                     with_ref_mut!(args[1], Vector(v) => {
-                        let idx = args[2].int().map_err(|e| e.bop(Builtin::Set).argn(2))?;
+                        let idx = args[2].int().map_err(|e| {
+                            e.bop(Builtin::Set).argn(2)
+                             .object(Builtin::Vector).subject("index")
+                        })?;
                         if idx < 0 || idx as usize >= (*v).len() {
                             err!(IndexError, idx)
                         } else {

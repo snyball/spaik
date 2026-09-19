@@ -2,7 +2,7 @@
 
 use crate::nkgc::{Int, NonRef, PV};
 use crate::nuke::VTable;
-use crate::{AsSym, Builtin, Sym, SPV};
+use crate::{AsSym, Builtin, Sym, SymID, SPV};
 use crate::r8vm::{ArgSpec, RuntimeError, TraceFrame, Traceback, R8VM};
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
@@ -64,6 +64,18 @@ impl Into<OpName> for Builtin {
     }
 }
 
+impl Into<OpName> for &'static str {
+    fn into(self) -> OpName {
+        OpName::OpStr(self)
+    }
+}
+
+impl Into<OpName> for SymID {
+    fn into(self) -> OpName {
+        OpName::OpSym(self.into())
+    }
+}
+
 impl OpName {
     fn name(&self) -> &str {
         match self {
@@ -103,6 +115,8 @@ pub enum Meta {
     Source(LineCol),
     Related(Option<OpName>, Source),
     Hint(String),
+    Subject(OpName),
+    Object(OpName),
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -154,6 +168,8 @@ impl MetaSet {
     get_inner_meta!(src_file, SourceFile, Cow<'static, str>);
     get_inner_meta!(var_name, VarName, OpName);
     get_inner_meta!(hint, Hint, String);
+    get_inner_meta!(subject, Subject, OpName);
+    get_inner_meta!(object, Object, OpName);
 
     fn src(&self) -> Option<Source> {
         let line_col = self.src_line_col()?;
@@ -176,10 +192,15 @@ impl fmt::Display for FmtArgnOp<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(op) = self.meta.op() {
             write!(f, "{}", self.pre)?;
-            if let Some(argn) = self.meta.op_argn() {
+            if let Some(subj) = self.meta.subject() {
+                write!(f, "for {subj}")?;
+            } else if let Some(argn) = self.meta.op_argn() {
                 write!(f, "for argument {argn} of ({op} ...)")?;
             } else {
                 write!(f, "in {op}")?;
+            }
+            if let Some(obj) = self.meta.object() {
+                write!(f, " on {obj}")?;
             }
             write!(f, "{}", self.post)?;
         } else if let Some(var) = self.meta.var_name() {
@@ -732,6 +753,16 @@ impl Error {
 
     pub fn see_also_sym(mut self, what: impl Into<Sym>, src: Source) -> Self {
         self.inner.meta.amend(Meta::Related(Some(OpName::OpSym(what.into())), src));
+        self
+    }
+
+    pub fn subject(mut self, subj: impl Into<OpName>) -> Self {
+        self.inner.meta.amend(Meta::Subject(subj.into()));
+        self
+    }
+
+    pub fn object(mut self, subj: impl Into<OpName>) -> Self {
+        self.inner.meta.amend(Meta::Object(subj.into()));
         self
     }
 
