@@ -3144,13 +3144,17 @@ impl R8VM {
                     let dip = self.ip_delta(ip) as isize + dip as isize;
                     let mut stack = self.mem.stack.clone();
                     stack.pop();
-                    let cnt = self.mem.put_pv(Continuation {
+                    let cnt = Continuation {
                         stack,
                         frame: self.frame,
                         dip: dip as usize,
                         catch: self.catch.clone(),
-                    });
-                    self.mem.push(cnt);
+                    };
+                    for v in cnt.stack.iter().copied() {
+                        barrier!(v);
+                    }
+                    let cnt_pv = self.mem.put_pv(cnt);
+                    self.mem.push(cnt_pv);
                     ip = self.op_clzcall(ip, 1)?;
                 }
                 CTHPOP() => self.catch_pop(),
