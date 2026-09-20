@@ -1231,11 +1231,9 @@ impl<Op: Sized + Copy> Drop for PMem<Op> {
 }
 
 pub type PMemT = PMem<r8c::Op>;
-// pub type PMemT = Vec<r8c::Op>;
 
 impl R8VM {
     pub fn no_std() -> R8VM {
-        // let mut pmem = Vec::with_capacity(1024 * 1024);
         let mut pmem: PMemT = Default::default();
         pmem.push_op(r8c::Op::HCF());
         let mut vm = R8VM {

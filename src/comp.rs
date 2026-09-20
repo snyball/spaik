@@ -1297,7 +1297,7 @@ impl R8Compiler {
             };
         }
         self.unlinked_fns = ufn;
-        vm.pmem.append(&mut self.code);
+        vm.pmem.append(&mut self.code)?;
         log::trace!("new pmem length: {}", vm.pmem.len());
         vm.srctbl.append(&mut self.srctbl);
         vm.labels.extend(self.labels.drain());

@@ -12,7 +12,7 @@ use std::any::{TypeId, Any, type_name};
 use std::io::{Write, Read};
 use std::marker::PhantomData;
 use std::mem::{self, size_of, align_of, MaybeUninit};
-use std::ptr::{drop_in_place, self, null_mut};
+use std::ptr::{self, drop_in_place, null_mut, NonNull};
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::fmt::{self, Display};
 use core::fmt::Debug;
@@ -1202,51 +1202,55 @@ pub unsafe fn destroy_atom(atom: *mut NkAtom) {
 }
 
 pub unsafe fn deep_size_of_atom(atom: *const NkAtom) -> usize {
-    let mut sz = (*atom).full_size();
-    match to_fissile_ref(atom) {
-        NkRef::Cons(cns) => {
-            if let PV::Ref(p) = (*cns).car {
-                sz += deep_size_of_atom(p);
+    let mut sz = 0;
+    let mut stack = vec![atom];
+    let mut seen = HSet::default();
+
+    loop {
+        let Some(atom) = stack.pop() else { break };
+        if seen.contains(&atom) {
+            continue;
+        }
+        seen.insert(atom);
+
+        sz += (*atom).full_size();
+        match to_fissile_ref(atom) {
+            NkRef::Cons(cns) => {
+                if let PV::Ref(p) = (*cns).car {
+                    stack.push(p);
+                }
+                if let PV::Ref(p) = (*cns).cdr {
+                    stack.push(p);
+                }
             }
-            if let PV::Ref(p) = (*cns).cdr {
-                sz += deep_size_of_atom(p);
+            NkRef::Intr(intr) => if let PV::Ref(p) = (*intr).arg {
+                stack.push(p);
+            },
+            NkRef::PV(pv) => if let PV::Ref(p) = *pv { stack.push(p); },
+            NkRef::Vector(xs) => for pv in (*xs).iter() {
+                if let PV::Ref(p) = pv {
+                    stack.push(*p);
+                }
             }
+            NkRef::Table(hm) => for (_, pv) in (*hm).iter() {
+                if let PV::Ref(p) = pv {
+                    stack.push(*p);
+                }
+            },
+            NkRef::Continuation(c) => for pv in (*c).stack.iter() {
+                if let PV::Ref(p) = pv {
+                    stack.push(*p);
+                }
+            },
+            NkRef::Lambda(f) => for pv in (*f).locals.iter() {
+                if let PV::Ref(p) = pv {
+                    stack.push(*p);
+                }
+            }
+            _ => ()
         }
-        NkRef::Intr(intr) => if let PV::Ref(p) = (*intr).arg {
-            sz += deep_size_of_atom(p);
-        },
-        NkRef::PV(pv) => if let PV::Ref(p) = *pv { sz += deep_size_of_atom(p) },
-        NkRef::Vector(xs) => {
-            sz += (*xs).iter().map(|x| if let PV::Ref(p) = x {
-                deep_size_of_atom(*p)
-            } else {
-                0
-            }).sum::<usize>()
-        }
-        NkRef::Table(hm) => unsafe {
-            sz += (*hm).iter().map(|(x, y)| {
-                let mut s = 0;
-                if let PV::Ref(p) = x { s += deep_size_of_atom(*p) }
-                if let PV::Ref(p) = y { s += deep_size_of_atom(*p) }
-                s
-            }).sum::<usize>()
-        },
-        NkRef::Continuation(c) => {
-            sz += (*c).stack.iter().map(|x| if let PV::Ref(p) = x {
-                deep_size_of_atom(*p)
-            } else {
-                0
-            }).sum::<usize>()
-        },
-        NkRef::Lambda(f) => {
-            sz += (*f).locals.iter().map(|x| if let PV::Ref(p) = x {
-                deep_size_of_atom(*p)
-            } else {
-                0
-            }).sum::<usize>()
-        }
-        _ => ()
     }
+
     sz
 }
 
@@ -1274,76 +1278,100 @@ pub unsafe fn clone_atom_inplace_or_void(atom: *mut NkAtom) {
         NkMut::Continuation(c) => ptr::write(c, (*c).clone()),
         NkMut::Subroutine(s) => ptr::write(s, (*s).clone()),
         _ => ()
-    }}
+    }
+}
+
+pub struct Cloner<'a> {
+    seen: HMap<*const NkAtom, *mut NkAtom>,
+    mem: &'a mut Arena,
+}
+
+impl<'a> Cloner<'a> {
+    unsafe fn clone_pv(&mut self, pv: PV) -> Option<PV> {
+        Some(if let PV::Ref(p) = pv {
+            PV::Ref(self.clone_atom(p)?.as_ptr())
+        } else {
+            pv
+        })
+    }
+
+    pub unsafe fn clone_atom(&mut self, atom: *const NkAtom) -> Option<NonNull<NkAtom>> {
+        macro_rules! clone {
+            ($x:expr) => {{
+                let (rf, _) = self.mem.put(unsafe { (*$x).clone() });
+                rf
+            }};
+        }
+
+        if let Some(p) = self.seen.get(&atom) {
+            return Some(NonNull::new_unchecked(*p));
+        }
+
+        let mut mark = |v| { self.seen.insert(atom, v); v };
+
+        macro_rules! clone_as {
+            ($($e:tt)*) => {{
+                let (headp, ptr, grow) = self.mem.nuke.alloc::<_>();
+                assert!(grow.is_none());
+                mark(headp);
+                ptr::write(ptr, { $($e)* });
+                headp
+            }};
+        }
+
+        let v = match to_fissile_ref(atom) {
+            NkRef::Void(v) => clone!(v),
+            NkRef::Cons(cns) => clone_as! {
+                let car = self.clone_pv((*cns).car)?;
+                let cdr = self.clone_pv((*cns).cdr)?;
+                Cons { car, cdr }
+            },
+            NkRef::Intr(intr) => clone_as! {
+                Intr {
+                    op: (*intr).op,
+                    arg: self.clone_pv((*intr).arg)?,
+                }
+            },
+            NkRef::Lambda(f) => clone_as! {
+                let locals = (*f).locals.iter().map(|p| self.clone_pv(*p).ok_or(())).collect::<Result<Vec<_>, ()>>().ok()?;
+                Lambda { locals, ..(*f) }
+            },
+            NkRef::String(s) => clone!(s),
+            NkRef::PV(pv) => clone_as! {
+                self.clone_pv(*pv)?
+            },
+            NkRef::Vector(xs) => clone_as! {
+                (*xs).iter().map(|p| self.clone_pv(*p).ok_or(()))
+                .collect::<Result<Vec<_>, _>>().ok()?
+            },
+            NkRef::Table(hm) => clone_as! {
+                (*hm).iter().map(|(k, v)| -> Result<_, ()> {
+                    Ok((*k, self.clone_pv(*v).ok_or(())?))
+                }).collect::<Result<HMap<_, _>,_>>().ok()?
+            },
+            #[cfg(feature = "math")] NkRef::Vec4(v4) => clone!(v4),
+            #[cfg(feature = "math")] NkRef::Mat2(m2) => clone!(m2),
+            #[cfg(feature = "math")] NkRef::Mat3(m3) => clone!(m3),
+            #[cfg(feature = "math")] NkRef::Mat4(m4) => clone!(m4),
+            NkRef::Object(s) => {
+                let (rf, _) = self.mem.put(unsafe { (*s).deep_clone().ok()? });
+                rf
+            }
+            NkRef::Iter(i) => clone!(i),
+            NkRef::Continuation(_c) => return None,
+            NkRef::Subroutine(_s) => return None,
+        };
+
+        Some(NonNull::new_unchecked(v))
+    }
+}
 
 /// SAFETY: Must make sure the full recursive clone can fit in memory before calling
 pub unsafe fn clone_atom_rec(atom: *const NkAtom, mem: &mut Arena) -> Result<*mut NkAtom, Error> {
-    macro_rules! clone {
-        ($x:expr) => {{
-            let (rf, _) = mem.put(unsafe { (*$x).clone() });
-            rf
-        }};
-    }
-    Ok(match to_fissile_ref(atom) {
-        NkRef::Void(v) => clone!(v),
-        NkRef::Cons(cns) => {
-            unsafe {
-                let car = (*cns).car.deep_clone_unchecked(mem)?;
-                let cdr = (*cns).cdr.deep_clone_unchecked(mem)?;
-                let (rf, _) = mem.put(Cons { car, cdr });
-                rf
-            }
-        },
-        NkRef::Intr(intr) => {
-            unsafe {
-                let intr = Intr {
-                    op: (*intr).op,
-                    arg: (*intr).arg.deep_clone_unchecked(mem)?,
-                };
-                let (rf, _) = mem.put(intr);
-                rf
-            }
-        }
-        NkRef::Lambda(f) => {
-            let locals = (*f).locals.iter().map(|p| p.deep_clone_unchecked(mem)).collect::<Result<Vec<_>, _>>()?;
-            let (rf, _) = mem.put(Lambda { locals, ..(*f) });
-            rf
-        },
-        NkRef::String(s) => clone!(s),
-        NkRef::PV(pv) => if let PV::Ref(p) = *pv {
-            let cloned = clone_atom_rec(p, mem)?;
-            mem.put(PV::Ref(cloned)).0
-        } else {
-            mem.put(*pv).0
-        },
-        NkRef::Vector(xs) => unsafe {
-            let nxs = (*xs).iter().map(|p| p.deep_clone_unchecked(mem)).collect::<Result<Vec<_>, _>>()?;
-            let (rf, _) = mem.put(nxs);
-            rf
-        },
-        NkRef::Table(hm) => unsafe {
-            let nxs = (*hm).iter().map(|(k, v)| -> Result<_,Error> {
-                Ok((*k, v.deep_clone_unchecked(mem)?))
-            }).collect::<Result<HMap<_, _>,_>>()?;
-            let (rf, _) = mem.put(nxs);
-            rf
-        },
-        #[cfg(feature = "math")]
-        NkRef::Vec4(v4) => clone!(v4),
-        #[cfg(feature = "math")]
-        NkRef::Mat2(m2) => clone!(m2),
-        #[cfg(feature = "math")]
-        NkRef::Mat3(m3) => clone!(m3),
-        #[cfg(feature = "math")]
-        NkRef::Mat4(m4) => clone!(m4),
-        NkRef::Object(s) => {
-            let (rf, _) = mem.put(unsafe { (*s).deep_clone()? });
-            rf
-        }
-        NkRef::Iter(i) => clone!(i),
-        NkRef::Continuation(_c) => bail!(CloneNotImplemented { obj: OpName::OpBt(Builtin::Continuation) }),
-        NkRef::Subroutine(_s) => bail!(CloneNotImplemented { obj: OpName::OpBt(Builtin::Subr) }),
-    })
+    let mut cloner = Cloner { mem, seen: Default::default() };
+    cloner.clone_atom(atom)
+          .ok_or(error!(CloneNotImplemented, obj: OpName::OpStr("unknown")))
+          .map(|p| p.as_ptr())
 }
 
 #[allow(dead_code)]
