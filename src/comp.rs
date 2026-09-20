@@ -1284,7 +1284,7 @@ impl R8Compiler {
                     let sym = vm.mem.get_env(idx as usize).sym().unwrap();
                     match vm.get_func(sym) {
                         Some(funk) => {
-                            funk.args.check(nargs).map_err(|e| e.op(sym))?;
+                            funk.args.check(nargs as usize).map_err(|e| e.op(sym))?;
                             R8C::CALL(funk.pos.try_into()?, nargs)
                         }
                         None => {

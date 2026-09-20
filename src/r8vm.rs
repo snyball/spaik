@@ -29,7 +29,7 @@ chasm_def! {
     // SETCDR(),
 
     // Iterators
-    NXT(var_idx: u16),
+    NXT(var_idx: u32),
 
     // Vectors
     VEC(num: u32),
@@ -48,10 +48,10 @@ chasm_def! {
     JN(dip: i32),
     JZ(dip: i32),
     JNZ(dip: i32),
-    CALL(pos: u32, nargs: u16),
-    VCALL(func: u32, nargs: u16),
+    CALL(pos: u32, nargs: u32),
+    VCALL(func: u32, nargs: u32),
     APL(),
-    ZCALL(nargs: u16),
+    ZCALL(nargs: u32),
     RET(),
     CCONT(dip: i32),
     CTH(dip: i32),
@@ -66,16 +66,16 @@ chasm_def! {
     POPA(num_top: u16, num_pop: u16),
     SAV(num: u8),
     RST(),
-    TOP(delta: u16),
+    TOP(delta: u32),
     DUP(),
     // SHF(idx: u32),
     ZXP(),
     // Stack variables
-    MOV(var_idx: u16),
-    STR(var_idx: u16),
+    MOV(var_idx: u32),
+    STR(var_idx: u32),
     // Persistent variables
-    GET(env_idx: u16),
-    SET(env_idx: u16),
+    GET(env_idx: u32),
+    SET(env_idx: u32),
 
     // Value creation
     INT(val: i32),
@@ -714,7 +714,7 @@ unsafe impl Send for R8VM {}
 
 // NOTE: This only applies to calls made with apply_spv, calls internally in the
 // VM bytecode are unbounded.
-const MAX_CLZCALL_ARGS: u16 = 32;
+const MAX_CLZCALL_ARGS: u32 = 32;
 
 fn sexpr_modifier_bt(tok: &str) -> Option<Builtin> {
     Some(match tok {
@@ -727,7 +727,7 @@ fn sexpr_modifier_bt(tok: &str) -> Option<Builtin> {
 }
 
 #[inline]
-const fn clzcall_pad_dip(nargs: u16) -> usize {
+const fn clzcall_pad_dip(nargs: u32) -> usize {
     debug_assert!(nargs <= MAX_CLZCALL_ARGS);
     // NOTE: See R8VM::new, it creates a MAX_CLZCALL_ARGS number of
     // CLZCALL(n)/RET bytecodes after the first HCF bytecode.
@@ -1460,13 +1460,13 @@ impl R8VM {
             let kwname = self.sym_id(name);
             let name_idx = self.mem.push_env(PV::Sym(kwname));
             let fn_pos = self.pmem.ip_at_end();
-            self.pmem.push_op(r8c::Op::GET(obj_idx as u16));
-            self.pmem.push_op(r8c::Op::INS(name_idx as u32));
+            self.pmem.push_op(r8c::Op::GET(obj_idx));
+            self.pmem.push_op(r8c::Op::INS(name_idx.try_into().unwrap()));
             assert!(!spec.is_special(), "No special function signatures allowed for methods");
             for i in 0..spec.nargs {
-                self.pmem.push_op(r8c::Op::MOV(i));
+                self.pmem.push_op(r8c::Op::MOV(i.into()));
             }
-            self.pmem.push_op(r8c::Op::ZCALL(spec.nargs + 1));
+            self.pmem.push_op(r8c::Op::ZCALL((spec.nargs + 1).into()));
             self.pmem.push_op(r8c::Op::RET());
             let posi: u32 = fn_pos.into();
             let sz = self.pmem.len() as u32 - posi;
@@ -2596,7 +2596,7 @@ impl R8VM {
                     self.pmem.jmp(d);
                 }
                 VCALL(idx, nargs) => {
-                    let ipd = self.vcall(self.pmem.ip(), idx, nargs.into())?;
+                    let ipd = self.vcall(self.pmem.ip(), idx, nargs as usize)?;
                     self.pmem.goto(ipd);
                 },
                 CALL(pos, nargs) => {
