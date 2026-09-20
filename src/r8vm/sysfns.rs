@@ -116,14 +116,15 @@ std_subrs! {
     }
 
     fn freeze(&mut self, vm: &mut R8VM, args: (_dst)) -> Result<PV> {
-        featurefn!("modules", {
-            let module = vm.freeze();
-            let file = std::fs::File::create(_dst.str().as_ref())?;
-            let mut wr = std::io::BufWriter::new(file);
-            bincode::serialize_into(&mut wr, &module).unwrap();
-            Ok(())
-        })?;
-        Ok(PV::Nil)
+        err!(Unsupported, op: "freeze")
+        // featurefn!("modules", {
+        //     let module = vm.freeze();
+        //     let file = std::fs::File::create(_dst.str().as_ref())?;
+        //     let mut wr = std::io::BufWriter::new(file);
+        //     bincode::serialize_into(&mut wr, &module).unwrap();
+        //     Ok(())
+        // })?;
+        // Ok(PV::Nil)
     }
 
     fn print(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
