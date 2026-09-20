@@ -951,7 +951,7 @@ impl LispFmt for Continuation {
     fn lisp_fmt(&self,
         _visited: &mut VisitSet,
         f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "(continuation {:?})", self as *const Continuation)
+            write!(f, "(continuation {:?} {:?} frame={} ip={})", self as *const Continuation, self.stack, self.frame, self.dip)
         }
 }
 
