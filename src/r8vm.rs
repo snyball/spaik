@@ -8,7 +8,7 @@ use glam::{Mat2, Mat3};
 #[cfg(feature = "modules")]
 use crate::module::{LispModule, Export, ExportKind};
 use crate::{
-    ast::{Excavator, Visitor}, builtins::Builtin, chasm::{ASMOp, ChASMOpName, Lbl, LblMap, ASMPV}, comp::{R8Compiler, SourceList}, error::{Error, ErrorKind, LineCol, Meta, OpName, Result, Source, SourceFileName, SyntaxErrorKind}, fmt::LispFmt, limits, nkgc::{self, Arena, Cons, ConsOption, Int, Lambda, NonRef, QuasiMut, SymID, PV, SPV}, nuke::*, opt::Optomat, string_parse::string_parse, subrs::{BoxSubr, FromLisp, Lispify, Subr}, swym::{self, SymRef}, tok::Token, tokit, AsSym, IntoLisp};
+    ast::{Excavator, Visitor}, builtins::Builtin, chasm::{ASMOp, ChASMOpName, Lbl, LblMap, ASMPV}, comp::{R8Compiler, SourceList}, error::{Error, ErrorKind, LineCol, Meta, OpName, Result, Source, SourceFileName, SyntaxErrorKind}, fmt::LispFmt, limits, nkgc::{self, Arena, Cons, ConsOption, Int, Lambda, NonRef, QuasiMut, SymID, PV, SPV}, nuke::*, opt::Optomat, reader::{Sexper, Sexpert}, string_parse::string_parse, subrs::{BoxSubr, FromLisp, Lispify, Subr}, swym::{self, SymRef}, tok::Token, tokit, AsSym, IntoLisp};
 use crate::utils::{HMap, HSet};
 use std::{any::{type_name, Any, TypeId}, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, fs, io::{self, prelude::*}, mem::{self, replace, take}, path::{Path, PathBuf}, ptr::{self, addr_of_mut}, sync::{atomic::AtomicU32, Arc, Mutex}};
 #[cfg(feature = "freeze")]
@@ -760,6 +760,102 @@ impl<'a> TryInto<SourceFileName> for LibrarySrc<'a> {
     }
 }
 
+pub struct Reader(u32);
+
+impl Sexper for Reader {
+    fn tlsexpre(&mut self, vm: &mut R8VM, num: u32, dot: bool) -> Result<PV> {
+        vm.mem.list_dot(num, dot);
+        Ok(vm.mem.pop().unwrap())
+    }
+
+    fn sexpre(&mut self, vm: &mut R8VM, v: PV) -> Result<PV> {
+        Ok(v)
+    }
+
+    fn sexp(&mut self, vm: &mut R8VM, v: PV, _is_tail: bool, _src: Source) -> Result<()> {
+        vm.mem.push(v);
+        self.0 += 1;
+        Ok(())
+    }
+
+    fn tlatom(&mut self, vm: &mut R8VM, v: PV, _is_tail: bool, _src: Source) -> Result<()> {
+        vm.mem.push(v);
+        self.0 += 1;
+        Ok(())
+    }
+
+    fn finalize(self, vm: &mut R8VM) -> Result<PV> {
+        vm.mem.list(self.0);
+        let v = vm.mem.pop().unwrap();
+        vm.mem.untag_ast(v);
+        Ok(v)
+    }
+}
+
+pub struct ReadCompile {
+    cc: R8Compiler,
+    modfn_pos: usize,
+}
+
+impl ReadCompile {
+    pub fn new(vm: &R8VM) -> Self {
+        Self { cc: R8Compiler::new(vm), modfn_pos: 0 }
+    }
+}
+
+impl Sexper for ReadCompile {
+    fn tlsexpre(&mut self, vm: &mut R8VM, num: u32, dot: bool) -> Result<PV> {
+        vm.expand_from_stack(num, dot)
+    }
+
+    fn sexpre(&mut self, vm: &mut R8VM, v: PV) -> Result<PV> {
+        vm.macroexpand_pv(v, false)
+    }
+
+    fn sexp(&mut self, vm: &mut R8VM, v: PV, is_tail: bool, src: Source) -> Result<()> {
+        self.cc.set_offsets(vm);
+
+        // FIXME: This is SLOW and has to be REMOVED removed
+        self.cc.update_globals(vm);
+
+        let excv = Excavator::new(&vm.mem);
+        let file = src.file.clone();
+        let mut ast = excv.to_ast(v, src)?;
+        vm.mem.clear_tags();
+        let mut opto = Optomat::new();
+        opto.visit(&mut ast)?;
+        if is_tail {
+            self.modfn_pos = self.cc.compile_top_tail(ast, file)?;
+        } else {
+            self.cc.compile_top(ast)?;
+        }
+        self.cc.take(vm)?;
+
+        Ok(())
+    }
+
+    fn tlatom(&mut self, vm: &mut R8VM, v: PV, is_tail: bool, src: Source) -> Result<()> {
+        let excv = Excavator::new(&vm.mem);
+        let file = src.file.clone();
+        let ast = excv.to_ast(v, src)?;
+        if is_tail {
+            self.modfn_pos = self.cc.compile_top_tail(ast, file)?;
+        } else {
+            self.cc.compile_top(ast)?;
+        }
+        self.cc.take(vm)?;
+        Ok(())
+    }
+
+    fn finalize(self, vm: &mut R8VM) -> Result<PV> {
+        if self.modfn_pos != 0 {
+            Ok(call_with!(vm, self.modfn_pos, 0, {}))
+        } else {
+            Ok(PV::Nil)
+        }
+    }
+}
+
 impl R8VM {
     pub fn no_std() -> R8VM {
         let mut vm = R8VM {
@@ -1219,20 +1315,13 @@ impl R8VM {
         self.globals.get(&name).copied()
     }
 
-    /// Reads LISP code into an AST.
-    pub fn read(&mut self, _sexpr: &str) -> Result<PV> {
-        bail!(Unimplemented { feature: "read" })
-        // self.read_compile(&format!("'({sexpr})"), None)
-    }
-
     /// Reads LISP code into an AST from file.
-    pub fn read_from(&mut self, _path: impl AsRef<Path>) -> Result<PV> {
-        bail!(Unimplemented { feature: "read-from" })
-        // let sexpr = fs::read_to_string(path.as_ref())?;
-        // let name = path.as_ref().file_stem().map(|p| {
-        //     p.to_string_lossy().into_owned()
-        // }).map(Cow::from);
-        // self.read_compile(&format!("'({sexpr})"), name)
+    pub fn read_from(&mut self, path: impl AsRef<Path>) -> Result<PV> {
+        let sexpr = fs::read_to_string(path.as_ref())?;
+        let name = path.as_ref().file_stem().map(|p| {
+            p.to_string_lossy().into_owned()
+        }).map(Cow::from);
+        self.read(&format!("'({sexpr})"), name)
     }
 
     pub fn read_compile_from(&mut self, path: impl AsRef<Path>) -> Result<PV> {
@@ -1243,190 +1332,20 @@ impl R8VM {
         self.read_compile(&sexpr, name)
     }
 
+    pub fn read(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV> {
+        let tok_tree = self.tok_tree.clone();
+        let toker = tokit::Toker::new(sexpr, &tok_tree);
+        let rc = Reader(0);
+        let sexpert = Sexpert::new(rc, toker, self.reader_macros.clone(), file);
+        sexpert.read(self)
+    }
+
     pub fn read_compile(&mut self, sexpr: &str, file: SourceFileName) -> Result<PV> {
         let tok_tree = self.tok_tree.clone();
-        let mut tokit = tokit::Toker::new(sexpr, &tok_tree);
-        let mut mods: Vec<SymID> = vec![];
-        let mut close = vec![];
-        let mut pmods = vec![];
-        let mut dots = vec![];
-        let mut dot = None;
-        let mut num: u32 = 0;
-        let mut srcs = vec![];
-        let mut src_idxs = vec![0];
-        let mut cc = R8Compiler::new(self);
-        macro_rules! wrap {
-            ($push:expr) => {{
-                $push;
-                while let Some(op) = mods.pop() {
-                    let p = self.mem.pop().expect("No expr to wrap");
-                    self.mem.push(PV::Sym(op));
-                    self.mem.push(p);
-                    self.mem.list(2);
-                }
-            }};
-        }
-        macro_rules! assert_no_trailing {
-            ($($meta:expr),*) => {
-                if !mods.is_empty() {
-                    let mods = mods.into_iter()
-                                   .map(|s| s.to_string())
-                                   .collect::<Vec<_>>()
-                                   .join("");
-                    return Err(error!(TrailingModifiers, mods)$(.amend($meta))*);
-                }
-            };
-        }
-        let mut modfn_pos = 0;
-        while let Some(tok) = tokit.next() {
-            let Token { line, col, text } = tok;
-            srcs.push(LineCol { line, col });
-            match text {
-                "(" => {
-                    src_idxs.push(srcs.len());
-                    pmods.push(take(&mut mods));
-                    close.push(num + 1);
-                    dots.push(dot);
-                    dot = None;
-                    num = 0;
-                }
-                ")" if close.is_empty() => bail!(TrailingDelimiter { close: ")" }),
-                "." if close.is_empty() => bail!(OutsideContext {
-                    ctx: Builtin::List,
-                    op: Builtin::ConsDot
-                }),
-                "." if num == 0 => bail!(SyntaxError(SyntaxErrorKind::DotAtStartOfList)),
-                "." if dot.is_some() => bail!(SyntaxError(SyntaxErrorKind::DotAfterDot)),
-                "." => {
-                    if tokit.peek().map(|t| t.text == ")").unwrap_or_default() {
-                        bail!(SyntaxError(SyntaxErrorKind::DotAtEndOfList))
-                    }
-
-                    if !mods.is_empty() {
-                        bail!(SyntaxError(SyntaxErrorKind::ModifierBeforeDot))
-                    }
-
-                    dot = Some(num)
-                },
-                ")" => {
-                    if let Some(dot_at) = dot {
-                        if dot_at != num-1 {
-                            bail!(SyntaxError(SyntaxErrorKind::MoreThanOneElemAfterDot))
-                        }
-                    }
-                    assert_no_trailing!(Meta::Source(LineCol { line, col }));
-                    let src_idx = src_idxs.pop().unwrap();
-                    let fst_src = srcs[src_idx].into_source(file.clone());
-                    let cur_srcs = srcs.drain(src_idx..)
-                                       .map(|lc| lc.into_source(file.clone()));
-                    mods = pmods.pop().expect("Unable to wrap expr");
-                    if num > 0 && close.len() == 1 {
-                        let v = if mods.is_empty() {
-                            let idx = self.mem.stack.len() - num as usize;
-                            let stack = take(&mut self.mem.stack);
-                            for (pv, src) in stack[idx..].iter().zip(cur_srcs) {
-                                pv.tag(&mut self.mem, src);
-                            }
-                            let _ = replace(&mut self.mem.stack, stack);
-                            self.expand_from_stack(num, dot.is_some())?
-                        } else {
-                            wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot.is_some()));
-                            let pv = self.mem.pop().unwrap();
-                            self.macroexpand_pv(pv, false)?
-                        };
-                        // dbg!(PVSrcFmt { v, mem: &self.mem }.lisp_to_string());
-                        // ^ macroexpand can eval/defun, so update offsets
-                        cc.set_offsets(self);
-
-                        // FIXME: This is SLOW and has to be REMOVED removed
-                        cc.update_globals(self);
-
-                        let excv = Excavator::new(&self.mem);
-                        let mut ast = excv.to_ast(v, fst_src)?;
-                        self.mem.clear_tags();
-                        let mut opto = Optomat::new();
-                        opto.visit(&mut ast)?;
-                        if tokit.peek().is_some() {
-                            cc.compile_top(ast)?;
-                        } else {
-                            modfn_pos = cc.compile_top_tail(ast, file.clone())?;
-                        }
-                        cc.take(self)?;
-                    } else {
-                        wrap!(self.mem.list_dot_srcs(num, cur_srcs, dot.is_some()));
-                    }
-
-                    dot = dots.pop().unwrap();
-                    num = close.pop()
-                               .ok_or_else(
-                                   || error!(TrailingDelimiter, close: ")")
-                                       .amend(Meta::Source(LineCol { line, col })))?;
-                }
-                _ => {
-                    let sexpr_mod = sexpr_modifier_bt(text)
-                        .map(|b| b.sym_id())
-                        .or_else(|| {
-                            self.reader_macros.get(text).copied()
-                        });
-                    let pv = if let Some(m) = sexpr_mod {
-                        mods.push(m);
-                        continue;
-                    } else if let Ok(int) = text.parse() {
-                        PV::Int(int)
-                    } else if let Ok(num) = text.parse() {
-                        let mut tit = text.chars().peekable();
-                        let fst = tit.peek();
-                        if fst == Some(&'-') || fst == Some(&'+') {
-                            tit.next();
-                        }
-                        if tit.all(|x| x.is_digit(10)) {
-                            bail!(IntegerLiteralTooLarge {
-                                lit: text.to_string()
-                            })
-                        }
-                        PV::Real(num)
-                    } else if let Some(strg) = tok.inner_str() {
-                        self.mem.put_pv(string_parse(&strg)?)
-                    } else if text == "true" {
-                        PV::Bool(true)
-                    } else if text == "false" {
-                        PV::Bool(false)
-                    } else if text == "nil" {
-                        PV::Nil
-                    } else {
-                        PV::Sym(self.mem.symdb.put_ref(text).id())
-                    };
-
-                    if !close.is_empty() {
-                        wrap!(self.mem.push(pv));
-                    } else if tokit.peek().is_none() {
-                        wrap!(self.mem.push(pv));
-                        let pv = self.mem.pop().unwrap();
-                        let excv = Excavator::new(&self.mem);
-                        let src = LineCol { line, col }.into_source(file.clone());
-                        let ast = excv.to_ast(pv, src)?;
-                        modfn_pos = cc.compile_top_tail(ast, file.clone())?;
-                        cc.take(self)?;
-                    } else {
-                        continue;
-                    }
-
-                    num += 1;
-                }
-            }
-        }
-        tokit.check_error().map_err(|e| if let Some(file) = file {
-            e.amend(Meta::SourceFile(file))
-        } else { e })?;
-        if !close.is_empty() {
-            bail!(UnclosedDelimiter { open: "(" })
-        }
-        assert_no_trailing!();
-        if modfn_pos != 0 {
-            Ok(call_with!(self, modfn_pos, 0, {}))
-        } else {
-            Ok(PV::Nil)
-        }
+        let toker = tokit::Toker::new(sexpr, &tok_tree);
+        let rc = ReadCompile::new(self);
+        let sexpert = Sexpert::new(rc, toker, self.reader_macros.clone(), file);
+        sexpert.read(self)
     }
 
     fn expand_from_stack(&mut self, n: u32, dot: bool) -> Result<PV> {

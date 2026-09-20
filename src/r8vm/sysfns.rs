@@ -158,7 +158,7 @@ std_subrs! {
     }
 
     fn read(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {
-        vm.read(&tostring(*x))
+        vm.read(&tostring(*x), None)
     }
 
     fn read_from(&mut self, vm: &mut R8VM, args: (x)) -> Result<PV> {

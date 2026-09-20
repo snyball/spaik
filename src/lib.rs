@@ -32,6 +32,7 @@
 extern crate log;
 #[macro_use]
 pub mod error;
+pub(crate) mod reader;
 #[macro_use]
 pub(crate) mod utils;
 #[macro_use]
