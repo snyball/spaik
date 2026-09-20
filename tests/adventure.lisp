@@ -982,10 +982,10 @@
 
 ;; ---- demo walkthrough ----
 ;;
-;; This interpreter's `read`/`read-from` builtins are unimplemented (they
-;; raise `Unimplemented`), and a file passed as
-;; the `run` argument doesn't also consume stdin, so there is no way for
-;; a running program to read further interactive input mid-execution.
+;; `read`/`read-from` parse source text into forms, they do not read
+;; interactive input, and a file passed as the `run` argument doesn't
+;; also consume stdin - so there is no way for a running program to
+;; read further interactive input mid-execution.
 ;; Interactive play is still possible: run `./run` with NO file argument
 ;; and paste `(cmd "...")` forms in one at a time (or pipe a file of
 ;; them) - `run` reads and executes one top-level form at a time from

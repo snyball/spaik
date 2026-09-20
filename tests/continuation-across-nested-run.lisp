@@ -103,3 +103,38 @@
 
 (test cnr-throw-out-of-a-resumed-continuation-across-eval
       (eq? :cnr-survived (cnr/throw-across-eval)))
+
+;; A frame pushed AFTER a resume could come back with the wrong value
+;; whenever its corrected number happened to collide with the number
+;; the resume itself used - a value-equality bug, not an off-by-one -
+;; and that collision used to abort the process instead of just
+;; misbehaving. Three ordinary function calls after the resume is
+;; enough to reach a colliding frame number.
+(defvar cnr/k1 nil)
+(defun cnr/fb0 () :cnr-fb0)
+(defun cnr/fb1 () (cnr/fb0))
+(defun cnr/fbt (x1) (cnr/fb1))
+(defun cnr/resume-then-call-three-deep ()
+  (call/cc (lambda (c) (set cnr/k1 c) (eval '(cnr/k1 :one))))
+  (cnr/fbt 1)
+  :cnr-survived)
+
+(test cnr-frame-number-collision-after-a-resume-no-longer-aborts
+      (eq? :cnr-survived (cnr/resume-then-call-three-deep)))
+
+;; Two escapes captured at different call depths used to leave a stale
+;; correction standing that the wrong later frame inherited, landing
+;; outside the stack. The three-function chain below is the minimum
+;; depth gap that used to reach it.
+(defvar cnr/k2a nil)
+(defvar cnr/k2b nil)
+(defun cnr/tc0 () (call/cc (lambda (c) (set cnr/k2b c) (eval '(cnr/k2b :two)))) :tc0)
+(defun cnr/tc1 () (cnr/tc0))
+(defun cnr/tc2 () (cnr/tc1))
+(defun cnr/two-resumes-different-depths ()
+  (call/cc (lambda (c) (set cnr/k2a c) (eval '(cnr/k2a :one))))
+  (cnr/tc2)
+  :cnr-survived)
+
+(test cnr-two-resumes-at-different-depths-no-longer-aborts
+      (eq? :cnr-survived (cnr/two-resumes-different-depths)))

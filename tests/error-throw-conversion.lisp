@@ -186,19 +186,19 @@
       ;; float division by zero is NOT an error - it is an infinity
       (= 3 (errc/catch 'divide-by-zero '(if (= (/ 1.0 0) (/ 2.0 0)) 3 4))))
 
-;;; ---[ unimplemented ]---------------------------------------------------
+;;; ---[ read / read-from: real builtins now, nothing to catch ]-----------
 
-(defun errc/ui-read ()      (errc/msg? 'unimplemented "Unimplemented: " '(read "1")))
-(defun errc/ui-read-from () (errc/msg? 'unimplemented "Unimplemented: " '(read-from "f")))
+;; `read` and `read-from` used to be Rust `unimplemented!()` panics that
+;; took the process down, then ordinary `unimplemented` throws. Both are
+;; real builtins now: they parse source and hand back the list of forms
+;; found, unevaluated, so `errc/catch` sees a return value, not a raise.
+(defun errc/read-string () (errc/catch 'unimplemented '(read "(+ 1 2)")))
+(defun errc/read-file ()   (errc/catch 'unimplemented '(read-from "tests/html.lisp")))
 
-(test errc-unimplemented
-      ;; `read` and `read-from` are declared but not implemented. Both
-      ;; used to be Rust `unimplemented!()` panics that took the process
-      ;; down; they are ordinary in-language errors now, which is what
-      ;; this pins. Replace with real behaviour tests once the builtins
-      ;; exist.
-      (errc/ui-read)
-      (errc/ui-read-from))
+(test errc-read-and-read-from-are-implemented
+      (eq? '((+ 1 2)) (errc/read-string))
+      (cons? (errc/read-file))
+      (< 0 (len (errc/read-file))))
 
 ;;; ---[ iter-stop: the tag nothing raises ]----------------------------------
 

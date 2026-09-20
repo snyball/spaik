@@ -45,7 +45,6 @@
       ;; call restores it, which is what `not` is doing here.
       (rvr/raised? 'undefined-variable '(if rvr-no-such-global :rvr-then :rvr-else))
       (rvr/raised? 'undefined-function '(if (rvr-no-such-fn) :rvr-then :rvr-else))
-      (rvr/raised? 'unimplemented '(if (read "1") :rvr-then :rvr-else))
       (rvr/raised? 'module-not-found '(if (require rvr-no-such-module) :rvr-then :rvr-else))
       (rvr/raised? 'reference-not-allowed '(if (error 'rvr-k (list 1)) :rvr-then :rvr-else))
       ;; the `error` builtin, and fmt's expansion-time diagnostics
