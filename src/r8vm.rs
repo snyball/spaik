@@ -107,6 +107,8 @@ chasm_def! {
     MUL(),
 
     // Meta
+    MXP(),
+    PRT(),
     EVL()
 }
 
@@ -434,6 +436,9 @@ pub struct R8VM {
     debug_mode: VmDebugOpts,
 
     frame: usize,
+    base: usize,
+
+    re_enter: usize,
 }
 
 impl Default for R8VM {
@@ -460,6 +465,8 @@ impl Default for R8VM {
             frame: Default::default(),
             srctbl: Default::default(),
             trace_counts: Default::default(),
+            re_enter: 0,
+            base: 0,
         }
     }
 }
@@ -503,7 +510,7 @@ macro_rules! call_with {
         $vm.frame = $vm.mem.stack.len();
         $body
         $vm.mem.push(PV::UInt(0));
-        $vm.mem.push(PV::UInt(frame));
+        $vm.mem.push(PV::UInt(0));
         unsafe {
             $vm.run_from_unwind($pos, frame, false)?;
         }
@@ -526,7 +533,7 @@ macro_rules! symcall_with {
         $vm.frame = $vm.mem.stack.len();
         $body
         $vm.mem.push(PV::UInt(0));
-        $vm.mem.push(PV::UInt(frame));
+        $vm.mem.push(PV::UInt(0));
         let pos = func.pos;
         unsafe {
             $vm.run_from_unwind(pos, frame, false)?;
@@ -1093,8 +1100,8 @@ impl R8VM {
     }
 
     pub fn catch(&mut self, dip: usize, sym: Option<SymID>) {
-        let top = self.mem.stack.len();
-        let frame = self.frame;
+        let frame = self.frame - self.base;
+        let top = self.mem.stack.len() - self.base;
         self.catch.push(Guard {
             top, sym: sym.map(|s| s.as_int() as usize), frame, dip,
         })
@@ -1106,6 +1113,14 @@ impl R8VM {
 
     pub fn catch_clear(&mut self) {
         self.catch.clear()
+    }
+
+    pub fn fixup_frame(&self, frame: usize) -> usize {
+        self.base + frame
+    }
+
+    pub fn inv_fixup_frame(&self, frame: usize) -> usize {
+        (frame as isize - self.base as isize).try_into().expect("underflow")
     }
 
     pub fn op_unwind(&mut self) -> Result<usize> {
@@ -1123,8 +1138,8 @@ impl R8VM {
                 _ => ()
             }
         };
-        self.frame = frame;
-        self.mem.stack.truncate(catchp);
+        self.frame = self.base + frame;
+        self.mem.stack.truncate(self.base + catchp);
         self.mem.stack.push(val);
         Ok(dip)
     }
@@ -1429,7 +1444,7 @@ impl R8VM {
             let frame = self.frame;
             self.frame = self.mem.stack.len() - (n as usize) + 1;
             self.mem.push(PV::UInt(0));
-            self.mem.push(PV::UInt(frame));
+            self.mem.push(PV::UInt(0));
             let pos = func.pos;
             unsafe { self.run_from_unwind(pos, frame, true)?; }
             let res = self.mem.pop().expect("Function did not return a value");
@@ -1516,7 +1531,7 @@ impl R8VM {
 
                 // Push previous call-frame and run macro
                 self.mem.push(PV::UInt(0));
-                self.mem.push(PV::UInt(frame));
+                self.mem.push(PV::UInt(0));
                 unsafe { self.run_from_unwind(func.pos, frame, true)?; }
 
                 // Set new expand-candidate to the result of the macro
@@ -1751,7 +1766,7 @@ impl R8VM {
                 }
             };
             self.frame = match self.mem.stack[frame+1] {
-                PV::UInt(x) => x,
+                PV::UInt(x) => self.fixup_frame(x),
                 _ => {
                     log::warn!("Incomplete stack trace!");
                     break;
@@ -1805,12 +1820,17 @@ impl R8VM {
                               -> std::result::Result<usize, Traceback>
     {
         let cth = mem::replace(&mut self.catch, Default::default());
+        let base = self.base;
+        self.base = self.frame;
+        self.re_enter += 1;
         let res = match self.run_from(offs) {
             Ok(ip) => Ok(ip),
             Err((ip, e)) => {
                 Err(self.unwind_traceback(ip, e))
             },
         };
+        self.base = base;
+        self.re_enter -= 1;
         if !internal {
             self.mem.pop_borrows();
         }
@@ -1832,12 +1852,13 @@ impl R8VM {
     }
 
     fn warp(&mut self, cont: &Continuation, val: PV) -> usize {
-        self.mem.stack.clear();
+        log::info!("warping! {}", cont.lisp_to_string());
+        self.mem.stack.truncate(self.base);
         self.mem.stack.extend((*cont).stack.iter());
         self.catch.clear();
         self.catch.extend((*cont).catch.iter());
         self.mem.stack.push(val);
-        self.frame = (*cont).frame;
+        self.frame = self.fixup_frame((*cont).frame);
         cont.dip
     }
 
@@ -2198,9 +2219,10 @@ impl R8VM {
                 },
                 BOOL(i) => self.mem.push(PV::Bool(i != 0)),
                 ZAV(nargs, nenv) => {
-                    let start_idx = self.frame + nargs as usize;
+                    let frame = self.frame;
+                    let start_idx = frame + nargs as usize;
                     let end_idx = start_idx + nenv as usize;
-                    let lambda = self.mem.stack[self.frame];
+                    let lambda = self.mem.stack[frame];
                     let new_env = &self.mem.stack[start_idx..end_idx];
                     // Save environment
                     with_ref_mut!(lambda, Lambda(lambda) => {
@@ -2305,24 +2327,28 @@ impl R8VM {
                         self.dump_stack().unwrap();
                         panic!("Invalid frame, expected two unsigned-integers")
                     };
-                    self.frame = frame;
+                    self.frame = self.fixup_frame(frame);
                     ip = self.ret_to(dip);
                     // yeet the stack frame
                     self.mem.stack.truncate(old_frame);
                     self.mem.push(rv);
+                    assert!(self.frame <= self.mem.stack.len());
                 }
                 ZCALL(nargs) => ip = self.op_clzcall(ip, nargs as usize)?,
                 APL() => ip = self.apl(ip)?,
                 CCONT(dip) => {
                     let dip = self.ip_delta(ip) as isize + dip as isize;
-                    let mut stack = self.mem.stack.clone();
+                    let mut stack = (&self.mem.stack[self.base..]).iter()
+                                                                  .copied()
+                                                                  .collect::<Vec<PV>>();
                     stack.pop();
                     let cnt = Continuation {
                         stack,
-                        frame: self.frame,
+                        frame: self.inv_fixup_frame(self.frame),
                         dip: dip as usize,
                         catch: self.catch.clone(),
                     };
+                    log::trace!("{cnt:?}");
                     for v in cnt.stack.iter().copied() {
                         barrier!(v);
                     }
@@ -2391,6 +2417,10 @@ impl R8VM {
                     let val = barrier!(self.mem.pop()?);
                     self.mem.set_env(var as usize, val);
                 }
+
+                MXP() => unimplemented!(),
+
+                PRT() => unimplemented!(),
 
                 EVL() => {
                     let dip = self.ip_delta(ip);
@@ -2497,7 +2527,7 @@ impl R8VM {
     fn call_pre(&mut self, ip: *const r8c::Op) {
         let dip = self.ip_delta(ip);
         self.mem.push(PV::UInt(dip));
-        self.mem.push(PV::UInt(self.frame));
+        self.mem.push(PV::UInt(self.inv_fixup_frame(self.frame)));
     }
 
     /**
@@ -2538,13 +2568,14 @@ impl R8VM {
         let frame = self.frame;
         self.frame = self.mem.stack.len();
         self.mem.push(PV::UInt(0));
-        self.mem.push(PV::UInt(frame));
+        self.mem.push(PV::UInt(0));
         self.mem.push(f);
         let pos = clzcall_pad_dip(args.nargs() as u16);
         args.pusharg(&mut self.mem)?;
         unsafe {
             self.run_from_unwind(pos, frame, false)?;
         }
+        self.frame = frame;
         self.mem.pop()
     }
 
@@ -2552,13 +2583,14 @@ impl R8VM {
         let frame = self.frame;
         self.frame = self.mem.stack.len();
         self.mem.push(PV::UInt(0));
-        self.mem.push(PV::UInt(frame));
+        self.mem.push(PV::UInt(0));
         self.mem.push(f.pv(&self.mem));
         let pos = clzcall_pad_dip(args.inner_nargs() as u16);
         args.inner_pusharg(&mut self.mem)?;
         unsafe {
             self.run_from_unwind(pos, frame, false)?;
         }
+        self.frame = frame;
         self.mem.pop()
     }
 

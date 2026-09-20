@@ -1,102 +1,105 @@
-;;; Generators primed inside a nested run and driven from outside it.
-;;; The priming drive answers the first yield, the outside drive the second.
-;;; That second drive aborted the process until 2026-09-20.
+;;; Continuations that cross a nested-run boundary: `eval`, `read-compile`,
+;;; and the compiler running a macro. These aborted the process until
+;;; 2026-09-20; pinned here so a resume across the boundary stays a value.
 
-;; A nested run is opened by `eval`, by a native reached through `zcall`
-;; (`read-compile`, `macroexpand`, `_load`), and by the compiler while it
-;; expands a macro. A generator built and primed inside one holds a
-;; continuation belonging to that run, so driving it afterwards resumes
-;; across the boundary.
-;;
-;; That crossing used to end the process with a Rust assertion, "Bad access
-;; pattern", naming the two stack bases it had compared. It is legitimate:
-;; the continuation outlives the run it was captured in, which is what a
-;; generator handed back to its caller is FOR. Every generator below yields
-;; twice and returns a third value, so the drive from outside is the
-;; assertion that matters — it is the one that has to cross.
-;;
-;; The priming runs at load time on purpose. It is the shape a library has
-;; when it hands out an already-started generator, and it keeps each drive
-;; to exactly one, so a value here cannot drift by being driven twice.
+;; A nested run is opened by `eval`, by a native reached through the VM's
+;; native-call path (`read-compile`, `macroexpand`, `_load`), and by the
+;; compiler while it expands a macro. A generator is `call/cc` plus a pair
+;; of continuations, so driving one either side of such a boundary is the
+;; cheapest way to make a continuation cross it.
 
-;;; ---[ eval ]--------------------------------------------------------------
+;; Every helper below builds its own generator and performs the whole
+;; sequence of drives, because tests in this tree do not run in file order
+;; and a fixture split across two clauses would depend on one.
 
-(defvar cnr/eg nil)
+;; Made and primed INSIDE the nested run, driven after it returned: the
+;; continuation outlives the run it was captured in. Answers 78 - the
+;; priming drive inside, then the drive outside.
+(defvar cnr/in-eval nil)
+(defun cnr/made-inside-eval ()
+  (let ((a (eval '(progn (set cnr/in-eval (gen (lambda (yi) (yi 7) (yi 8) 9)))
+                         (cnr/in-eval nil)))))
+    (+ (* 10 a) (cnr/in-eval nil))))
 
-;; The `eval`'s VALUE is bound rather than discarded: an `eval` in statement
-;; position is compiled away, and then the generator is never built and the
-;; variable stays nil — a test that proves nothing.
-(defvar cnr/eval-primed
-  (eval '(progn (set cnr/eg (gen (lambda (yi) (yi 7) (yi 8) 9)))
-                (cnr/eg nil))))
-(defvar cnr/eval-driven (cnr/eg nil))
+(test cnr-generator-made-inside-eval-drives-after-it-returned
+      (= 78 (cnr/made-inside-eval)))
 
-(defun cnr/eval-primed-value () cnr/eval-primed)
-(defun cnr/eval-driven-value () cnr/eval-driven)
+(defvar cnr/in-rc nil)
+(defun cnr/made-inside-read-compile ()
+  (let ((a (read-compile "(progn (set cnr/in-rc (gen (lambda (yi) (yi 7) (yi 8) 9))) (cnr/in-rc nil))")))
+    (+ (* 10 a) (cnr/in-rc nil))))
 
-;;; ---[ read-compile ]------------------------------------------------------
+(test cnr-generator-made-inside-read-compile-drives-after-it-returned
+      (= 78 (cnr/made-inside-read-compile)))
 
-;; `read-compile` compiles and runs a source STRING at runtime. It reaches
-;; its nested run by a different route than `eval` does, and the same
-;; crossing used to end the run silently at exit 0 before it aborted.
+;; The other direction: captured OUTSIDE, resumed INSIDE. The drives run
+;; outside, inside, then outside again, so the generator's own state has to
+;; survive both entering and leaving the nested run. Answers 123.
+(defvar cnr/across nil)
+(defun cnr/around-eval ()
+  (set cnr/across (gen (lambda (yi) (yi 1) (yi 2) (yi 3) 4)))
+  (let ((a (cnr/across nil))
+        (b (eval '(cnr/across nil)))
+        (c (cnr/across nil)))
+    (+ (* 100 a) (* 10 b) c)))
 
-(defvar cnr/rg nil)
+(test cnr-generator-driven-outside-then-inside-eval-then-outside
+      (= 123 (cnr/around-eval)))
 
-(defvar cnr/rc-primed
-  (read-compile
-   "(progn (set cnr/rg (gen (lambda (yi) (yi 7) (yi 8) 9))) (cnr/rg nil))"))
-(defvar cnr/rc-driven (cnr/rg nil))
+(defvar cnr/across-rc nil)
+(defun cnr/around-read-compile ()
+  (set cnr/across-rc (gen (lambda (yi) (yi 1) (yi 2) (yi 3) 4)))
+  (let ((a (cnr/across-rc nil))
+        (b (read-compile "(cnr/across-rc nil)"))
+        (c (cnr/across-rc nil)))
+    (+ (* 100 a) (* 10 b) c)))
 
-(defun cnr/rc-primed-value () cnr/rc-primed)
-(defun cnr/rc-driven-value () cnr/rc-driven)
+(test cnr-generator-driven-outside-then-inside-read-compile-then-outside
+      (= 123 (cnr/around-read-compile)))
 
-;;; ---[ macro expansion ]---------------------------------------------------
+;; The compiler is the third source of a nested run: a macro that pulls a
+;; value from a generator resumes a continuation at COMPILE time, and the
+;; runtime drive afterwards picks up where expansion left off. Neither
+;; `eval` nor `read-compile` appears in this shape. Answers 10 then 20.
+(defvar cnr/at-expansion (gen (lambda (yi) (yi 10) (yi 20) 30)))
+(defmacro cnr/take () (cnr/at-expansion nil))
+(defun cnr/expansion-then-runtime ()
+  (let ((a (cnr/take)))
+    (+ a (cnr/at-expansion nil))))
 
-;; A macro that hands out a compile-time-unique value by pulling it from a
-;; generator. The expansion runs in the compiler's own nested run, so the
-;; drive inside `cnr/take` captures a continuation belonging to the
-;; compiler; the drive below it is an ordinary runtime one from outside.
-;;
-;; This is the shape with no `eval` and no `read-compile` written anywhere
-;; in it — the boundary is opened by the compiler, and nothing in the
-;; source says so.
+(test cnr-macro-expansion-drive-and-runtime-drive-are-consecutive
+      (= 30 (cnr/expansion-then-runtime)))
 
-(defvar cnr/c (gen (lambda (yi) (yi 10) (yi 20) 30)))
+;; A continuation captured while the COMPILER was running a macro, then
+;; resumed inside a runtime nested run, used to bring the compiler's own
+;; working stack back into the program and abort the process. The whole
+;; file is expanded before any of it runs, so `cnr/mk` is live by then.
+(defvar cnr/mk nil)
+(defmacro cnr/grab () (call/cc (lambda (c) (set cnr/mk c) nil)) ''x)
+(cnr/grab)
+(defun cnr/resume-compiler-capture ()
+  (read-compile "(cnr/mk nil)")
+  :cnr-survived)
 
-(defmacro cnr/take () (cnr/c nil))
+(test cnr-compile-time-capture-resumed-in-a-native-nested-run
+      (eq? :cnr-survived (cnr/resume-compiler-capture)))
 
-(defvar cnr/mac-expanded (cnr/take))
-(defvar cnr/mac-driven (cnr/c nil))
+;; A `throw` leaving a RESUMED continuation and crossing an `eval` used to
+;; leave the capture frame of the enclosing closure un-popped, and the
+;; handler's return then read live data where a frame record belonged. The
+;; closure must capture an upvalue and the `catch` must sit in a real call
+;; frame for this to be the shape that broke.
+(defvar cnr/rk nil)
+(defun cnr/callit (f) (f))
+(defun cnr/thrower (a)
+  (cnr/callit (lambda ()
+                (call/cc (lambda (k2) (set cnr/rk k2) (throw 'cnr-esc nil)))
+                (throw 'cnr-tt a))))
+(defun cnr/resume-under-catch () (catch 'cnr-tt (eval '(cnr/rk nil))))
+(defun cnr/throw-across-eval ()
+  (catch 'cnr-esc (cnr/thrower 3))
+  (cnr/resume-under-catch)
+  :cnr-survived)
 
-(defun cnr/mac-expanded-value () cnr/mac-expanded)
-(defun cnr/mac-driven-value () cnr/mac-driven)
-
-;;; ---[ the control: no boundary anywhere ]---------------------------------
-
-;; The same two drives with the generator built at top level. If this one
-;; ever fails, the break is in `gen` itself rather than in the crossing,
-;; and the three above say nothing about nested runs.
-
-(defvar cnr/plain (gen (lambda (yi) (yi 7) (yi 8) 9)))
-
-(defvar cnr/plain-first (cnr/plain nil))
-(defvar cnr/plain-second (cnr/plain nil))
-
-(defun cnr/plain-first-value () cnr/plain-first)
-(defun cnr/plain-second-value () cnr/plain-second)
-
-(test cnr-generator-primed-inside-eval-drives-outside
-      (= 7 (cnr/eval-primed-value))
-      (= 8 (cnr/eval-driven-value)))
-
-(test cnr-generator-primed-inside-read-compile-drives-outside
-      (= 7 (cnr/rc-primed-value))
-      (= 8 (cnr/rc-driven-value)))
-
-(test cnr-generator-driven-during-macro-expansion-drives-at-runtime
-      (= 10 (cnr/mac-expanded-value))
-      (= 20 (cnr/mac-driven-value)))
-
-(test cnr-same-two-drives-with-no-nested-run
-      (= 7 (cnr/plain-first-value))
-      (= 8 (cnr/plain-second-value)))
+(test cnr-throw-out-of-a-resumed-continuation-across-eval
+      (eq? :cnr-survived (cnr/throw-across-eval)))
