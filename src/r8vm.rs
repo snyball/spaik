@@ -1036,8 +1036,7 @@ impl<Op: Sized + Copy> PMem<Op> {
     }
 
     pub fn new() -> Self {
-        // let sz = 4;
-        let sz = 1024 * 1024 * 64;
+        let sz = 4096;
         let layout = Layout::from_size_align(sz*size_of::<Op>(), align_of::<Op>())
             .unwrap();
         let ops = unsafe {
