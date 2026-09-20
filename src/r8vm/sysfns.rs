@@ -423,12 +423,16 @@ std_subrs! {
     }
 
     fn read_compile(&mut self, vm: &mut R8VM, args: (code)) -> Result<PV> {
-        with_ref_mut!(*code, String(s) => { vm.read_compile((*s).as_ref(), None) })
+        with_ref_mut!(*code, String(s) => {
+            let code = (*s).clone();
+            vm.read_compile(code.as_ref(), None)
+        })
     }
 
     fn read_compile_from(&mut self, vm: &mut R8VM, args: (arg)) -> Result<PV> {
         with_ref_mut!(*arg, String(s) => {
-            vm.read_compile_from(&*s)
+            let path = (*s).clone();
+            vm.read_compile_from(path)
         })
     }
 
