@@ -1,5 +1,6 @@
 //! ChASM /ˈkæz(ə)m/, an assembler
 
+use crate::r8vm::{r8c, IPtr};
 use crate::Builtin;
 use crate::nkgc::SymID;
 use std::io::{Read, Write, self};
@@ -108,6 +109,9 @@ impl From<Lbl> for Arg {
 }
 impl From<SymID> for Arg {
     fn from(v: SymID) -> Self { Arg::ASMPV(v.as_int().into()) }
+}
+impl From<IPtr<r8c::Op>> for Arg {
+    fn from(v: IPtr<r8c::Op>) -> Self { Arg::ASMPV(ASMPV::u32(v.into())) }
 }
 
 #[derive(Debug, Clone)]
@@ -441,6 +445,6 @@ mod tests {
             let (op, _) = r8c::Op::read(&mut pmem_in).unwrap();
             pmem_2.push(op);
         }
-        assert_eq!(pmem, &pmem_2);
+        assert!(pmem.iter().zip(pmem_2.iter()).all(|(u, v)| *u == *v));
     }
 }

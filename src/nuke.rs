@@ -5,7 +5,7 @@ use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
 use crate::builtins::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 
-use crate::r8vm::{Guard, R8VM};
+use crate::r8vm::{Guard, IP, R8VM};
 use crate::subrs::{IntoLisp, FromLisp, self};
 use core::slice;
 use std::any::{TypeId, Any, type_name};
@@ -922,7 +922,7 @@ impl<T: Userdata> Drop for Gc<T> {
 pub struct Continuation {
     pub stack: Vec<PV>,
     pub frame: usize,
-    pub dip: usize,
+    pub dip: IP,
     pub catch: Vec<Guard>,
 }
 

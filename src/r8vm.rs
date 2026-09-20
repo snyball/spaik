@@ -10,7 +10,7 @@ use crate::module::{LispModule, Export, ExportKind};
 use crate::{
     ast::{Excavator, Visitor}, builtins::Builtin, chasm::{ASMOp, ChASMOpName, Lbl, LblMap, ASMPV}, comp::{R8Compiler, SourceList}, error::{Error, ErrorKind, LineCol, Meta, OpName, Result, Source, SourceFileName, SyntaxErrorKind}, fmt::LispFmt, limits, nkgc::{self, Arena, Cons, ConsOption, Int, Lambda, NonRef, QuasiMut, SymID, PV, SPV}, nuke::*, opt::Optomat, reader::{Sexper, Sexpert}, string_parse::string_parse, subrs::{BoxSubr, FromLisp, Lispify, Subr}, swym::{self, SymRef}, tok::Token, tokit, AsSym, IntoLisp};
 use crate::utils::{HMap, HSet};
-use std::{any::{type_name, Any, TypeId}, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::TryInto, fmt::{self, Debug, Display}, fs, io::{self, prelude::*}, mem::{self, replace, take}, path::{Path, PathBuf}, ptr::{self, addr_of_mut}, sync::{atomic::AtomicU32, Arc, Mutex}};
+use std::{alloc::{alloc, dealloc, realloc, Layout}, any::{type_name, Any, TypeId}, borrow::Cow, cmp::{self, Ordering}, collections::hash_map::Entry, convert::{Infallible, TryInto}, fmt::{self, Debug, Display}, fs, io::{self, prelude::*}, marker::PhantomData, mem::{self, replace, take}, ops::{self, Index, IndexMut}, path::{Path, PathBuf}, ptr::{self, addr_of_mut, NonNull}, sync::{atomic::AtomicU32, Arc, Mutex}};
 #[cfg(feature = "freeze")]
 use serde::{Serialize, Deserialize};
 use crate::stylize::Stylize;
@@ -340,8 +340,8 @@ impl ArgSpec {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Func {
-    pub(crate) pos: usize,
-    pub(crate) sz: usize,
+    pub(crate) pos: IPtr<r8c::Op>,
+    pub(crate) sz: u32,
     pub(crate) args: ArgSpec,
 }
 
@@ -384,7 +384,7 @@ pub struct VmStats {
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Guard {
-    dip: usize,
+    dip: IP,
     sym: Option<usize>,
     top: usize,
     frame: usize,
@@ -409,7 +409,7 @@ pub struct VmDebugOpts {
 #[derive(Clone)]
 pub struct R8VM {
     /// Memory
-    pub(crate) pmem: Vec<r8c::Op>,
+    pub(crate) pmem: PMemT,
     pub mem: Arena,
     pub(crate) globals: HMap<SymID, usize>,
     resources: HMap<TypeId, usize>,
@@ -794,12 +794,12 @@ impl Sexper for Reader {
 
 pub struct ReadCompile {
     cc: R8Compiler,
-    modfn_pos: usize,
+    modfn_pos: Option<IP>,
 }
 
 impl ReadCompile {
     pub fn new(vm: &R8VM) -> Self {
-        Self { cc: R8Compiler::new(vm), modfn_pos: 0 }
+        Self { cc: R8Compiler::new(vm), modfn_pos: None }
     }
 }
 
@@ -825,7 +825,7 @@ impl Sexper for ReadCompile {
         let mut opto = Optomat::new();
         opto.visit(&mut ast)?;
         if is_tail {
-            self.modfn_pos = self.cc.compile_top_tail(ast, file)?;
+            self.modfn_pos = Some(self.cc.compile_top_tail(ast, file)?);
         } else {
             self.cc.compile_top(ast)?;
         }
@@ -839,7 +839,7 @@ impl Sexper for ReadCompile {
         let file = src.file.clone();
         let ast = excv.to_ast(v, src)?;
         if is_tail {
-            self.modfn_pos = self.cc.compile_top_tail(ast, file)?;
+            self.modfn_pos = Some(self.cc.compile_top_tail(ast, file)?);
         } else {
             self.cc.compile_top(ast)?;
         }
@@ -848,25 +848,405 @@ impl Sexper for ReadCompile {
     }
 
     fn finalize(self, vm: &mut R8VM) -> Result<PV> {
-        if self.modfn_pos != 0 {
-            Ok(call_with!(vm, self.modfn_pos, 0, {}))
+        if let Some(pos) = self.modfn_pos {
+            Ok(call_with!(vm, pos, 0, {}))
         } else {
             Ok(PV::Nil)
         }
     }
 }
 
+pub struct PMemIter<'a, Op: Sized + Copy> {
+    max: NonNull<Op>,
+    it: NonNull<Op>,
+    _ph: PhantomData<&'a Op>,
+}
+
+impl<'a, Op: Sized + Copy> Iterator for PMemIter<'a, Op> {
+    type Item = &'a Op;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.it == self.max {
+            None
+        } else {
+            Some(unsafe {
+                let r = self.it;
+                self.it = self.it.add(1);
+                r.as_ref()
+            })
+        }
+    }
+}
+
+pub struct PMemIterMut<'a, Op: Sized + Copy> {
+    max: NonNull<Op>,
+    it: NonNull<Op>,
+    _ph: PhantomData<&'a Op>,
+}
+
+impl<'a, Op: Sized + Copy> Iterator for PMemIterMut<'a, Op> {
+    type Item = &'a mut Op;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.it == self.max {
+            None
+        } else {
+            Some(unsafe {
+                let mut r = self.it;
+                self.it = self.it.add(1);
+                r.as_mut()
+            })
+        }
+    }
+}
+
+impl<Op: Sized + Copy + Debug> fmt::Debug for PMem<Op> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[ ")?;
+        for op in self.iter() {
+            write!(f, "{op:?}; ")?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<Op: Sized + Copy + PartialEq> PartialEq for PMem<Op> {
+    fn eq(&self, other: &Self) -> bool {
+        for (u, v) in self.iter().zip(other.iter()) {
+            if u != v {
+                return false
+            }
+        }
+        true
+    }
+}
+
+impl<Op: Sized + Copy + Eq> Eq for PMem<Op> {}
+
+impl<Op: Sized + Copy> Default for PMem<Op> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
+pub struct IPtr<Op: Sized + Copy>(u32, PhantomData<Op>);
+
+pub type IP = IPtr<r8c::Op>;
+
+impl<Op: Sized + Copy> Into<u32> for IPtr<Op> {
+    fn into(self) -> u32 {
+        self.0
+    }
+}
+
+impl<Op: Sized + Copy> Eq for IPtr<Op> {}
+
+impl<Op: Sized + Copy> PartialEq for IPtr<Op> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<Op: Sized + Copy> Ord for IPtr<Op> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl<Op: Sized + Copy> PartialOrd for IPtr<Op> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl<Op: Sized + Copy> Display for IPtr<Op> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "IPtr({})", self.0)
+    }
+}
+
+impl<Op: Sized + Copy> TryInto<usize> for IPtr<Op> {
+    type Error = Infallible;
+    fn try_into(self) -> std::result::Result<usize, Self::Error> {
+        Ok(self.0 as usize)
+    }
+}
+
+impl<Op: Sized + Copy> fmt::Debug for IPtr<Op> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "IPtr({})", self.0)
+    }
+}
+
+impl<Op: Sized + Copy> IPtr<Op> {
+    pub fn new(base: NonNull<Op>, ip: NonNull<Op>) -> Self {
+        assert!(ip >= base);
+        IPtr(((ip.as_ptr() as usize - base.as_ptr() as usize) / size_of::<Op>()) as u32,
+            PhantomData::default())
+    }
+
+    pub fn from_offset(offset: usize) -> Self {
+        IPtr(offset.try_into().unwrap(), PhantomData::default())
+    }
+
+    pub fn from_offset_u32(offset: u32) -> Self {
+        IPtr(offset, PhantomData::default())
+    }
+
+    pub unsafe fn to_ptr(&self, base: NonNull<Op>) -> NonNull<Op> {
+        base.add(self.0 as usize)
+    }
+
+    pub fn prev(&self) -> Self {
+        assert_ne!(self.0, 0);
+        IPtr(self.0 - 1, self.1)
+    }
+
+    pub fn after(&self, a: u32) -> Self {
+        IPtr(self.0 + a as u32, self.1)
+    }
+
+    pub fn add(&self, a: i32) -> Self {
+        IPtr((self.0 as i32 + a) as u32, self.1)
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl Into<PV> for IPtr<r8c::Op> {
+    fn into(self) -> PV {
+        PV::UInt(self.0 as usize)
+    }
+}
+
+pub struct PMem<Op: Sized + Copy> {
+    ops: NonNull<Op>,
+    sz: usize,
+    len: usize,
+    ip: NonNull<Op>,
+}
+
+impl<Op: Sized + Copy> PMem<Op> {
+    fn layout(&self) -> Layout {
+        Layout::from_size_align(self.sz*size_of::<Op>(), align_of::<Op>()).unwrap()
+    }
+
+    pub fn new() -> Self {
+        // let sz = 4;
+        let sz = 1024 * 1024 * 64;
+        let layout = Layout::from_size_align(sz*size_of::<Op>(), align_of::<Op>())
+            .unwrap();
+        let ops = unsafe {
+            let p = alloc(layout) as *mut Op;
+            NonNull::new(p).expect("Allocation error")
+        };
+        Self {
+            ops,
+            sz,
+            len: 0,
+            ip: ops,
+        }
+    }
+
+    pub fn advance(&mut self) -> Op {
+        let op = self.op();
+        self.ip = unsafe { self.ip.add(1) };
+        op
+    }
+
+    pub fn op(&self) -> Op {
+        unsafe { self.ip.read() }
+    }
+
+    pub fn ip(&self) -> IPtr<Op> {
+        IPtr::new(self.ops, self.ip)
+    }
+
+    pub fn goto(&mut self, ip: IPtr<Op>) {
+        unsafe {
+            self.ip = ip.to_ptr(self.ops);
+        }
+    }
+
+    pub fn jmp(&mut self, dip: i32) {
+        unsafe {
+            self.ip = self.ip.offset(dip as isize);
+        }
+    }
+
+    pub fn push_op(&mut self, op: Op) {
+        unsafe {
+            self.fit(1);
+            ptr::write(self.ops.add(self.len).as_ptr(), op);
+            self.len += 1;
+        }
+    }
+
+    pub fn ip_at_end(&self) -> IPtr<Op> {
+        IPtr::from_offset(self.len())
+    }
+
+    pub fn ip_halt(&self) -> IPtr<Op> {
+        IPtr::from_offset(0)
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn shrink_to_fit(&self) {
+        log::trace!("PMem::shrink_to_fit is a no-op");
+    }
+
+    pub unsafe fn get_unchecked(&self, idx: impl TryInto<usize>) -> &Op {
+        let Ok(idx) = idx.try_into() else {
+            panic!("Integer (somehow) doesn't fit into usize")
+        };
+        self.ops.add(idx).as_ref()
+    }
+
+    pub unsafe fn get_mut_unchecked(&mut self, idx: impl TryInto<usize>) -> &mut Op {
+        let Ok(idx) = idx.try_into() else {
+            panic!("Integer (somehow) doesn't fit into usize")
+        };
+        self.ops.add(idx).as_mut()
+    }
+
+    pub fn get(&self, idx: impl TryInto<usize>) -> Option<&Op> {
+        let Ok(idx) = idx.try_into() else {
+            panic!("Integer (somehow) doesn't fit into usize")
+        };
+        (idx < self.len).then(|| unsafe { self.get_unchecked(idx) })
+    }
+
+    pub fn get_mut(&mut self, idx: impl TryInto<usize>) -> Option<&mut Op> {
+        let Ok(idx) = idx.try_into() else {
+            panic!("Integer (somehow) doesn't fit into usize")
+        };
+        (idx < self.len).then(|| unsafe { self.get_mut_unchecked(idx) })
+    }
+
+    fn fit(&mut self, extra: usize) {
+        if self.len + extra >= self.sz {
+            let ip = self.ip();
+            let nsz = cmp::max(self.sz * 2, self.len + extra);
+            let p = unsafe {
+                realloc(self.ops.as_ptr() as *mut u8, self.layout(), nsz*size_of::<Op>()) as *mut Op
+            };
+            self.ops = NonNull::new(p).expect("Allocation error");
+            self.sz = nsz;
+            self.goto(ip);
+        }
+    }
+
+    pub fn append(&mut self, it: &mut Vec<Op>) -> Result<()> {
+        unsafe {
+            self.fit(it.len());
+            ptr::copy_nonoverlapping(
+                it.as_ptr(), self.ops.add(self.len).as_ptr(), it.len()
+            );
+            self.len += it.len();
+            it.clear();
+        }
+        Ok(())
+    }
+
+    pub fn iter<'a>(&'a self) -> PMemIter<'a, Op> {
+        unsafe {
+            PMemIter { max: self.ops.add(self.len), it: self.ops, _ph: Default::default() }
+        }
+    }
+
+    pub fn iter_mut<'a>(&'a self) -> PMemIterMut<'a, Op> {
+        unsafe {
+            PMemIterMut { max: self.ops.add(self.len), it: self.ops, _ph: Default::default() }
+        }
+    }
+
+    pub fn as_slice(&self) -> &[Op] {
+        unsafe {
+            std::slice::from_raw_parts(self.ops.as_ptr(), self.len)
+        }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [Op] {
+        unsafe {
+            std::slice::from_raw_parts_mut(self.ops.as_ptr(), self.len)
+        }
+    }
+}
+
+impl<Op: Sized + Copy> ops::Deref for PMem<Op> {
+    type Target = [Op];
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl<Op: Sized + Copy> ops::DerefMut for PMem<Op> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut_slice()
+    }
+}
+
+impl<Op: Sized + Copy, Idx> Index<Idx> for PMem<Op>
+where Idx: TryInto<usize>
+{
+    type Output = Op;
+    fn index(&self, index: Idx) -> &Self::Output {
+        self.get(index).expect("index out of bounds")
+    }
+}
+
+impl<Op: Sized + Copy, Idx> IndexMut<Idx> for PMem<Op>
+where Idx: TryInto<usize>
+{
+    fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
+        self.get_mut(index).expect("index out of bounds")
+    }
+}
+
+impl<Op: Sized + Copy> Clone for PMem<Op> {
+    fn clone(&self) -> Self {
+        Self {
+            ops: unsafe {
+                let p = NonNull::new(alloc(self.layout()) as *mut Op)
+                    .expect("Allocation error");
+                ptr::copy_nonoverlapping(self.ops.as_ptr(), p.as_ptr(), self.len);
+                p
+            }, ..(*self)
+        }
+    }
+}
+
+impl<Op: Sized + Copy> Drop for PMem<Op> {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(self.ops.as_ptr() as *mut u8, self.layout());
+        }
+    }
+}
+
+pub type PMemT = PMem<r8c::Op>;
+// pub type PMemT = Vec<r8c::Op>;
+
 impl R8VM {
     pub fn no_std() -> R8VM {
+        // let mut pmem = Vec::with_capacity(1024 * 1024);
+        let mut pmem: PMemT = Default::default();
+        pmem.push_op(r8c::Op::HCF());
         let mut vm = R8VM {
-            pmem: vec![r8c::Op::HCF()],
-            ..Default::default()
+            pmem, ..Default::default()
         };
 
         for i in 0..=MAX_CLZCALL_ARGS {
-            let pos = vm.pmem.len();
-            vm.pmem.push(r8c::Op::ZCALL(i));
-            vm.pmem.push(r8c::Op::RET());
+            let pos = vm.pmem.ip_at_end();
+            vm.pmem.push_op(r8c::Op::ZCALL(i));
+            vm.pmem.push_op(r8c::Op::RET());
             let sym = vm.mem.symdb.put(format!("<ζ>-λ/{i}")).id();
             vm.funcs.insert(sym, Func {
                 pos,
@@ -876,7 +1256,7 @@ impl R8VM {
         }
 
         vm.funcs.insert(Builtin::HaltFunc.sym_id(), Func {
-            pos: 0,
+            pos: vm.pmem.ip_halt(),
             sz: 1,
             args: ArgSpec::none()
         });
@@ -1080,16 +1460,17 @@ impl R8VM {
             let fn_name = self.sym_id(&format!("{prefix}{sep}{name_no_kw}"));
             let kwname = self.sym_id(name);
             let name_idx = self.mem.push_env(PV::Sym(kwname));
-            let fn_pos = self.pmem.len();
-            self.pmem.push(r8c::Op::GET(obj_idx as u16));
-            self.pmem.push(r8c::Op::INS(name_idx as u32));
+            let fn_pos = self.pmem.ip_at_end();
+            self.pmem.push_op(r8c::Op::GET(obj_idx as u16));
+            self.pmem.push_op(r8c::Op::INS(name_idx as u32));
             assert!(!spec.is_special(), "No special function signatures allowed for methods");
             for i in 0..spec.nargs {
-                self.pmem.push(r8c::Op::MOV(i));
+                self.pmem.push_op(r8c::Op::MOV(i));
             }
-            self.pmem.push(r8c::Op::ZCALL(spec.nargs + 1));
-            self.pmem.push(r8c::Op::RET());
-            let sz = self.pmem.len() - fn_pos;
+            self.pmem.push_op(r8c::Op::ZCALL(spec.nargs + 1));
+            self.pmem.push_op(r8c::Op::RET());
+            let posi: u32 = fn_pos.into();
+            let sz = self.pmem.len() as u32 - posi;
             // TODO: Add arg names, they have to be generated in the methods proc-macro
             self.defun(fn_name, *spec, vec![], fn_pos, sz);
         }
@@ -1117,15 +1498,14 @@ impl R8VM {
         }
     }
 
-    pub unsafe fn call_method(&mut self, ip: *mut r8c::Op, obj: *mut Object, args: &[PV]) -> Result<PV> {
+    pub unsafe fn call_method(&mut self, ip: IP, obj: *mut Object, args: &[PV]) -> Result<PV> {
         let kw = args.first()
                      .ok_or_else(|| error!(NoMethodGiven, vt: (*obj).vt))
                      .and_then(|f| f.sym())?;
         let key = ((*obj).type_id , kw);
         match self.obj_methods.get(&key) {
             Some(f) => (f)((*obj).mem, self, &args[1..]).map_err(|e| {
-                let ipd = self.ip_delta(ip) - 1;
-                e.insert_traceframe(self.get_source(ipd),
+                e.insert_traceframe(self.get_source(ip.prev()),
                                     OpName::OpStr((*obj).vt.type_name),
                                     &args[..])
             }),
@@ -1195,7 +1575,7 @@ impl R8VM {
         self.debug_mode = debug_mode;
     }
 
-    pub fn catch(&mut self, dip: usize, sym: Option<SymID>) {
+    pub fn catch(&mut self, dip: IP, sym: Option<SymID>) {
         let frame = self.frame - self.base;
         let top = self.mem.stack.len() - self.base;
         self.catch.push(Guard {
@@ -1219,7 +1599,7 @@ impl R8VM {
         (frame as isize - self.base as isize).try_into().expect("underflow")
     }
 
-    pub fn op_unwind(&mut self) -> Result<usize> {
+    pub fn op_unwind(&mut self) -> Result<IP> {
         let tag_sym = self.mem.pop().and_then(|s| s.sym()).map_err(|e| e.bop(Builtin::Throw))?;
         let tag = tag_sym.as_int() as usize;
         let val = self.mem.pop()?;
@@ -1541,7 +1921,7 @@ impl R8VM {
         }
     }
 
-    fn get_source(&self, idx: usize) -> Source {
+    fn get_source(&self, idx: IPtr<r8c::Op>) -> Source {
         let src_idx = match self.srctbl.binary_search_by(|(u, _)| u.cmp(&idx)) {
             Ok(i) => i,
             Err(i) => (i as isize - 1).max(0) as usize
@@ -1563,7 +1943,7 @@ impl R8VM {
         self.reader_macros.insert(s, fn_sym);
     }
 
-    pub fn defvar(&mut self, name: SymID, idx: usize, pos: usize) -> Result<()> {
+    pub fn defvar(&mut self, name: SymID, idx: usize, pos: IP) -> Result<()> {
         let res = call_with!(self, pos, 0, {});
         self.mem.set_env(idx, res);
         self.globals.insert(name, idx);
@@ -1574,16 +1954,17 @@ impl R8VM {
                  name: SymID,
                  args: ArgSpec,
                  arg_names: Vec<SymID>,
-                 pos: usize,
-                 sz: usize)
+                 pos: IP,
+                 sz: u32)
     {
         match self.funcs.entry(name) {
             Entry::Occupied(mut e) => {
-                let ppos = e.get().pos as u32;
+                let ppos = e.get().pos;
                 use r8c::Op::*;
                 for op in self.pmem.iter_mut() {
                     *op = match *op {
-                        CALL(p, nargs) if p == ppos => CALL(pos as u32, nargs),
+                        CALL(p, nargs) if p == ppos.into() =>
+                            CALL(pos.into(), nargs),
                         op => op,
                     }
                 }
@@ -1628,8 +2009,8 @@ impl R8VM {
      * - `ip` : The instruction IP from which to unwind.
      * - `err` : The error to initialize the Traceback with
      */
-    pub fn unwind_traceback(&mut self, mut ip: usize, err: Error) -> Traceback {
-        let mut pos_to_fn: Vec<(usize, SymID)> = Vec::new();
+    pub fn unwind_traceback(&mut self, mut ip: IP, err: Error) -> Traceback {
+        let mut pos_to_fn: Vec<(IP, SymID)> = Vec::new();
         for (name, func) in self.funcs.iter() {
             pos_to_fn.push((func.pos, *name));
         }
@@ -1644,13 +2025,13 @@ impl R8VM {
 
         let mut frames = Vec::new();
 
-        while ip != 0 {
+        while !ip.is_zero() {
             let mut name = get_name(ip);
             let func = self.funcs
                            .get(&name)
                            .expect("Unable to find function by binary search");
 
-            let (nenv, nargs) = if func.pos + func.sz < ip {
+            let (nenv, nargs) = if func.pos.after(func.sz) < ip {
                 name = Builtin::Unknown.sym_id();
                 (0, 0)
             } else {
@@ -1678,7 +2059,7 @@ impl R8VM {
                 break;
             }
             ip = match self.mem.stack[frame] {
-                PV::UInt(x) => x,
+                PV::UInt(x) => IPtr::from_offset(x),
                 _ => {
                     log::warn!("Incomplete stack trace!");
                     break;
@@ -1698,8 +2079,8 @@ impl R8VM {
     }
 
     // FIXME: This function is super slow, unoptimized, and only for debugging
-    fn traceframe(&self, ip: usize) -> SymID {
-        let mut pos_to_fn: Vec<(usize, SymID)> = Vec::new();
+    fn traceframe(&self, ip: IP) -> SymID {
+        let mut pos_to_fn: Vec<(IP, SymID)> = Vec::new();
         for (name, func) in self.funcs.iter() {
             pos_to_fn.push((func.pos, *name));
         }
@@ -1716,7 +2097,7 @@ impl R8VM {
     }
 
     #[allow(dead_code)] // Used for internal debugging/profiling
-    fn count_trace(&mut self, ip: usize) {
+    fn count_trace(&mut self, ip: IP) {
         let frame = self.traceframe(ip);
         let _v = match self.trace_counts.entry(frame) {
             Entry::Occupied(mut e) => {
@@ -1735,14 +2116,14 @@ impl R8VM {
         }
     }
 
-    unsafe fn run_from_unwind(&mut self, offs: usize, pframe: usize, internal: bool)
-                              -> std::result::Result<usize, Traceback>
+    unsafe fn run_from_unwind(&mut self, ip: IP, pframe: usize, internal: bool)
+                              -> std::result::Result<IP, Traceback>
     {
         let cth = mem::replace(&mut self.catch, Default::default());
         let base = self.base;
         self.base = self.frame;
         self.re_enter += 1;
-        let res = match self.run_from(offs) {
+        let res = match self.run_from(ip) {
             Ok(ip) => Ok(ip),
             Err((ip, e)) => {
                 Err(self.unwind_traceback(ip, e))
@@ -1758,7 +2139,7 @@ impl R8VM {
         res
     }
 
-    fn op_yeet(&mut self) -> Result<usize> {
+    fn op_yeet(&mut self) -> Result<IP> {
         let cc = self.mem.pop()?;
         let tag = self.mem.pop()?;
         let val = self.mem.pop()?;
@@ -1770,8 +2151,7 @@ impl R8VM {
         self.op_unwind()
     }
 
-    fn warp(&mut self, cont: &Continuation, val: PV) -> usize {
-        log::info!("warping! {}", cont.lisp_to_string());
+    fn warp(&mut self, cont: &Continuation, val: PV) -> IP {
         self.mem.stack.truncate(self.base);
         self.mem.stack.extend((*cont).stack.iter());
         self.catch.clear();
@@ -1783,8 +2163,8 @@ impl R8VM {
 
     #[inline]
     fn op_clzcall(&mut self,
-                  ip: *mut r8c::Op,
-                  nargs: usize) -> Result<*mut r8c::Op> {
+                  ip: IP,
+                  nargs: usize) -> Result<IP> {
         let idx = self.mem.stack.len() - nargs - 1;
         let lambda_pv = self.mem.stack[idx];
         let err = move || err!(TypeNError,
@@ -1807,7 +2187,7 @@ impl R8VM {
                     - 2
                     - nargs
                     - has_env as usize;
-                Ok(self.ret_to((*lambda).pos))
+                Ok((*lambda).pos)
             }
             NkT::Subroutine => unsafe {
                 let subr = fastcast_mut::<Box<dyn Subr>>(p);
@@ -1826,41 +2206,37 @@ impl R8VM {
                 let top = self.mem.stack.len();
                 let args: Vec<_> = self.mem.stack[top - nargs..].to_vec();
 
-                let dip = self.ip_delta(ip);
+                let name = OpName::OpStr((*subr).name());
                 let res = (*subr).call(self, &args[..]).map_err(|e| {
-                    let ipd = self.ip_delta(ip) - 1;
-                    e.insert_traceframe(self.get_source(ipd),
-                                        OpName::OpStr((*subr).name()),
-                                        &args[..])
+                    e.insert_traceframe(self.get_source(ip.prev()), name, &[])
                 });
                 invalid!(args, subr); // (*subr).call
                 self.mem.stack.drain(idx..).for_each(drop); // drain gang
                 self.mem.push(res?);
-                Ok(self.ret_to(dip))
+                Ok(ip)
             }
             NkT::Continuation => unsafe {
                 let cont = fastcast::<Continuation>(p);
                 ArgSpec::normal(1).check(nargs).map_err(|e| e.bop(Builtin::Continuation))?;
                 let pv = self.mem.pop().unwrap();
                 let dip = self.warp(&*cont, pv);
-                Ok(self.ret_to(dip))
+                Ok(dip)
             }
             NkT::Object => unsafe {
                 let s = fastcast_mut::<Object>(p);
                 let top = self.mem.stack.len();
                 let args: Vec<_> = self.mem.stack[top - nargs..].to_vec();
-                let dip = self.ip_delta(ip);
                 let res = self.call_method(ip, s, &args[..]);
                 self.mem.stack.drain(idx..).for_each(drop); // drain gang
                 self.mem.push(res?);
-                Ok(self.ret_to(dip))
+                Ok(ip)
             }
             _ => err()
         }
     }
 
     #[inline(never)]
-    fn vcall(&mut self, mut ip: *mut r8c::Op, idx: u32, nargs: usize) -> Result<*mut r8c::Op> {
+    fn vcall(&mut self, ip: IPtr<r8c::Op>, idx: u32, nargs: usize) -> Result<IPtr<r8c::Op>> {
         let sym = self.mem.env[idx as usize].sym().unwrap();
         match self.funcs.get(&sym) {
             Some(func) => {
@@ -1870,7 +2246,7 @@ impl R8VM {
                 // (*ip.sub(1)) = CALL(pos as u32, nargs);
                 self.call_pre(ip);
                 self.frame = self.mem.stack.len() - 2 - (nargs as usize);
-                ip = self.ret_to(pos);
+                Ok(pos)
             },
             None => if let Some(idx) = self.get_env_global(sym) {
                 let var = self.mem.get_env(idx);
@@ -1878,18 +2254,17 @@ impl R8VM {
                 // FIXME: This can be made less clunky by modifying
                 // op_clzcall so that it takes the callable as a parameter.
                 self.mem.stack.insert(sidx, var);
-                ip = self.op_clzcall(ip, nargs)?;
+                self.op_clzcall(ip, nargs)
             } else {
                 return Err(ErrorKind::UndefinedFunction {
                     name: sym.into()
                 }.into())
             }
-        };
-        Ok(ip)
+        }
     }
 
     #[inline(never)]
-    unsafe fn apl(&mut self, ip: *mut r8c::Op) -> Result<*mut r8c::Op> {
+    unsafe fn apl(&mut self, ip: IP) -> Result<IP> {
         let args = self.mem.pop().unwrap();
         let nargs = (|| -> Result<_> {
             match args {
@@ -1929,13 +2304,13 @@ impl R8VM {
      * NOTE: If the code isn't well-formed, i.e produces out-of-bounds jumps,
      * then you've yee'd your last haw.
      */
-    unsafe fn run_from(&mut self, offs: usize) -> std::result::Result<usize, (usize, Error)> {
+    unsafe fn run_from(&mut self, ip: IP) -> std::result::Result<IP, (IP, Error)> {
         if self.debug_mode.show_frames {
-            eprintln!("[run_from {offs}]");
+            eprintln!("[run_from {ip}]");
             self.dump_stack().unwrap();
         }
         let mut regs: Regs<2> = Regs::new();
-        let mut ip = &mut self.pmem[offs] as *mut r8c::Op;
+        self.pmem.goto(ip);
         use r8c::Op::*;
         macro_rules! op2 {
             ($r:ident, $op:ident, $rp:expr) => {{
@@ -1948,7 +2323,7 @@ impl R8VM {
         }
         let mut orig = None;
         if self.debug_mode.show_frames {
-            let sym = self.traceframe(offs);
+            let sym = self.traceframe(ip);
             orig = Some(sym);
             eprintln!("{}:", sym);
         }
@@ -1967,15 +2342,14 @@ impl R8VM {
             }};
         }
         let mut run = || loop {
-            let op = *ip;
-            let ipd = self.ip_delta(ip);
-            ip = ip.offset(1);
+            let op = self.pmem.op();
+            self.pmem.advance();
 
             if self.debug_mode.show_frames {
                 match op {
                     VCALL(f, _) => eprintln!("{}:", f),
                     CALL(ip, _) => {
-                        let sym = self.traceframe(ip as usize);
+                        let sym = self.traceframe(IPtr::from_offset_u32(ip));
                         eprintln!("{}:", sym);
                     }
                     _ => ()
@@ -1983,7 +2357,7 @@ impl R8VM {
             }
 
             if self.debug_mode.show_opcodes {
-                eprintln!("  {} {}", ipd, op);
+                eprintln!("  {} {}", ip, op);
             }
 
             match op {
@@ -2153,8 +2527,8 @@ impl R8VM {
                 }
                 ARGS(_nargs, _nopt, _env, _rest) => {}
                 CLZ(pos, nenv) => {
-                    let ipd = self.ip_delta(ip);
-                    let ARGS(nargs, nopt, env, rest) = *self.pmem.get_unchecked(ipd-2) else {
+                    let ipd = self.pmem.ip();
+                    let ARGS(nargs, nopt, env, rest) = *self.pmem.get_unchecked(ipd.prev().prev()) else {
                         panic!("CLZR without ARGSPEC");
                     };
                     let spec = ArgSpec { nargs, nopt, env, rest: rest == 1 };
@@ -2164,7 +2538,7 @@ impl R8VM {
                     for x in locals.iter() {
                         barrier!(*x);
                     }
-                    self.mem.push_new(nkgc::Lambda { pos: pos as usize,
+                    self.mem.push_new(nkgc::Lambda { pos: IPtr::from_offset_u32(pos),
                                                      args: spec,
                                                      locals });
                 }
@@ -2207,29 +2581,32 @@ impl R8VM {
                 },
 
                 // Flow control
-                JMP(d) => ip = ip.offset(d as isize - 1),
+                JMP(d) => self.pmem.jmp(d - 1),
                 JT(d) => if bool::from(self.mem.pop()?) {
-                    ip = ip.offset(d as isize - 1);
+                    self.pmem.jmp(d - 1);
                 }
                 JN(d) => if !bool::from(self.mem.pop()?) {
-                    ip = ip.offset(d as isize - 1);
+                    self.pmem.jmp(d - 1);
                 }
                 JZ(d) => if self.mem.stack.pop() == Some(PV::Int(0)) {
-                    ip = ip.offset(d as isize - 1);
+                    self.pmem.jmp(d - 1);
                 }
                 JNZ(d) => if self.mem.stack.pop() != Some(PV::Int(0)) {
-                    ip = ip.offset(d as isize - 1);
+                    self.pmem.jmp(d - 1);
                 }
                 JV(mul, max) => {
-                    let n = self.mem.pop()?.force_int();
-                    let d = cmp::min((mul as isize) * n, max as isize);
-                    ip = ip.offset(d);
+                    let n = self.mem.pop()?.force_int() as i32;
+                    let d = cmp::min((mul as i32) * n, max as i32);
+                    self.pmem.jmp(d);
                 }
-                VCALL(idx, nargs) => ip = self.vcall(ip, idx, nargs.into())?,
+                VCALL(idx, nargs) => {
+                    let ipd = self.vcall(self.pmem.ip(), idx, nargs.into())?;
+                    self.pmem.goto(ipd);
+                },
                 CALL(pos, nargs) => {
-                    self.call_pre(ip);
+                    self.call_pre(self.pmem.ip());
                     self.frame = self.mem.stack.len() - 2 - (nargs as usize);
-                    ip = self.ret_to(pos as usize);
+                    self.pmem.goto(IPtr::from_offset_u32(pos));
                 }
                 RET() => {
                     if self.debug_mode.show_stack_on_ret {
@@ -2247,16 +2624,22 @@ impl R8VM {
                         panic!("Invalid frame, expected two unsigned-integers")
                     };
                     self.frame = self.fixup_frame(frame);
-                    ip = self.ret_to(dip);
+                    self.pmem.goto(IPtr::from_offset(dip));
                     // yeet the stack frame
                     self.mem.stack.truncate(old_frame);
                     self.mem.push(rv);
                     assert!(self.frame <= self.mem.stack.len());
                 }
-                ZCALL(nargs) => ip = self.op_clzcall(ip, nargs as usize)?,
-                APL() => ip = self.apl(ip)?,
+                ZCALL(nargs) => {
+                    let ipd = self.op_clzcall(self.pmem.ip(), nargs as usize)?;
+                    self.pmem.goto(ipd);
+                },
+                APL() => {
+                    let ipd = self.apl(self.pmem.ip())?;
+                    self.pmem.goto(ipd);
+                },
                 CCONT(dip) => {
-                    let dip = self.ip_delta(ip) as isize + dip as isize;
+                    let dip = self.pmem.ip().add(dip);
                     let mut stack = (&self.mem.stack[self.base..]).iter()
                                                                   .copied()
                                                                   .collect::<Vec<PV>>();
@@ -2264,20 +2647,20 @@ impl R8VM {
                     let cnt = Continuation {
                         stack,
                         frame: self.inv_fixup_frame(self.frame),
-                        dip: dip as usize,
+                        dip,
                         catch: self.catch.clone(),
                     };
-                    log::trace!("{cnt:?}");
                     for v in cnt.stack.iter().copied() {
                         barrier!(v);
                     }
                     let cnt_pv = self.mem.put_pv(cnt);
                     self.mem.push(cnt_pv);
-                    ip = self.op_clzcall(ip, 1)?;
+                    let dip = self.op_clzcall(self.pmem.ip(), 1)?;
+                    self.pmem.goto(dip);
                 }
                 CTHPOP() => self.catch_pop(),
                 CTH(dip) => {
-                    let dip = self.ip_delta(ip) + dip as usize - 1;
+                    let dip = self.pmem.ip().add(dip - 1);
                     let tag = self.mem.pop()
                                       .and_then(|pv| pv.sym())
                                       .map_err(|e| e.bop(Builtin::Catch)
@@ -2287,11 +2670,11 @@ impl R8VM {
                 }
                 UWND() => {
                     let dip = self.op_unwind()?;
-                    ip = self.ret_to(dip);
+                    self.pmem.goto(dip);
                 }
                 YEET() => {
                     let dip = self.op_yeet()?;
-                    ip = self.ret_to(dip);
+                    self.pmem.goto(dip);
                 }
 
                 // Stack manipulation
@@ -2342,10 +2725,10 @@ impl R8VM {
                 PRT() => unimplemented!(),
 
                 EVL() => {
-                    let dip = self.ip_delta(ip);
+                    let dip = self.pmem.ip();
                     let v = self.mem.pop()?;
                     let res = self.eval_pv(v);
-                    ip = self.ret_to(dip);
+                    self.pmem.goto(dip);
                     match res {
                         Ok(x) => self.mem.push(x),
                         Err(e) => {
@@ -2353,7 +2736,7 @@ impl R8VM {
                             self.mem.push(v);
                             self.mem.push(tag);
                             let dip = self.op_unwind()?;
-                            ip = self.ret_to(dip)
+                            self.pmem.goto(dip);
                         },
                     }
                 }
@@ -2390,13 +2773,13 @@ impl R8VM {
 
         let res = run();
         if self.debug_mode.show_frames {
-            eprintln!("[finished run_from {offs} with {res:?}]");
+            eprintln!("[finished run_from {ip} with {res:?}]");
         }
         if self.debug_mode.show_stack_on_ret {
             self.dump_stack().unwrap();
         }
 
-        let dip = self.ip_delta(ip);
+        let dip = self.pmem.ip();
         match res {
             Ok(_) => Ok(dip),
             Err(e) => {
@@ -2433,19 +2816,18 @@ impl R8VM {
     }
 
     #[inline]
-    fn ret_to(&mut self, dip: usize) -> *mut r8c::Op {
-        &mut self.pmem[dip] as *mut r8c::Op
+    fn ret_to(&self, dip: usize) -> *const r8c::Op {
+        &self.pmem[dip] as *const r8c::Op
     }
 
     #[inline]
-    fn ip_delta(&mut self, ip: *const r8c::Op) -> usize {
+    fn ip_delta(&self, ip: *const r8c::Op) -> usize {
         (ip as usize - self.ret_to(0) as usize) / mem::size_of::<r8c::Op>()
     }
 
     #[inline]
-    fn call_pre(&mut self, ip: *const r8c::Op) {
-        let dip = self.ip_delta(ip);
-        self.mem.push(PV::UInt(dip));
+    fn call_pre(&mut self, dip: IPtr<r8c::Op>) {
+        self.mem.push(dip.into());
         self.mem.push(PV::UInt(self.inv_fixup_frame(self.frame)));
     }
 
@@ -2489,7 +2871,7 @@ impl R8VM {
         self.mem.push(PV::UInt(0));
         self.mem.push(PV::UInt(0));
         self.mem.push(f);
-        let pos = clzcall_pad_dip(args.nargs() as u16);
+        let pos = IPtr::from_offset(clzcall_pad_dip(args.nargs().try_into()?));
         args.pusharg(&mut self.mem)?;
         unsafe {
             self.run_from_unwind(pos, frame, false)?;
@@ -2504,7 +2886,7 @@ impl R8VM {
         self.mem.push(PV::UInt(0));
         self.mem.push(PV::UInt(0));
         self.mem.push(f.pv(&self.mem));
-        let pos = clzcall_pad_dip(args.inner_nargs() as u16);
+        let pos = IPtr::from_offset(clzcall_pad_dip(args.inner_nargs().try_into()?));
         args.inner_pusharg(&mut self.mem)?;
         unsafe {
             self.run_from_unwind(pos, frame, false)?;
@@ -2571,7 +2953,7 @@ impl R8VM {
 
     pub fn dump_code(&self) -> Result<()> {
         for (i, op) in self.pmem.iter().enumerate() {
-            println!("{i:0>8}    {op} {}", self.get_source(i))
+            println!("{i:0>8}    {op} {}", self.get_source(IPtr::from_offset(i)))
         }
         Ok(())
     }
@@ -2581,7 +2963,7 @@ impl R8VM {
             name = *mac_fn;
         }
         let func = self.funcs.get(&name).ok_or("No such function")?;
-        let start = func.pos as isize;
+        let start: u32 = func.pos.into();
 
         let get_jmp = |op: r8c::Op| {
             use r8c::Op::*;
@@ -2592,14 +2974,14 @@ impl R8VM {
                 JZ(d) => d,
                 JNZ(d) => d,
                 _ => return None,
-            }).map(|v| v as isize)
+            })
         };
 
-        let fmt_special = |pos: isize, op: r8c::Op| {
+        let fmt_special = |pos: u32, op: r8c::Op| {
             use r8c::Op::*;
             if let Some(delta) = get_jmp(op) {
                 return Some((op.name().to_ascii_lowercase(),
-                             vec![self.labels.get(&((pos + delta) as u32))
+                             vec![self.labels.get(&((pos as i32 + delta) as u32))
                                   .map(|lbl| format!("{}", lbl))
                                   .unwrap_or(format!("{}", delta))
                                   .style_asm_label_ref()
@@ -2617,7 +2999,7 @@ impl R8VM {
         writeln!(stdout, "{}({}):",
                  name.as_ref().style_asm_fn(),
                  func.args)?;
-        for i in start..start+(func.sz as isize) {
+        for i in start..start+func.sz {
             let op = self.pmem[i as usize];
             if let Some(s) = self.labels.get(&(i as u32)) {
                 writeln!(stdout, "{}:", s.style_asm_label())?;
@@ -2629,7 +3011,7 @@ impl R8VM {
             writeln!(stdout, "    {} {} {}",
                      name.style_asm_op(),
                      args.join(", "),
-                     self.get_source(i as usize))?;
+                     self.get_source(IPtr::from_offset_u32(i)))?;
         }
 
         Ok(())
@@ -2717,7 +3099,7 @@ impl R8VM {
         Ok(())
     }
 
-    pub fn pmem(&self) -> &Vec<r8c::Op> {
+    pub fn pmem(&self) -> &PMemT {
         &self.pmem
     }
 

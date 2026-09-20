@@ -1,7 +1,7 @@
 //! The Nuclear Garbage Collector
 
 use crate::builtins::{Builtin, BUILTIN_SYMS};
-use crate::r8vm::{ArgSpec, RuntimeError, VmId};
+use crate::r8vm::{r8c, ArgSpec, IPtr, RuntimeError, VmId};
 use crate::nuke::{*, self};
 use crate::error::{ErrorKind, Error, Source};
 use crate::fmt::{LispFmt, VisitSet};
@@ -1362,7 +1362,7 @@ impl IntoIterator for PV {
 #[derive(Eq, PartialEq, Debug, Clone)]
 #[cfg_attr(feature = "freeze", derive(Serialize, Deserialize))]
 pub struct Lambda {
-    pub pos: usize,
+    pub pos: IPtr<r8c::Op>,
     pub locals: Vec<PV>,
     pub args: ArgSpec,
 }

@@ -314,7 +314,7 @@ impl Spaik {
 
     pub fn catch(&mut self, tag: Option<impl AsSym>) {
         let tag = tag.map(|t| t.as_sym(&mut self.vm));
-        self.vm.catch(0, tag);
+        self.vm.catch(self.vm.pmem.ip_halt(), tag);
     }
 
     pub fn set_debug(&mut self, dbg: VmDebugOpts) {
@@ -322,7 +322,7 @@ impl Spaik {
     }
 
     pub fn catch_all(&mut self) {
-        self.vm.catch(0, None);
+        self.vm.catch(self.vm.pmem.ip_halt(), None);
     }
 
     pub fn catch_pop(&mut self) {
