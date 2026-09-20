@@ -61,7 +61,7 @@ impl TestRunner {
         let mut vm = R8VM::new();
         let buf: Box<dyn OutStream> = Box::new(DevNull);
         let outbuf = Arc::new(Mutex::new(buf));
-        // vm.set_stdout(outbuf.clone());
+        vm.set_stdout(outbuf.clone());
         let test = vm.sym_id("test");
         vm.eval(r#"(push sys/load-path "./lisp")"#).unwrap();
         vm.load_eval(test)?;
