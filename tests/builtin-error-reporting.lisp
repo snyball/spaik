@@ -245,7 +245,7 @@
       (= -2 (errx/catch 'negative-index '(if (nth -1.5 (list 1 2 3) 7) :errx-then :errx-else)))
       ;; `get` still refuses a float index outright - that is `get`'s
       ;; own behaviour and `nth` no longer reaches it
-      (errx/msg? 'type-error "Type Error: Expected one of vec, vec2, vec3, table in get"
+      (errx/msg? 'type-error "Type Error: Expected integer for index on vec, but got float"
                  '(get (vec 1 2 3) 1.7)))
 
 (test errx-nth-type-error-payload-is-a-symbol
