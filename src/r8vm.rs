@@ -80,7 +80,7 @@ chasm_def! {
     // Value creation
     INT(val: i32),
     FLT(val: u32),
-    ARGS(nargs: u16, nopt: u16, nenv: u16, rest: u8),
+    SPEC(nargs: u16, nopt: u16, nenv: u16, rest: u8),
     CHR(c: u32),
     CLZ(pos: u32, nenv: u16),
     ZAV(nargs: u16, nenv: u16), // Commit the closure environment
@@ -2524,10 +2524,10 @@ impl R8VM {
                         Ok(())
                     })?;
                 }
-                ARGS(_nargs, _nopt, _env, _rest) => {}
+                SPEC(_nargs, _nopt, _env, _rest) => {}
                 CLZ(pos, nenv) => {
                     let ipd = self.pmem.ip();
-                    let ARGS(nargs, nopt, env, rest) = *self.pmem.get_unchecked(ipd.prev().prev()) else {
+                    let SPEC(nargs, nopt, env, rest) = *self.pmem.get_unchecked(ipd.prev().prev()) else {
                         panic!("CLZR without ARGSPEC");
                     };
                     let spec = ArgSpec { nargs, nopt, env, rest: rest == 1 };

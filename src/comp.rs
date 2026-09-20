@@ -767,7 +767,7 @@ impl R8Compiler {
         let pos = IPtr::from_offset(self.code.len() + self.code_offset);
         let sz = self.end_unit()?.try_into().unwrap();
         self.unit().op(
-            chasm!(ARGS spec.nargs, spec.nopt, spec.env, spec.rest as u8)
+            chasm!(SPEC spec.nargs, spec.nopt, spec.env, spec.rest as u8)
         );
         self.unit().op(chasm!(CLZ pos, num));
         self.new_fns.push((Sym::Str(name), spec, args, pos, sz));
@@ -1142,7 +1142,7 @@ impl R8Compiler {
                     Some(funk) => {
                         let s = funk.args;
                         let pos = funk.pos;
-                        asm!(ARGS s.nargs, s.nopt, 0, s.rest as u8);
+                        asm!(SPEC s.nargs, s.nopt, 0, s.rest as u8);
                         asm!(CLZ pos, 0);
                     }
                     _ => return Err(e)
@@ -1178,7 +1178,7 @@ impl R8Compiler {
                 self.new_fns.push((Sym::Id(name), spec, syms, pos, sz));
                 self.fns.insert(name, Func { pos, sz, args: spec });
                 if ret {
-                    asm!(ARGS spec.nargs, spec.nopt, 0, spec.rest as u8);
+                    asm!(SPEC spec.nargs, spec.nopt, 0, spec.rest as u8);
                     asm!(CLZ pos, 0);
                 }
             },
