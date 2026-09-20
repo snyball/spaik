@@ -2341,11 +2341,8 @@ impl R8VM {
             }};
         }
         let mut run = || loop {
-            let op = self.pmem.op();
-            self.pmem.advance();
-
             if self.debug_mode.show_frames {
-                match op {
+                match self.pmem.op() {
                     VCALL(f, _) => eprintln!("{}:", f),
                     CALL(ip, _) => {
                         let sym = self.traceframe(IPtr::from_offset_u32(ip));
@@ -2356,10 +2353,10 @@ impl R8VM {
             }
 
             if self.debug_mode.show_opcodes {
-                eprintln!("  {} {}", ip, op);
+                eprintln!("  {} {}", self.pmem.ip().0, self.pmem.op());
             }
 
-            match op {
+            match self.pmem.advance() {
                 // List processing
                 CAR() => {
                     let it = self.mem.pop()?;
@@ -2945,7 +2942,7 @@ impl R8VM {
         let mut funks = self.funcs.iter().map(|(k, v)| (k, v.pos)).collect::<Vec<_>>();
         funks.sort_by_key(|(_, v)| *v);
         for funk in funks.into_iter().map(|(u, _)| u) {
-            self.dump_fn_code(*funk)?
+            self.dump_fn_code(PV::Sym(*funk))?
         }
         Ok(())
     }
@@ -2957,12 +2954,42 @@ impl R8VM {
         Ok(())
     }
 
-    pub fn dump_fn_code(&self, mut name: SymID) -> Result<()> {
-        if let Some(mac_fn) = self.macros.get(&name) {
-            name = *mac_fn;
-        }
-        let func = self.funcs.get(&name).ok_or("No such function")?;
-        let start: u32 = func.pos.into();
+    pub fn dump_fn_code(&self, mut f: PV) -> Result<()> {
+        let terr = || err!(TypeNError, expect: vec![
+            Builtin::Lambda, Builtin::Symbol, Builtin::Subr
+        ], got: f.bt_type_of());
+
+        let mut stdout = self.stdout.lock().unwrap();
+
+        let (start, sz, args) = match f {
+            PV::Sym(name) => {
+                let name = if let Some(mac_fn) = self.macros.get(&name) {
+                    *mac_fn
+                } else {
+                    name
+                };
+                let func = self.funcs.get(&name).ok_or("No such function")?;
+                writeln!(stdout, "{}({}):", name.as_ref().style_asm_fn(), func.args)?;
+                (func.pos.into(), Some(func.sz), func.args)
+            }
+            PV::Ref(p) => unsafe {
+                match to_fissile_ref(p) {
+                    NkRef::Lambda(func) => unsafe {
+                        ((*func).pos.into(), None, (*func).args)
+                    }
+                    NkRef::Subroutine(subr) => {
+                        writeln!(stdout, "{}(...): [ Rust Subroutine ]",
+                            (*subr).name().style_asm_fn())?;
+                        return Ok(())
+                    }
+                    _ => return terr(),
+                }
+            }
+            PV::Int(i) if (i as usize) < self.pmem.len() =>
+                (i as u32, None, ArgSpec::any()),
+            PV::Int(i) => return err!(IndexError, idx: i),
+            _ => return terr(),
+        };
 
         let get_jmp = |op: r8c::Op| {
             use r8c::Op::*;
@@ -2994,23 +3021,23 @@ impl R8VM {
             }))
         };
 
-        let mut stdout = self.stdout.lock().unwrap();
-        writeln!(stdout, "{}({}):",
-                 name.as_ref().style_asm_fn(),
-                 func.args)?;
-        for i in start..start+func.sz {
-            let op = self.pmem[i as usize];
+        for (i, op) in self.pmem.iter().enumerate().skip(start as usize) {
             if let Some(s) = self.labels.get(&(i as u32)) {
                 writeln!(stdout, "{}:", s.style_asm_label())?;
             }
-            let (name, args) = fmt_special(i, op).unwrap_or(
+            let (name, args) = fmt_special(i as u32, *op).unwrap_or(
                 (op.name().to_ascii_lowercase(),
                  op.args().iter().map(|v| v.to_string()).collect())
             );
-            writeln!(stdout, "    {} {} {}",
+            let n = format!("{i:0>8}");
+            writeln!(stdout, "{}    {} {} {}",
+                     n.style_asm_instrp(),
                      name.style_asm_op(),
                      args.join(", "),
-                     self.get_source(IPtr::from_offset_u32(i)))?;
+                     self.get_source(IPtr::from_offset(i)))?;
+            if *op == r8c::Op::RET() || *op == r8c::Op::HCF() {
+                break;
+            }
         }
 
         Ok(())

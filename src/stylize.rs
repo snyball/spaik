@@ -35,4 +35,5 @@ def_styles! {
     style_success { style().green().bold() }
     style_info { style().white().bold() }
     style_prompt { style().white().bold() }
+    style_asm_instrp { style().white().bold() }
 }

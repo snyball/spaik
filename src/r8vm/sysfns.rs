@@ -404,7 +404,7 @@ std_subrs! {
     }
 
     fn disassemble(&mut self, vm: &mut R8VM, args: (func)) -> Result<PV> {
-        vm.dump_fn_code((*func).try_into()?)?;
+        vm.dump_fn_code(*func)?;
         Ok(PV::Nil)
     }
 
