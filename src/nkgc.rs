@@ -333,6 +333,8 @@ macro_rules! num_op {
                 (Int(x), Real(y)) => Real(*x as f32 $op y),
                 (Int(_), Int(0)) if Builtin::$sym == Builtin::Div =>
                     return Err(error!(DivideByZero,).bop(Builtin::$sym)),
+                (Int(isize::MIN), Int(-1)) if Builtin::$sym == Builtin::Div =>
+                    return Err(error!(DivideWithOverflow,).bop(Builtin::$sym)),
                 (Int(x), Int(y)) => Int(x $op y),
                 (Real(x), Int(y)) => Real(x $op *y as f32),
                 (Real(x), Real(y)) => Real(x $op y),
