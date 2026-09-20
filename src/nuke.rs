@@ -1,7 +1,7 @@
 //! The Nuclear Allocator
 
 use crate::error::{Error, OpName};
-use crate::nkgc::{PV, Traceable, Arena, SymID, GCStats, Cons};
+use crate::nkgc::{Arena, Cons, GCStats, Lambda, SymID, Traceable, PV};
 use crate::builtins::Builtin;
 use crate::fmt::{LispFmt, VisitSet, FmtWrap};
 
@@ -1238,6 +1238,13 @@ pub unsafe fn deep_size_of_atom(atom: *const NkAtom) -> usize {
                 0
             }).sum::<usize>()
         },
+        NkRef::Lambda(f) => {
+            sz += (*f).locals.iter().map(|x| if let PV::Ref(p) = x {
+                deep_size_of_atom(*p)
+            } else {
+                0
+            }).sum::<usize>()
+        }
         _ => ()
     }
     sz
@@ -1297,9 +1304,18 @@ pub unsafe fn clone_atom_rec(atom: *const NkAtom, mem: &mut Arena) -> Result<*mu
                 rf
             }
         }
-        NkRef::Lambda(_l) => todo!(),
+        NkRef::Lambda(f) => {
+            let locals = (*f).locals.iter().map(|p| p.deep_clone_unchecked(mem)).collect::<Result<Vec<_>, _>>()?;
+            let (rf, _) = mem.put(Lambda { locals, ..(*f) });
+            rf
+        },
         NkRef::String(s) => clone!(s),
-        NkRef::PV(_p) => todo!(),
+        NkRef::PV(pv) => if let PV::Ref(p) = *pv {
+            let cloned = clone_atom_rec(p, mem)?;
+            mem.put(PV::Ref(cloned)).0
+        } else {
+            mem.put(*pv).0
+        },
         NkRef::Vector(xs) => unsafe {
             let nxs = (*xs).iter().map(|p| p.deep_clone_unchecked(mem)).collect::<Result<Vec<_>, _>>()?;
             let (rf, _) = mem.put(nxs);
